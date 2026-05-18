@@ -141,13 +141,37 @@ function AdminFieldPage() {
       </header>
 
       <div className="grid grid-cols-7 gap-2 mb-6">
-        {BUCKETS.map((b) => (
-          <div key={b} className="bg-card border border-border p-3 text-center">
-            <div className="text-[10px] uppercase font-bold tracking-widest" style={{ color: "var(--gold)" }}>B{b}</div>
-            <div className="font-display text-2xl mt-1">{counts[b] ?? 0}</div>
-          </div>
-        ))}
+        {BUCKETS.map((b) => {
+          const count = counts[b] ?? 0;
+          const required = b <= 4 ? 10 : null;
+          const ok = required === null ? count > 0 : count === required;
+          return (
+            <div
+              key={b}
+              className="bg-card border p-3 text-center"
+              style={{ borderColor: ok ? "var(--border)" : "var(--alert)" }}
+              title={required ? `Requires exactly ${required} golfers` : "Custom count"}
+            >
+              <div className="text-[10px] uppercase font-bold tracking-widest" style={{ color: "var(--gold)" }}>B{b}</div>
+              <div className="font-display text-2xl mt-1">{count}{required ? <span className="text-xs text-muted-foreground">/{required}</span> : null}</div>
+              <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">
+                {required ? (count === required ? "OK" : count < required ? `Need ${required - count}` : `Over ${count - required}`) : "Custom"}
+              </div>
+            </div>
+          );
+        })}
       </div>
+      {(() => {
+        const issues = [1, 2, 3, 4].filter((b) => (counts[b] ?? 0) !== 10);
+        const empty = [5, 6, 7].filter((b) => (counts[b] ?? 0) === 0);
+        if (issues.length === 0 && empty.length === 0) return null;
+        return (
+          <div className="mb-6 p-3 border border-border bg-destructive/10 text-xs">
+            {issues.length > 0 && <div>Buckets {issues.join(", ")} must each have exactly 10 golfers.</div>}
+            {empty.length > 0 && <div>Buckets {empty.join(", ")} need at least 1 golfer.</div>}
+          </div>
+        );
+      })()}
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Field */}
