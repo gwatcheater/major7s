@@ -19,6 +19,7 @@ import { Route as AuthenticatedArchiveRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_authenticated/tournament.$id.lineup'
+import { Route as AuthenticatedAdminTournamentIdFieldRouteImport } from './routes/_authenticated/admin.tournament.$id.field'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -71,41 +72,50 @@ const AuthenticatedTournamentIdLineupRoute =
     path: '/lineup',
     getParentRoute: () => AuthenticatedTournamentIdRoute,
   } as any)
+const AuthenticatedAdminTournamentIdFieldRoute =
+  AuthenticatedAdminTournamentIdFieldRouteImport.update({
+    id: '/tournament/$id/field',
+    path: '/tournament/$id/field',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/archive': typeof AuthenticatedArchiveRoute
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
+  '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/archive': typeof AuthenticatedArchiveRoute
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
+  '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/archive': typeof AuthenticatedArchiveRoute
   '/_authenticated/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
   '/_authenticated/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
+  '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/stats'
     | '/tournament/$id'
     | '/tournament/$id/lineup'
+    | '/admin/tournament/$id/field'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/stats'
     | '/tournament/$id'
     | '/tournament/$id/lineup'
+    | '/admin/tournament/$id/field'
   id:
     | '__root__'
     | '/'
@@ -142,6 +154,7 @@ export interface FileRouteTypes {
     | '/_authenticated/stats'
     | '/_authenticated/tournament/$id'
     | '/_authenticated/tournament/$id/lineup'
+    | '/_authenticated/admin/tournament/$id/field'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -222,8 +235,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTournamentIdLineupRouteImport
       parentRoute: typeof AuthenticatedTournamentIdRoute
     }
+    '/_authenticated/admin/tournament/$id/field': {
+      id: '/_authenticated/admin/tournament/$id/field'
+      path: '/tournament/$id/field'
+      fullPath: '/admin/tournament/$id/field'
+      preLoaderRoute: typeof AuthenticatedAdminTournamentIdFieldRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
+
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminTournamentIdFieldRoute: typeof AuthenticatedAdminTournamentIdFieldRoute
+}
+
+const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminTournamentIdFieldRoute:
+    AuthenticatedAdminTournamentIdFieldRoute,
+}
+
+const AuthenticatedAdminRouteWithChildren =
+  AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
 
 interface AuthenticatedTournamentIdRouteChildren {
   AuthenticatedTournamentIdLineupRoute: typeof AuthenticatedTournamentIdLineupRoute
@@ -240,7 +272,7 @@ const AuthenticatedTournamentIdRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedArchiveRoute: typeof AuthenticatedArchiveRoute
   AuthenticatedHallOfFameRoute: typeof AuthenticatedHallOfFameRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
@@ -249,7 +281,7 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedArchiveRoute: AuthenticatedArchiveRoute,
   AuthenticatedHallOfFameRoute: AuthenticatedHallOfFameRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
