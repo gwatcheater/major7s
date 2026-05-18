@@ -335,7 +335,58 @@ function AdminFieldPage() {
         );
       })()}
 
+      {/* Bulk upload */}
+      <div className="mb-6 border border-border bg-card">
+        <button
+          onClick={() => setBulkOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted"
+        >
+          <span className="font-display text-sm uppercase tracking-widest">Bulk upload</span>
+          <span className="text-xs text-muted-foreground">{bulkOpen ? "Hide ▲" : "Show ▼"}</span>
+        </button>
+        {bulkOpen && (
+          <div className="p-4 border-t border-border space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Paste one golfer per line: <code className="font-mono">Name, Bucket</code> (comma or tab separated). Bucket = 1–7.
+              Matches against golfer standard name & aliases.
+            </p>
+            <textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={"Scottie Scheffler, 1\nRory McIlroy, 1\nXander Schauffele\t2"}
+              rows={8}
+              className="w-full px-3 py-2 border border-input bg-white text-sm font-mono"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={runBulkUpload}
+                disabled={bulkBusy || !bulkText.trim()}
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50"
+                style={{ backgroundColor: "var(--forest-deep)" }}
+              >
+                {bulkBusy ? "Uploading…" : "Upload"}
+              </button>
+              <button
+                onClick={() => { setBulkText(""); setBulkLog([]); }}
+                disabled={bulkBusy}
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+            {bulkLog.length > 0 && (
+              <div className="max-h-48 overflow-y-auto bg-muted/50 border border-border p-2 text-[11px] font-mono space-y-0.5">
+                {bulkLog.map((l, i) => (
+                  <div key={i} className={l.startsWith("MISS") || l.startsWith("SKIP") || l.startsWith("ERROR") ? "text-destructive" : ""}>{l}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-8">
+
         {/* Field */}
         <section>
           <div className="flex items-center justify-between mb-3">
