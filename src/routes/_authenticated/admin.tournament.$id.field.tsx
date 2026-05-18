@@ -69,7 +69,7 @@ function AdminFieldPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("golfers")
-        .select("id, standard_name, owgr_rank")
+        .select("id, standard_name, owgr_rank, aliases")
         .order("owgr_rank", { ascending: true, nullsFirst: false })
         .limit(2000);
       if (error) throw error;
