@@ -246,6 +246,9 @@ function AdminFieldPage() {
     setBulkBusy(false);
     toast.success(`Bulk upload: ${ok} applied, ${skipped} skipped`);
     refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
+  }
+
+
 
   const q = search.trim().toLowerCase();
   const available = golfers.filter((g: any) =>
