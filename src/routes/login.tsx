@@ -15,7 +15,7 @@ function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [nickname, setNickname] = useState("");
+  // nickname removed — derived server-side from email
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
