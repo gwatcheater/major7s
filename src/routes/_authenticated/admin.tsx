@@ -139,6 +139,13 @@ function Overview({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <Link
+                      to="/admin/tournament/$id/field"
+                      params={{ id: t.id }}
+                      className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
+                    >
+                      Field
+                    </Link>
+                    <Link
                       to="/tournament/$id"
                       params={{ id: t.id }}
                       className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
