@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Countdown } from "@/components/countdown";
 import { useTeams } from "@/hooks/use-teams";
 import { tournamentDateRange } from "@/lib/format";
+import { tournamentCardLink } from "@/lib/tournament-link";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/home")({
