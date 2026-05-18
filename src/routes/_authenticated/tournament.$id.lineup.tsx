@@ -114,11 +114,22 @@ function LineupPicker() {
     <div className="p-8 md:p-12 max-w-4xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
 
+      {(() => {
+        const maxTweaks = Math.max(0, ...existingPicks.map((p: any) => p.tweak_count ?? 0));
+        const hasSubmission = existingPicks.length > 0;
+        return (
       <header className="mt-4 mb-8 flex justify-between items-end flex-wrap gap-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup · {activeTeam.nickname}</p>
           <h1 className="font-display text-4xl uppercase mt-1">{tournament.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">{tournament.course}</p>
+          {hasSubmission && (
+            <div className="mt-2 flex gap-2 flex-wrap">
+              <span className="font-display text-[10px] uppercase tracking-widest px-2 py-1" style={{ backgroundColor: "var(--muted)", color: "var(--muted-foreground)" }}>
+                Tweaks · {maxTweaks}
+              </span>
+            </div>
+          )}
         </div>
         {!isLocked && (
           <div className="text-right">
