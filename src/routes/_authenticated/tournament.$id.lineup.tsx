@@ -11,13 +11,13 @@ export const Route = createFileRoute("/_authenticated/tournament/$id/lineup")({
 });
 
 const BUCKET_LABELS: Record<number, string> = {
-  1: "Tier 1 · OWGR 1—10",
-  2: "Tier 2 · OWGR 11—25",
-  3: "Tier 3 · OWGR 26—50",
-  4: "Tier 4 · OWGR 51—75",
-  5: "Tier 5 · OWGR 76—100",
-  6: "Tier 6 · Wildcard A",
-  7: "Tier 7 · Wildcard B",
+  1: "Bucket 1",
+  2: "Bucket 2",
+  3: "Bucket 3",
+  4: "Bucket 4",
+  5: "Bucket 5",
+  6: "Bucket 6",
+  7: "Bucket 7",
 };
 
 function LineupPicker() {
@@ -164,7 +164,7 @@ function LineupPicker() {
                     disabled={isLocked || opts.length === 0}
                     value={selected ?? ""}
                     onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
-                    className="px-3 py-2 text-sm border border-input bg-white min-w-[200px] disabled:opacity-50"
+                    className="px-3 py-2 text-sm border border-input bg-white w-[300px] disabled:opacity-50"
                   >
                     <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                     {opts.map((g) => (
