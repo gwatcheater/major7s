@@ -204,18 +204,18 @@ export function AppSidebar() {
             </button>
           </div>
         )}
-        <div className="flex items-center gap-3 px-1">
+        <Link to="/profile" className="flex items-center gap-3 px-1 hover:opacity-80 transition-opacity">
           <div className="size-9 rounded-full bg-white/10 border border-white/20 grid place-items-center font-display text-xs text-white/80">
             {user?.email?.[0]?.toUpperCase() ?? "?"}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs font-bold text-white uppercase truncate">{user?.email?.split("@")[0] ?? "Guest"}</div>
-            <div className="text-[10px] text-white/40">{isAdmin ? "Administrator" : "Player"}</div>
+            <div className="text-[10px] text-white/40">{isAdmin ? "Administrator" : "Player"} · Edit profile</div>
           </div>
-          <button onClick={handleSignOut} className="text-white/40 hover:text-white transition-colors" title="Sign out">
+          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSignOut(); }} className="text-white/40 hover:text-white transition-colors" title="Sign out">
             <LogOut className="size-4" />
           </button>
-        </div>
+        </Link>
       </div>
     </aside>
   );
