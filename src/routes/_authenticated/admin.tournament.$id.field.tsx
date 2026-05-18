@@ -183,6 +183,70 @@ function AdminFieldPage() {
     refetchTournament();
   }
 
+  function normalize(s: string) {
+    return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  async function runBulkUpload() {
+    const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) { toast.error("Paste at least one row"); return; }
+    setBulkBusy(true);
+    const log: string[] = [];
+
+    // Build lookup: normalized name -> golfer
+    const lookup = new Map<string, any>();
+    for (const g of golfers as any[]) {
+      lookup.set(normalize(g.standard_name), g);
+      const aliases = Array.isArray(g.aliases) ? g.aliases : [];
+      for (const a of aliases) if (typeof a === "string") lookup.set(normalize(a), g);
+    }
+
+    const inserts: Array<{ tournament_id: string; golfer_id: string; owgr_bucket: number }> = [];
+    const updates: Array<{ id: string; bucket: number }> = [];
+    let skipped = 0;
+
+    for (const line of lines) {
+      // split on tab or comma; bucket is the last numeric token
+      const parts = line.split(/[\t,]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length < 2) { log.push(`SKIP "${line}" — need name + bucket`); skipped++; continue; }
+      const bucketStr = parts[parts.length - 1];
+      const bucket = parseInt(bucketStr, 10);
+      if (!Number.isFinite(bucket) || bucket < 1 || bucket > 7) {
+        log.push(`SKIP "${line}" — bucket must be 1–7`); skipped++; continue;
+      }
+      const name = parts.slice(0, -1).join(" ");
+      const g = lookup.get(normalize(name));
+      if (!g) { log.push(`MISS "${name}" — not in golfers table`); skipped++; continue; }
+      const existing = fieldMap.get(g.id);
+      if (existing) {
+        if (existing.bucket !== bucket) updates.push({ id: existing.id, bucket });
+        else log.push(`OK   "${g.standard_name}" already in B${bucket}`);
+      } else {
+        inserts.push({ tournament_id: id, golfer_id: g.id, owgr_bucket: bucket });
+      }
+    }
+
+    let ok = 0;
+    if (inserts.length > 0) {
+      const { error, count } = await supabase.from("tournament_field").insert(inserts, { count: "exact" });
+      if (error) log.push(`ERROR insert: ${error.message}`);
+      else ok += count ?? inserts.length;
+    }
+    if (updates.length > 0) {
+      const res = await Promise.all(
+        updates.map((u) => supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id)),
+      );
+      const failed = res.filter((r) => r.error);
+      ok += updates.length - failed.length;
+      for (const f of failed) if (f.error) log.push(`ERROR update: ${f.error.message}`);
+    }
+
+    log.unshift(`Processed ${lines.length} · added/updated ${ok} · skipped ${skipped}`);
+    setBulkLog(log);
+    setBulkBusy(false);
+    toast.success(`Bulk upload: ${ok} applied, ${skipped} skipped`);
+    refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
+
   const q = search.trim().toLowerCase();
   const available = golfers.filter((g: any) =>
     !fieldMap.has(g.id) && (q === "" || g.standard_name.toLowerCase().includes(q))
