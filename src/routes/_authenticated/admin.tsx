@@ -75,7 +75,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     else { toast.success("Tournament created"); setName(""); setCourse(""); setStartDate(""); setEndDate(""); setLockAt(""); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: "upcoming" | "open" | "locked" | "live" | "completed") {
     const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success(`Status → ${status}`); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
