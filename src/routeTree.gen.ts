@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedStatsRouteImport } from './routes/_authenticated/stats'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedHallOfFameRouteImport } from './routes/_authenticated/hall-of-fame'
 import { Route as AuthenticatedArchiveRouteImport } from './routes/_authenticated/archive'
@@ -38,6 +39,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthenticatedStatsRoute = AuthenticatedStatsRouteImport.update({
   id: '/stats',
   path: '/stats',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/archive': typeof AuthenticatedArchiveRoute
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/archive': typeof AuthenticatedArchiveRoute
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/_authenticated/archive': typeof AuthenticatedArchiveRoute
   '/_authenticated/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
   '/_authenticated/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/archive'
     | '/hall-of-fame'
     | '/home'
+    | '/profile'
     | '/stats'
     | '/tournament/$id'
     | '/tournament/$id/lineup'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/archive'
     | '/hall-of-fame'
     | '/home'
+    | '/profile'
     | '/stats'
     | '/tournament/$id'
     | '/tournament/$id/lineup'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/_authenticated/archive'
     | '/_authenticated/hall-of-fame'
     | '/_authenticated/home'
+    | '/_authenticated/profile'
     | '/_authenticated/stats'
     | '/_authenticated/tournament/$id'
     | '/_authenticated/tournament/$id/lineup'
@@ -191,6 +203,13 @@ declare module '@tanstack/react-router' {
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof AuthenticatedStatsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/home': {
@@ -276,6 +295,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedArchiveRoute: typeof AuthenticatedArchiveRoute
   AuthenticatedHallOfFameRoute: typeof AuthenticatedHallOfFameRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedStatsRoute: typeof AuthenticatedStatsRoute
   AuthenticatedTournamentIdRoute: typeof AuthenticatedTournamentIdRouteWithChildren
 }
@@ -285,6 +305,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedArchiveRoute: AuthenticatedArchiveRoute,
   AuthenticatedHallOfFameRoute: AuthenticatedHallOfFameRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedStatsRoute: AuthenticatedStatsRoute,
   AuthenticatedTournamentIdRoute: AuthenticatedTournamentIdRouteWithChildren,
 }
@@ -301,3 +322,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
