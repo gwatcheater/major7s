@@ -34,7 +34,7 @@ function AdminPanel() {
       </header>
 
       <div className="flex gap-1 border-b border-border mb-8">
-        {(["overview", "tournaments", "golfers"] as const).map((t) => (
+        {(["overview", "tournaments", "golfers", "users"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -43,7 +43,10 @@ function AdminPanel() {
         ))}
       </div>
 
-      {tab === "overview" ? <Overview qc={qc} /> : tab === "tournaments" ? <TournamentsAdmin qc={qc} /> : <GolfersAdmin qc={qc} />}
+      {tab === "overview" ? <Overview qc={qc} />
+        : tab === "tournaments" ? <TournamentsAdmin qc={qc} />
+        : tab === "golfers" ? <GolfersAdmin qc={qc} />
+        : <UsersAdmin qc={qc} />}
     </div>
   );
 }
