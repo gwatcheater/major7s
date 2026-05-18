@@ -45,6 +45,10 @@ function AdminFieldPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [sizeDraft, setSizeDraft] = useState<Record<number, string> | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkLog, setBulkLog] = useState<string[]>([]);
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
     queryKey: ["admin-field-tournament", id],
@@ -65,7 +69,7 @@ function AdminFieldPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("golfers")
-        .select("id, standard_name, owgr_rank")
+        .select("id, standard_name, owgr_rank, aliases")
         .order("owgr_rank", { ascending: true, nullsFirst: false })
         .limit(2000);
       if (error) throw error;
@@ -179,6 +183,73 @@ function AdminFieldPage() {
     refetchTournament();
   }
 
+  function normalize(s: string) {
+    return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  async function runBulkUpload() {
+    const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) { toast.error("Paste at least one row"); return; }
+    setBulkBusy(true);
+    const log: string[] = [];
+
+    // Build lookup: normalized name -> golfer
+    const lookup = new Map<string, any>();
+    for (const g of golfers as any[]) {
+      lookup.set(normalize(g.standard_name), g);
+      const aliases = Array.isArray(g.aliases) ? g.aliases : [];
+      for (const a of aliases) if (typeof a === "string") lookup.set(normalize(a), g);
+    }
+
+    const inserts: Array<{ tournament_id: string; golfer_id: string; owgr_bucket: number }> = [];
+    const updates: Array<{ id: string; bucket: number }> = [];
+    let skipped = 0;
+
+    for (const line of lines) {
+      // split on tab or comma; bucket is the last numeric token
+      const parts = line.split(/[\t,]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length < 2) { log.push(`SKIP "${line}" — need name + bucket`); skipped++; continue; }
+      const bucketStr = parts[parts.length - 1];
+      const bucket = parseInt(bucketStr, 10);
+      if (!Number.isFinite(bucket) || bucket < 1 || bucket > 7) {
+        log.push(`SKIP "${line}" — bucket must be 1–7`); skipped++; continue;
+      }
+      const name = parts.slice(0, -1).join(" ");
+      const g = lookup.get(normalize(name));
+      if (!g) { log.push(`MISS "${name}" — not in golfers table`); skipped++; continue; }
+      const existing = fieldMap.get(g.id);
+      if (existing) {
+        if (existing.bucket !== bucket) updates.push({ id: existing.id, bucket });
+        else log.push(`OK   "${g.standard_name}" already in B${bucket}`);
+      } else {
+        inserts.push({ tournament_id: id, golfer_id: g.id, owgr_bucket: bucket });
+      }
+    }
+
+    let ok = 0;
+    if (inserts.length > 0) {
+      const { error, count } = await supabase.from("tournament_field").insert(inserts, { count: "exact" });
+      if (error) log.push(`ERROR insert: ${error.message}`);
+      else ok += count ?? inserts.length;
+    }
+    if (updates.length > 0) {
+      const res = await Promise.all(
+        updates.map((u) => supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id)),
+      );
+      const failed = res.filter((r) => r.error);
+      ok += updates.length - failed.length;
+      for (const f of failed) if (f.error) log.push(`ERROR update: ${f.error.message}`);
+    }
+
+    log.unshift(`Processed ${lines.length} · added/updated ${ok} · skipped ${skipped}`);
+    setBulkLog(log);
+    setBulkBusy(false);
+    toast.success(`Bulk upload: ${ok} applied, ${skipped} skipped`);
+    refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
+  }
+
+
+
   const q = search.trim().toLowerCase();
   const available = golfers.filter((g: any) =>
     !fieldMap.has(g.id) && (q === "" || g.standard_name.toLowerCase().includes(q))
@@ -264,7 +335,58 @@ function AdminFieldPage() {
         );
       })()}
 
+      {/* Bulk upload */}
+      <div className="mb-6 border border-border bg-card">
+        <button
+          onClick={() => setBulkOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted"
+        >
+          <span className="font-display text-sm uppercase tracking-widest">Bulk upload</span>
+          <span className="text-xs text-muted-foreground">{bulkOpen ? "Hide ▲" : "Show ▼"}</span>
+        </button>
+        {bulkOpen && (
+          <div className="p-4 border-t border-border space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Paste one golfer per line: <code className="font-mono">Name, Bucket</code> (comma or tab separated). Bucket = 1–7.
+              Matches against golfer standard name & aliases.
+            </p>
+            <textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={"Scottie Scheffler, 1\nRory McIlroy, 1\nXander Schauffele\t2"}
+              rows={8}
+              className="w-full px-3 py-2 border border-input bg-white text-sm font-mono"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={runBulkUpload}
+                disabled={bulkBusy || !bulkText.trim()}
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50"
+                style={{ backgroundColor: "var(--forest-deep)" }}
+              >
+                {bulkBusy ? "Uploading…" : "Upload"}
+              </button>
+              <button
+                onClick={() => { setBulkText(""); setBulkLog([]); }}
+                disabled={bulkBusy}
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+            {bulkLog.length > 0 && (
+              <div className="max-h-48 overflow-y-auto bg-muted/50 border border-border p-2 text-[11px] font-mono space-y-0.5">
+                {bulkLog.map((l, i) => (
+                  <div key={i} className={l.startsWith("MISS") || l.startsWith("SKIP") || l.startsWith("ERROR") ? "text-destructive" : ""}>{l}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-8">
+
         {/* Field */}
         <section>
           <div className="flex items-center justify-between mb-3">
