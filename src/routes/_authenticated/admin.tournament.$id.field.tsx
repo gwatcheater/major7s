@@ -90,8 +90,9 @@ function AdminFieldPage() {
     const { error } = await supabase.from("tournament_field").insert({
       tournament_id: id, golfer_id: golferId, owgr_bucket: bucket,
     });
-    if (error) toast.error(error.message);
-    else { refetch(); qc.invalidateQueries({ queryKey: ["field", id] }); }
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Added to B${bucket}`);
+    refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
   }
 
   async function removeFromField(rowId: string) {
