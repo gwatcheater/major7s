@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
 function AdminPanel() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "tournaments" | "golfers">("overview");
+  const [tab, setTab] = useState<"overview" | "tournaments" | "golfers" | "users">("overview");
 
   if (!isAdmin) {
     return (
