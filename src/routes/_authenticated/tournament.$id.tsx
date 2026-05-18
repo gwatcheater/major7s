@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Countdown } from "@/components/countdown";
@@ -9,6 +9,7 @@ export const Route = createFileRoute("/_authenticated/tournament/$id")({
 
 function TournamentHub() {
   const { id } = Route.useParams();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: t, isLoading } = useQuery({
     queryKey: ["tournament", id],
     queryFn: async () => {
@@ -20,6 +21,8 @@ function TournamentHub() {
 
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
+
+  if (pathname.endsWith(`/tournament/${id}/lineup`)) return <Outlet />;
 
   const isOpen = t.status === "open" && new Date(t.lock_at).getTime() > Date.now();
 
