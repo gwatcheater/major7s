@@ -102,11 +102,12 @@ function HomePage() {
             const complete = picks >= 7;
             const isOpen = t.status === "open";
             const lockExpired = new Date(t.lock_at).getTime() <= Date.now();
-            const linkTo = isOpen && !lockExpired ? `/tournament/${t.id}/lineup` : `/tournament/${t.id}`;
+            const goToLineup = isOpen && !lockExpired;
             return (
               <Link
                 key={t.id}
-                to={linkTo}
+                to={goToLineup ? "/tournament/$id/lineup" : "/tournament/$id"}
+                params={{ id: t.id }}
                 className="relative bg-card border border-border overflow-hidden flex flex-col md:flex-row hover:border-primary/30 transition-colors animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
