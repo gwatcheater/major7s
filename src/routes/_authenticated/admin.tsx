@@ -314,3 +314,143 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
+
+function UsersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["admin-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles").select("id, nickname, email, status, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  return (
+    <div>
+      <h2 className="font-display text-lg uppercase mb-4">Users ({profiles.length})</h2>
+      <div className="space-y-2">
+        {profiles.map((p: any) => (
+          <div key={p.id} className="bg-card border border-border">
+            <button
+              onClick={() => setExpandedUserId(expandedUserId === p.id ? null : p.id)}
+              className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30"
+            >
+              <div>
+                <div className="font-display text-sm uppercase">{p.nickname}</div>
+                <div className="text-xs text-muted-foreground">{p.email}</div>
+              </div>
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                {expandedUserId === p.id ? "Hide" : "Manage"}
+              </span>
+            </button>
+            {expandedUserId === p.id && <UserPickManager userId={p.id} qc={qc} />}
+          </div>
+        ))}
+        {profiles.length === 0 && <p className="text-sm text-muted-foreground">No users yet.</p>}
+      </div>
+    </div>
+  );
+}
+
+function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof useQueryClient> }) {
+  const { data: teams = [] } = useQuery({
+    queryKey: ["admin-user-teams", userId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("teams").select("*").eq("owner_user_id", userId);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const teamIds = teams.map((t: any) => t.id);
+  const { data: picks = [], refetch: refetchPicks } = useQuery({
+    queryKey: ["admin-user-picks", userId, teamIds.join(",")],
+    enabled: teamIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks")
+        .select("id, team_id, tournament_id, bucket, golfer_id, submitted_at, tweak_count, tournament:tournaments(name), golfer:golfers(standard_name)")
+        .in("team_id", teamIds);
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+
+  async function deletePick(id: string) {
+    if (!confirm("Delete this pick? This bypasses the lock.")) return;
+    const { error } = await supabase.from("picks").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pick deleted");
+    refetchPicks();
+    qc.invalidateQueries({ queryKey: ["picks"] });
+    qc.invalidateQueries({ queryKey: ["roster-status"] });
+  }
+
+  // Group by team → tournament; detect duplicate buckets within a (team, tournament)
+  const grouped: Record<string, Record<string, any[]>> = {};
+  for (const p of picks) {
+    grouped[p.team_id] ??= {};
+    grouped[p.team_id][p.tournament_id] ??= [];
+    grouped[p.team_id][p.tournament_id].push(p);
+  }
+
+  return (
+    <div className="border-t border-border p-4 bg-muted/20 space-y-4">
+      {teams.length === 0 && <p className="text-xs text-muted-foreground">No teams.</p>}
+      {teams.map((team: any) => {
+        const tournaments = grouped[team.id] ?? {};
+        return (
+          <div key={team.id}>
+            <div className="font-display text-xs uppercase mb-2" style={{ color: "var(--gold)" }}>
+              {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
+            </div>
+            {Object.keys(tournaments).length === 0 ? (
+              <p className="text-xs text-muted-foreground pl-2">No picks yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(tournaments).map(([tid, ps]) => {
+                  const bucketCounts: Record<number, number> = {};
+                  for (const p of ps) bucketCounts[p.bucket] = (bucketCounts[p.bucket] ?? 0) + 1;
+                  return (
+                    <div key={tid} className="bg-card border border-border p-3">
+                      <div className="text-xs font-bold mb-2">{ps[0]?.tournament?.name ?? tid}</div>
+                      <div className="space-y-1">
+                        {ps.sort((a, b) => a.bucket - b.bucket).map((p) => {
+                          const isExtra = bucketCounts[p.bucket] > 1;
+                          return (
+                            <div key={p.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b border-border last:border-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-muted-foreground">B{p.bucket}</span>
+                                <span className="truncate">{p.golfer?.standard_name ?? p.golfer_id}</span>
+                                {isExtra && (
+                                  <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5" style={{ backgroundColor: "var(--alert)", color: "white" }}>
+                                    Extra
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => deletePick(p.id)}
+                                className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 border border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
