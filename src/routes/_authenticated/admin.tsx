@@ -115,7 +115,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </div>
                 <select
                   value={t.status}
-                  onChange={(e) => updateStatus(t.id, e.target.value)}
+                  onChange={(e) => updateStatus(t.id, e.target.value as "upcoming" | "open" | "locked" | "live" | "completed")}
                   className="text-xs border border-input px-2 py-1 bg-white"
                 >
                   <option value="upcoming">upcoming</option>
