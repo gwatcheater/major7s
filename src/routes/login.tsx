@@ -27,7 +27,6 @@ function LoginPage() {
           email, password,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { nickname: nickname || email.split("@")[0] },
           },
         });
         if (error) throw error;
