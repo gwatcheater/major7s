@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
 function AdminPanel() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"tournaments" | "golfers">("tournaments");
+  const [tab, setTab] = useState<"overview" | "tournaments" | "golfers">("overview");
 
   if (!isAdmin) {
     return (
@@ -34,7 +34,7 @@ function AdminPanel() {
       </header>
 
       <div className="flex gap-1 border-b border-border mb-8">
-        {(["tournaments", "golfers"] as const).map((t) => (
+        {(["overview", "tournaments", "golfers"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -43,10 +43,119 @@ function AdminPanel() {
         ))}
       </div>
 
-      {tab === "tournaments" ? <TournamentsAdmin qc={qc} /> : <GolfersAdmin qc={qc} />}
+      {tab === "overview" ? <Overview qc={qc} /> : tab === "tournaments" ? <TournamentsAdmin qc={qc} /> : <GolfersAdmin qc={qc} />}
     </div>
   );
 }
+
+type Status = "upcoming" | "open" | "locked" | "live" | "completed";
+const STATUSES: Status[] = ["upcoming", "open", "locked", "live", "completed"];
+const NEXT: Record<Status, Status | null> = {
+  upcoming: "open",
+  open: "locked",
+  locked: "live",
+  live: "completed",
+  completed: null,
+};
+
+function Overview({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { data: tournaments = [], refetch } = useQuery({
+    queryKey: ["admin-overview-tournaments"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("tournaments").select("*").order("start_date");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  async function setStatus(id: string, status: Status) {
+    const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`Status → ${status}`);
+      refetch();
+      qc.invalidateQueries({ queryKey: ["tournaments-active"] });
+      qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
+    }
+  }
+
+  const grouped = STATUSES.map((s) => ({ status: s, items: tournaments.filter((t: any) => t.status === s) }));
+  const counts = Object.fromEntries(grouped.map((g) => [g.status, g.items.length]));
+
+  if (tournaments.length === 0) {
+    return (
+      <div className="bg-card border border-border p-8 text-center">
+        <p className="text-sm text-muted-foreground mb-3">No tournaments yet.</p>
+        <p className="text-xs text-muted-foreground">Switch to the <span className="font-bold uppercase">Tournaments</span> tab to create one.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Status summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {STATUSES.map((s) => (
+          <div key={s} className="bg-card border border-border p-4">
+            <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--gold)" }}>{s}</div>
+            <div className="font-display text-3xl mt-1">{counts[s] ?? 0}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Grouped tournaments */}
+      {grouped.map(({ status, items }) => (
+        items.length > 0 && (
+          <section key={status}>
+            <h2 className="font-display text-lg uppercase mb-3 flex items-baseline gap-3">
+              <span>{status}</span>
+              <span className="text-xs text-muted-foreground font-sans normal-case tracking-normal">{items.length} tournament{items.length === 1 ? "" : "s"}</span>
+            </h2>
+            <div className="space-y-2">
+              {items.map((t: any) => (
+                <div key={t.id} className="bg-card border border-border p-4 flex flex-wrap gap-4 items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-sm uppercase truncate">{t.name}</div>
+                    <div className="text-xs text-muted-foreground">{t.course}</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {t.start_date} → {t.end_date} · lock {new Date(t.lock_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {NEXT[status] && (
+                      <button
+                        onClick={() => setStatus(t.id, NEXT[status]!)}
+                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white"
+                        style={{ backgroundColor: "var(--forest-deep)" }}
+                      >
+                        Advance → {NEXT[status]}
+                      </button>
+                    )}
+                    <select
+                      value={t.status}
+                      onChange={(e) => setStatus(t.id, e.target.value as Status)}
+                      className="text-xs border border-input px-2 py-1 bg-white"
+                    >
+                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <Link
+                      to="/tournament/$id"
+                      params={{ id: t.id }}
+                      className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
+                    >
+                      View
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )
+      ))}
+    </div>
+  );
+}
+
 
 function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const [name, setName] = useState("");
