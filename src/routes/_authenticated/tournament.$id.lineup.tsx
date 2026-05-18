@@ -110,14 +110,13 @@ function LineupPicker() {
     navigate({ to: "/home" });
   }
 
+  const maxTweaks = Math.max(0, ...existingPicks.map((p: any) => p.tweak_count ?? 0));
+  const hasSubmission = existingPicks.length > 0;
+
   return (
     <div className="p-8 md:p-12 max-w-4xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
 
-      {(() => {
-        const maxTweaks = Math.max(0, ...existingPicks.map((p: any) => p.tweak_count ?? 0));
-        const hasSubmission = existingPicks.length > 0;
-        return (
       <header className="mt-4 mb-8 flex justify-between items-end flex-wrap gap-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup · {activeTeam.nickname}</p>
