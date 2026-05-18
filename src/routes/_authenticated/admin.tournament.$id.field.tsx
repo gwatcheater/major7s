@@ -11,23 +11,32 @@ export const Route = createFileRoute("/_authenticated/admin/tournament/$id/field
 
 const BUCKETS = [1, 2, 3, 4, 5, 6, 7] as const;
 const BUCKET_LABELS: Record<number, string> = {
-  1: "Tier 1 · OWGR 1—10",
-  2: "Tier 2 · OWGR 11—25",
-  3: "Tier 3 · OWGR 26—50",
-  4: "Tier 4 · OWGR 51—75",
-  5: "Tier 5 · OWGR 76—100",
-  6: "Tier 6 · Wildcard A",
-  7: "Tier 7 · Wildcard B",
+  1: "Tier 1", 2: "Tier 2", 3: "Tier 3", 4: "Tier 4",
+  5: "Tier 5", 6: "Tier 6", 7: "Tier 7",
 };
+const DEFAULT_SIZES: Record<number, number> = { 1: 10, 2: 10, 3: 10, 4: 10, 5: 0, 6: 0, 7: 0 };
 
-function suggestBucket(rank: number | null | undefined): number {
-  if (!rank) return 6;
-  if (rank <= 10) return 1;
-  if (rank <= 25) return 2;
-  if (rank <= 50) return 3;
-  if (rank <= 75) return 4;
-  if (rank <= 100) return 5;
-  return 6;
+function normalizeSizes(raw: any): Record<number, number> {
+  const out: Record<number, number> = { ...DEFAULT_SIZES };
+  if (raw && typeof raw === "object") {
+    for (const b of BUCKETS) {
+      const v = Number(raw[b] ?? raw[String(b)]);
+      if (Number.isFinite(v) && v >= 0) out[b] = Math.floor(v);
+    }
+  }
+  return out;
+}
+
+/** Suggest a bucket for a golfer based on their OWGR rank position
+ *  inside the cumulative bucket sizes. */
+function suggestBucketFromSizes(rank: number | null | undefined, sizes: Record<number, number>): number {
+  if (!rank || rank <= 0) return 7;
+  let cum = 0;
+  for (const b of BUCKETS) {
+    cum += sizes[b] ?? 0;
+    if (rank <= cum) return b;
+  }
+  return 7;
 }
 
 function AdminFieldPage() {
@@ -35,8 +44,9 @@ function AdminFieldPage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [sizeDraft, setSizeDraft] = useState<Record<number, string> | null>(null);
 
-  const { data: tournament } = useQuery({
+  const { data: tournament, refetch: refetchTournament } = useQuery({
     queryKey: ["admin-field-tournament", id],
     queryFn: async () => {
       const { data, error } = await supabase.from("tournaments").select("*").eq("id", id).single();
@@ -45,6 +55,11 @@ function AdminFieldPage() {
     },
   });
 
+  const sizes = useMemo(
+    () => normalizeSizes((tournament as any)?.bucket_sizes),
+    [tournament],
+  );
+
   const { data: golfers = [] } = useQuery({
     queryKey: ["admin-field-golfers"],
     queryFn: async () => {
@@ -52,7 +67,7 @@ function AdminFieldPage() {
         .from("golfers")
         .select("id, standard_name, owgr_rank")
         .order("owgr_rank", { ascending: true, nullsFirst: false })
-        .limit(1000);
+        .limit(2000);
       if (error) throw error;
       return data;
     },
@@ -86,7 +101,7 @@ function AdminFieldPage() {
   }
 
   async function addToField(golferId: string, rank: number | null) {
-    const bucket = suggestBucket(rank);
+    const bucket = suggestBucketFromSizes(rank, sizes);
     const { error } = await supabase.from("tournament_field").insert({
       tournament_id: id, golfer_id: golferId, owgr_bucket: bucket,
     });
@@ -107,16 +122,61 @@ function AdminFieldPage() {
     else { refetch(); qc.invalidateQueries({ queryKey: ["field", id] }); }
   }
 
+  /** Re-distribute every golfer currently in the field into buckets,
+   *  sorted by OWGR ascending and filling B1..B7 by configured sizes. */
   async function autoAssignAll() {
-    const updates = field.map((f) => {
-      const g = golfers.find((x: any) => x.id === f.golfer_id);
-      return { id: f.id, bucket: suggestBucket(g?.owgr_rank) };
-    });
-    for (const u of updates) {
-      await supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id);
+    if (field.length === 0) { toast.error("No golfers in field yet"); return; }
+
+    const rows = field
+      .map((f) => {
+        const g = golfers.find((x: any) => x.id === f.golfer_id);
+        return { id: f.id, rank: g?.owgr_rank ?? null };
+      })
+      .sort((a, b) => {
+        const ar = a.rank ?? 1e9;
+        const br = b.rank ?? 1e9;
+        return ar - br;
+      });
+
+    // Walk in OWGR order, dropping each golfer into the next bucket whose
+    // capacity isn't full. Overflow goes into bucket 7.
+    const capacity: Record<number, number> = { ...sizes };
+    const updates: Array<{ id: string; bucket: number }> = [];
+    let cursor = 1;
+    for (const r of rows) {
+      while (cursor <= 7 && (capacity[cursor] ?? 0) <= 0) cursor++;
+      const bucket = cursor <= 7 ? cursor : 7;
+      capacity[bucket] = (capacity[bucket] ?? 0) - 1;
+      updates.push({ id: r.id, bucket });
     }
-    toast.success("Buckets auto-assigned by OWGR");
+
+    const results = await Promise.all(
+      updates.map((u) =>
+        supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id),
+      ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { toast.error(failed.error.message); return; }
+
+    toast.success(`Auto-assigned ${updates.length} golfers`);
     refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
+  }
+
+  async function saveSizes() {
+    if (!sizeDraft) return;
+    const next: Record<number, number> = {};
+    for (const b of BUCKETS) {
+      const v = parseInt(sizeDraft[b] ?? "0", 10);
+      next[b] = Number.isFinite(v) && v >= 0 ? v : 0;
+    }
+    const { error } = await supabase
+      .from("tournaments")
+      .update({ bucket_sizes: next as any })
+      .eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Bucket sizes saved");
+    setSizeDraft(null);
+    refetchTournament();
   }
 
   const q = search.trim().toLowerCase();
@@ -140,35 +200,66 @@ function AdminFieldPage() {
         <p className="text-sm text-muted-foreground">{tournament?.course}</p>
       </header>
 
-      <div className="grid grid-cols-7 gap-2 mb-6">
-        {BUCKETS.map((b) => {
-          const count = counts[b] ?? 0;
-          const required = b <= 4 ? 10 : null;
-          const ok = required === null ? count > 0 : count === required;
-          return (
-            <div
-              key={b}
-              className="bg-card border p-3 text-center"
-              style={{ borderColor: ok ? "var(--border)" : "var(--alert)" }}
-              title={required ? `Requires exactly ${required} golfers` : "Custom count"}
-            >
-              <div className="text-[10px] uppercase font-bold tracking-widest" style={{ color: "var(--gold)" }}>B{b}</div>
-              <div className="font-display text-2xl mt-1">{count}{required ? <span className="text-xs text-muted-foreground">/{required}</span> : null}</div>
-              <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">
-                {required ? (count === required ? "OK" : count < required ? `Need ${required - count}` : `Over ${count - required}`) : "Custom"}
-              </div>
+      {/* Bucket configuration */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-display text-sm uppercase tracking-widest">Bucket sizes</h2>
+          {sizeDraft ? (
+            <div className="flex gap-2">
+              <button onClick={() => setSizeDraft(null)} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted">Cancel</button>
+              <button onClick={saveSizes} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save sizes</button>
             </div>
-          );
-        })}
+          ) : (
+            <button
+              onClick={() => setSizeDraft(Object.fromEntries(BUCKETS.map((b) => [b, String(sizes[b] ?? 0)])) as Record<number, string>)}
+              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
+            >
+              Edit sizes
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {BUCKETS.map((b) => {
+            const count = counts[b] ?? 0;
+            const required = sizes[b] ?? 0;
+            const ok = required === 0 ? true : count === required;
+            return (
+              <div
+                key={b}
+                className="bg-card border p-3 text-center"
+                style={{ borderColor: ok ? "var(--border)" : "var(--alert)" }}
+              >
+                <div className="text-[10px] uppercase font-bold tracking-widest" style={{ color: "var(--gold)" }}>B{b}</div>
+                <div className="font-display text-2xl mt-1">
+                  {count}<span className="text-xs text-muted-foreground">/{required}</span>
+                </div>
+                {sizeDraft ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={sizeDraft[b]}
+                    onChange={(e) => setSizeDraft({ ...sizeDraft, [b]: e.target.value })}
+                    className="w-full mt-2 px-1 py-1 text-xs border border-input text-center bg-white"
+                  />
+                ) : (
+                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">
+                    {required === 0 ? "Unset" : count === required ? "OK" : count < required ? `Need ${required - count}` : `Over ${count - required}`}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
       {(() => {
-        const issues = [1, 2, 3, 4].filter((b) => (counts[b] ?? 0) !== 10);
-        const empty = [5, 6, 7].filter((b) => (counts[b] ?? 0) === 0);
-        if (issues.length === 0 && empty.length === 0) return null;
+        const issues = BUCKETS.filter((b) => (sizes[b] ?? 0) > 0 && (counts[b] ?? 0) !== sizes[b]);
+        const unset = BUCKETS.filter((b) => (sizes[b] ?? 0) === 0);
+        if (issues.length === 0 && unset.length === 0) return null;
         return (
-          <div className="mb-6 p-3 border border-border bg-destructive/10 text-xs">
-            {issues.length > 0 && <div>Buckets {issues.join(", ")} must each have exactly 10 golfers.</div>}
-            {empty.length > 0 && <div>Buckets {empty.join(", ")} need at least 1 golfer.</div>}
+          <div className="mb-6 p-3 border border-border bg-destructive/10 text-xs space-y-1">
+            {issues.length > 0 && <div>Buckets {issues.join(", ")} don't match their configured size yet.</div>}
+            {unset.length > 0 && <div>Buckets {unset.join(", ")} have no size set — edit sizes above.</div>}
           </div>
         );
       })()}
@@ -224,21 +315,24 @@ function AdminFieldPage() {
           />
           <div className="bg-card border border-border max-h-[600px] overflow-y-auto">
             {available.length === 0 && <p className="p-4 text-sm text-muted-foreground">No matching golfers.</p>}
-            {available.slice(0, 300).map((g: any) => (
-              <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate">{g.standard_name}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">OWGR {g.owgr_rank ?? "—"} · suggests B{suggestBucket(g.owgr_rank)}</div>
+            {available.slice(0, 300).map((g: any) => {
+              const suggested = suggestBucketFromSizes(g.owgr_rank, sizes);
+              return (
+                <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{g.standard_name}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono">OWGR {g.owgr_rank ?? "—"} · suggests B{suggested}</div>
+                  </div>
+                  <button
+                    onClick={() => addToField(g.id, g.owgr_rank)}
+                    className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white"
+                    style={{ backgroundColor: "var(--forest-deep)" }}
+                  >
+                    Add
+                  </button>
                 </div>
-                <button
-                  onClick={() => addToField(g.id, g.owgr_rank)}
-                  className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white"
-                  style={{ backgroundColor: "var(--forest-deep)" }}
-                >
-                  Add
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>

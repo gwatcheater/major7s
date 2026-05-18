@@ -191,6 +191,7 @@ export type Database = {
       }
       tournaments: {
         Row: {
+          bucket_sizes: Json
           course: string
           created_at: string
           end_date: string
@@ -204,6 +205,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bucket_sizes?: Json
           course: string
           created_at?: string
           end_date: string
@@ -217,6 +219,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bucket_sizes?: Json
           course?: string
           created_at?: string
           end_date?: string
