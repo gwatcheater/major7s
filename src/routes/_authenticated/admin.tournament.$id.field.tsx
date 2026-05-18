@@ -45,6 +45,10 @@ function AdminFieldPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [sizeDraft, setSizeDraft] = useState<Record<number, string> | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkLog, setBulkLog] = useState<string[]>([]);
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
     queryKey: ["admin-field-tournament", id],
