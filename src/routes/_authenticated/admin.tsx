@@ -75,7 +75,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     else { toast.success("Tournament created"); setName(""); setCourse(""); setStartDate(""); setEndDate(""); setLockAt(""); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: "upcoming" | "open" | "locked" | "live" | "completed") {
     const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success(`Status → ${status}`); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
@@ -115,7 +115,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </div>
                 <select
                   value={t.status}
-                  onChange={(e) => updateStatus(t.id, e.target.value)}
+                  onChange={(e) => updateStatus(t.id, e.target.value as "upcoming" | "open" | "locked" | "live" | "completed")}
                   className="text-xs border border-input px-2 py-1 bg-white"
                 >
                   <option value="upcoming">upcoming</option>
