@@ -49,6 +49,10 @@ function AdminFieldPage() {
   const [bulkText, setBulkText] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkLog, setBulkLog] = useState<string[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [picksOpen, setPicksOpen] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; course: string; start_date: string; end_date: string; lock_at: string } | null>(null);
+
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
     queryKey: ["admin-field-tournament", id],
@@ -88,6 +92,20 @@ function AdminFieldPage() {
       return data;
     },
   });
+
+  const { data: allPicks = [], refetch: refetchPicks } = useQuery({
+    queryKey: ["admin-tournament-picks", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks")
+        .select("id, bucket, team_id, golfer_id, submitted_at, team:teams(nickname, owner_user_id, is_primary), golfer:golfers(standard_name)")
+        .eq("tournament_id", id)
+        .order("submitted_at", { ascending: true });
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+
 
   const fieldMap = useMemo(() => {
     const m = new Map<string, { id: string; bucket: number }>();
@@ -183,6 +201,52 @@ function AdminFieldPage() {
     refetchTournament();
   }
 
+  function openDetails() {
+    if (!tournament) return;
+    const lockLocal = (() => {
+      const d = new Date((tournament as any).lock_at);
+      const tz = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - tz).toISOString().slice(0, 16);
+    })();
+    setDetailsDraft({
+      name: (tournament as any).name ?? "",
+      course: (tournament as any).course ?? "",
+      start_date: (tournament as any).start_date ?? "",
+      end_date: (tournament as any).end_date ?? "",
+      lock_at: lockLocal,
+    });
+    setDetailsOpen(true);
+  }
+
+  async function saveDetails() {
+    if (!detailsDraft) return;
+    const { name, course, start_date, end_date, lock_at } = detailsDraft;
+    if (!name || !course || !start_date || !end_date || !lock_at) {
+      toast.error("All fields required"); return;
+    }
+    const { error } = await supabase
+      .from("tournaments")
+      .update({ name, course, start_date, end_date, lock_at: new Date(lock_at).toISOString() })
+      .eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Tournament updated");
+    setDetailsDraft(null);
+    refetchTournament();
+    qc.invalidateQueries({ queryKey: ["tournaments-active"] });
+    qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
+  }
+
+  async function deletePick(pickId: string) {
+    if (!confirm("Delete this pick?")) return;
+    const { error } = await supabase.from("picks").delete().eq("id", pickId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pick deleted");
+    refetchPicks();
+    qc.invalidateQueries({ queryKey: ["picks"] });
+  }
+
+
+
   function normalize(s: string) {
     return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   }
@@ -270,6 +334,94 @@ function AdminFieldPage() {
         <h1 className="font-display text-3xl uppercase mt-1">{tournament?.name ?? "Tournament"}</h1>
         <p className="text-sm text-muted-foreground">{tournament?.course}</p>
       </header>
+
+      {/* Tournament details */}
+      <div className="mb-6 border border-border bg-card">
+        <button onClick={() => setDetailsOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted">
+          <span className="font-display text-sm uppercase tracking-widest">Tournament details</span>
+          <span className="text-xs text-muted-foreground">{detailsOpen ? "Hide ▲" : "Edit ▼"}</span>
+        </button>
+        {detailsOpen && (
+          <div className="p-4 border-t border-border space-y-3">
+            {!detailsDraft ? (
+              <button onClick={openDetails} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Edit</button>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Name</label>
+                  <input className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.name} onChange={(e) => setDetailsDraft({ ...detailsDraft, name: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Course</label>
+                  <input className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.course} onChange={(e) => setDetailsDraft({ ...detailsDraft, course: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Start</label>
+                    <input type="date" className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.start_date} onChange={(e) => setDetailsDraft({ ...detailsDraft, start_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">End</label>
+                    <input type="date" className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.end_date} onChange={(e) => setDetailsDraft({ ...detailsDraft, end_date: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Lock cutoff</label>
+                  <input type="datetime-local" className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.lock_at} onChange={(e) => setDetailsDraft({ ...detailsDraft, lock_at: e.target.value })} />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveDetails} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save</button>
+                  <button onClick={() => setDetailsDraft(null)} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* All picks */}
+      <div className="mb-6 border border-border bg-card">
+        <button onClick={() => setPicksOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted">
+          <span className="font-display text-sm uppercase tracking-widest">
+            Submitted picks <span className="ml-2 text-xs text-muted-foreground normal-case tracking-normal">({allPicks.length} picks · {new Set(allPicks.map((p: any) => p.team_id)).size} teams)</span>
+          </span>
+          <span className="text-xs text-muted-foreground">{picksOpen ? "Hide ▲" : "Show ▼"}</span>
+        </button>
+        {picksOpen && (
+          <div className="border-t border-border max-h-[500px] overflow-y-auto">
+            {allPicks.length === 0 && <p className="p-4 text-sm text-muted-foreground">No picks submitted yet.</p>}
+            {(() => {
+              const byTeam: Record<string, any[]> = {};
+              for (const p of allPicks as any[]) (byTeam[p.team_id] ??= []).push(p);
+              return Object.entries(byTeam).map(([tid, ps]) => (
+                <div key={tid} className="border-b border-border p-3">
+                  <div className="flex items-baseline justify-between mb-2">
+                    <div className="font-display text-xs uppercase" style={{ color: "var(--gold)" }}>
+                      {ps[0].team?.nickname ?? tid} {ps[0].team?.is_primary && <span className="text-[9px] text-muted-foreground normal-case">(primary)</span>}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">{ps.length} picks</div>
+                  </div>
+                  <div className="space-y-1">
+                    {ps.sort((a, b) => a.bucket - b.bucket).map((p) => (
+                      <div key={p.id} className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono text-muted-foreground">B{p.bucket}</span>
+                          <span className="truncate">{p.golfer?.standard_name ?? p.golfer_id}</span>
+                        </div>
+                        <button onClick={() => deletePick(p.id)} className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors">
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+      </div>
+
+
 
       {/* Bucket configuration */}
       <div className="mb-6">

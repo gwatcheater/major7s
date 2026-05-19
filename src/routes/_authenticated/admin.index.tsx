@@ -357,15 +357,53 @@ function UsersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 }
 
 function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof useQueryClient> }) {
-  const { data: teams = [] } = useQuery({
+  const [newTeamName, setNewTeamName] = useState("");
+  const [editTeamId, setEditTeamId] = useState<string | null>(null);
+  const [editTeamName, setEditTeamName] = useState("");
+
+  const { data: teams = [], refetch: refetchTeams } = useQuery({
     queryKey: ["admin-user-teams", userId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("teams").select("*").eq("owner_user_id", userId);
+        .from("teams").select("*").eq("owner_user_id", userId).order("is_primary", { ascending: false });
       if (error) throw error;
       return data;
     },
   });
+
+  async function addTeam() {
+    if (!newTeamName.trim()) { toast.error("Enter a nickname"); return; }
+    const { error } = await supabase.from("teams").insert({
+      owner_user_id: userId, nickname: newTeamName.trim(), is_primary: false,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team added");
+    setNewTeamName("");
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+  }
+
+  async function saveTeam(teamId: string) {
+    if (!editTeamName.trim()) { toast.error("Nickname required"); return; }
+    const { error } = await supabase.from("teams").update({ nickname: editTeamName.trim() }).eq("id", teamId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team updated");
+    setEditTeamId(null);
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+  }
+
+  async function deleteTeam(teamId: string, isPrimary: boolean) {
+    if (isPrimary) { toast.error("Cannot delete the primary team"); return; }
+    if (!confirm("Delete this team and all of its picks?")) return;
+    const { error } = await supabase.from("teams").delete().eq("id", teamId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team deleted");
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+    qc.invalidateQueries({ queryKey: ["picks"] });
+  }
+
 
   const teamIds = teams.map((t: any) => t.id);
   const { data: picks = [], refetch: refetchPicks } = useQuery({
@@ -401,14 +439,52 @@ function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof
 
   return (
     <div className="border-t border-border p-4 bg-muted/20 space-y-4">
+      <div className="flex gap-2 items-center pb-3 border-b border-border">
+        <input
+          value={newTeamName}
+          onChange={(e) => setNewTeamName(e.target.value)}
+          placeholder="New team nickname…"
+          className="flex-1 px-2 py-1 text-xs border border-input bg-white"
+        />
+        <button onClick={addTeam} className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
+          Add team
+        </button>
+      </div>
       {teams.length === 0 && <p className="text-xs text-muted-foreground">No teams.</p>}
       {teams.map((team: any) => {
         const tournaments = grouped[team.id] ?? {};
         return (
           <div key={team.id}>
-            <div className="font-display text-xs uppercase mb-2" style={{ color: "var(--gold)" }}>
-              {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
+            <div className="flex items-center justify-between mb-2 gap-2">
+              {editTeamId === team.id ? (
+                <>
+                  <input
+                    value={editTeamName}
+                    onChange={(e) => setEditTeamName(e.target.value)}
+                    className="flex-1 px-2 py-1 text-xs border border-input bg-white"
+                  />
+                  <button onClick={() => saveTeam(team.id)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save</button>
+                  <button onClick={() => setEditTeamId(null)} className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border">Cancel</button>
+                </>
+              ) : (
+                <>
+                  <div className="font-display text-xs uppercase flex-1" style={{ color: "var(--gold)" }}>
+                    {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
+                  </div>
+                  <button
+                    onClick={() => { setEditTeamId(team.id); setEditTeamName(team.nickname); }}
+                    className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border hover:bg-muted"
+                  >Edit</button>
+                  {!team.is_primary && (
+                    <button
+                      onClick={() => deleteTeam(team.id, team.is_primary)}
+                      className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-destructive text-destructive hover:bg-destructive hover:text-white"
+                    >Delete</button>
+                  )}
+                </>
+              )}
             </div>
+
             {Object.keys(tournaments).length === 0 ? (
               <p className="text-xs text-muted-foreground pl-2">No picks yet.</p>
             ) : (
