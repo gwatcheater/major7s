@@ -93,6 +93,20 @@ function AdminFieldPage() {
     },
   });
 
+  const { data: allPicks = [], refetch: refetchPicks } = useQuery({
+    queryKey: ["admin-tournament-picks", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks")
+        .select("id, bucket, team_id, golfer_id, submitted_at, team:teams(nickname, owner_user_id, is_primary), golfer:golfers(standard_name)")
+        .eq("tournament_id", id)
+        .order("submitted_at", { ascending: true });
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+
+
   const fieldMap = useMemo(() => {
     const m = new Map<string, { id: string; bucket: number }>();
     for (const f of field) m.set(f.golfer_id, { id: f.id, bucket: f.owgr_bucket });
