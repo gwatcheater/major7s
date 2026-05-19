@@ -372,10 +372,10 @@ function AdminFieldPage() {
         </div>
       </div>
 
-      {/* Add single golfer + bulk */}
-      <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        <div className="border border-border bg-card p-4">
-          <h2 className="font-display text-sm uppercase tracking-widest mb-3">Add golfer</h2>
+      {/* Add single golfer */}
+      <div className="mb-6">
+        <div className="border border-border bg-card p-4 max-w-xl">
+          <h2 className="font-display text-sm uppercase tracking-widest mb-3">Add single golfer</h2>
           <div className="space-y-2">
             <input className={inputCls} placeholder="Golfer name" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <div className="grid grid-cols-2 gap-2">
@@ -384,74 +384,17 @@ function AdminFieldPage() {
                 {BUCKETS.map((b) => <option key={b} value={b}>Bucket {b}</option>)}
               </select>
             </div>
-            <button onClick={addGolfer} className="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Add</button>
-          </div>
-        </div>
-
-        <div className="border border-border bg-card">
-          <button onClick={() => setBulkOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted">
-            <span className="font-display text-sm uppercase tracking-widest">Bulk paste</span>
-            <span className="text-xs text-muted-foreground">{bulkOpen ? "Hide ▲" : "Show ▼"}</span>
-          </button>
-          {bulkOpen && (
-            <div className="p-4 border-t border-border space-y-3">
-              <p className="text-xs text-muted-foreground">
-                One golfer per line. Format: <code className="font-mono">Name, Rank, Bucket</code> or <code className="font-mono">Name, Bucket</code>.
-              </p>
-              <textarea
-                value={bulkText} onChange={(e) => setBulkText(e.target.value)}
-                placeholder={"Scottie Scheffler, 1, 1\nRory McIlroy, 2, 1\nXander Schauffele, 3, 2"}
-                rows={8}
-                className="w-full px-3 py-2 border border-input bg-white text-sm font-mono"
-              />
-              <div className="flex items-center gap-2">
-                <button onClick={runBulkUpload} disabled={bulkBusy || !bulkText.trim()} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50" style={{ backgroundColor: "var(--forest-deep)" }}>
-                  {bulkBusy ? "Uploading…" : "Upload"}
-                </button>
-                <button onClick={() => { setBulkText(""); setBulkLog([]); }} disabled={bulkBusy} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">Clear</button>
-              </div>
-              {bulkLog.length > 0 && (
-                <div className="max-h-48 overflow-y-auto bg-muted/50 border border-border p-2 text-[11px] font-mono space-y-0.5">
-                  {bulkLog.map((l, i) => (
-                    <div key={i} className={l.startsWith("SKIP") || l.startsWith("ERROR") ? "text-destructive" : ""}>{l}</div>
-                  ))}
-                </div>
-              )}
+            <div className="flex gap-2">
+              <button onClick={addGolfer} className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Add</button>
+              <button onClick={autoAssignAll} disabled={golfers.length === 0} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">
+                Auto-assign by OWGR
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Field list */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-display text-lg uppercase">Field ({golfers.length})</h2>
-          <button onClick={autoAssignAll} disabled={golfers.length === 0} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">
-            Auto-assign by OWGR
-          </button>
-        </div>
-        <div className="bg-card border border-border max-h-[600px] overflow-y-auto">
-          {golfers.length === 0 && <p className="p-4 text-sm text-muted-foreground">No golfers yet — add some above.</p>}
-          {golfers.map((g) => (
-            <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="truncate">{g.golfer_name}</div>
-                <div className="text-[10px] text-muted-foreground font-mono">OWGR {g.owgr_rank ?? "—"}</div>
-              </div>
-              <select
-                value={g.bucket_number}
-                onChange={(e) => setBucket(g.id, parseInt(e.target.value, 10))}
-                className="text-xs border border-input px-2 py-1 bg-white"
-              >
-                {BUCKETS.map((b) => <option key={b} value={b}>B{b}</option>)}
-              </select>
-              <button onClick={() => removeGolfer(g.id)} className="px-2 py-1 text-[10px] uppercase tracking-widest text-destructive hover:bg-destructive/10">
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
+      <AdvancedFieldPortal tournamentId={id} tournamentName={tournament?.name ?? ""} />
     </div>
   );
 }
