@@ -206,6 +206,7 @@ function ApprovalsTab() {
                           >
                             <UserX className="size-3.5" /> Reject
                           </Button>
+                          <SimulateButton targetId={p.id} displayName={full} />
                         </div>
                       </TableCell>
                     </TableRow>
