@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -14,7 +15,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2 } from "lucide-react";
+import { Settings, Plus, Trash2, EyeOff } from "lucide-react";
+import { useImpersonation } from "@/context/impersonation-context";
 
 interface ProfileRow {
   id: string;
