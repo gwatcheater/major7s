@@ -1,15 +1,51 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import {
+  MapPin,
+  Calendar,
+  Clipboard,
+  CheckCircle2,
+  Trophy,
+  BarChart3,
+  FileText,
+  ChevronRight,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Countdown } from "@/components/countdown";
+import { useTeams } from "@/hooks/use-teams";
+import { useAuth } from "@/hooks/use-auth";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { tournamentDateRange } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id")({
   component: TournamentHub,
 });
 
+const STATUS_META: Record<string, { label: string; className: string }> = {
+  upcoming: { label: "Upcoming", className: "bg-muted text-muted-foreground" },
+  open_for_picks: { label: "Open for Picks", className: "bg-primary text-primary-foreground" },
+  picks_closed: { label: "Picks Closed", className: "bg-destructive text-destructive-foreground" },
+  live: { label: "Live", className: "bg-primary/15 text-primary border border-primary/30" },
+  completed: { label: "Completed", className: "bg-secondary text-secondary-foreground" },
+};
+
+function statusMeta(status: string) {
+  return STATUS_META[status] ?? { label: status, className: "bg-muted text-muted-foreground" };
+}
+
 function TournamentHub() {
   const { id } = Route.useParams();
+  const { user } = useAuth();
+  const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [blogOpen, setBlogOpen] = useState(false);
+
   const { data: t, isLoading } = useQuery({
     queryKey: ["tournament", id],
     queryFn: async () => {
@@ -19,41 +55,198 @@ function TournamentHub() {
     },
   });
 
+  const { data: picks = [] } = useQuery({
+    queryKey: ["picks", activeTeam?.id, id],
+    enabled: !!activeTeam,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks")
+        .select("bucket, golfer_id, last_edited_at, submitted_at, golfers(golfer_name)")
+        .eq("team_id", activeTeam!.id)
+        .eq("tournament_id", id);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("team_nickname, nickname")
+        .eq("id", user!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
-
   if (pathname.endsWith(`/tournament/${id}/lineup`)) return <Outlet />;
 
-  const isOpen = t.status === "open_for_picks" && new Date(t.submission_deadline).getTime() > Date.now();
+  const meta = statusMeta(t.status);
+  const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
+  const canSubmit = t.status === "open_for_picks" && !lockExpired;
+
+  const picksByBucket = new Map<number, { name: string }>();
+  let lastEdited = 0;
+  for (const p of picks) {
+    const name = (p as any).golfers?.golfer_name ?? "—";
+    picksByBucket.set(p.bucket as number, { name });
+    const ts = new Date(p.last_edited_at as string).getTime();
+    if (ts > lastEdited) lastEdited = ts;
+  }
+  const hasPicks = picks.length > 0;
+  const teamHandle = profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
-    <div className="p-4 md:p-12 max-w-5xl">
-      <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
-      <h1 className="font-display text-4xl md:text-5xl uppercase mt-4">{t.name}</h1>
-      <p className="text-muted-foreground mt-1">{t.location}</p>
-      <div className="mt-2 text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--gold)" }}>Status · {t.status}</div>
+    <div className="p-4 md:p-12 max-w-5xl mx-auto">
+      <Link
+        to="/home"
+        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
+      >
+        ← Feed
+      </Link>
 
-      <div className="mt-8 p-6 border border-border bg-card flex items-center justify-between flex-wrap gap-4">
-        <div>
-          {isOpen ? (
-            <>
-              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Registration Closes In</div>
-              <Countdown targetIso={t.submission_deadline} />
-            </>
+      {/* HEADER */}
+      <header className="mt-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex items-start gap-4 min-w-0">
+          {t.logo_url ? (
+            <img
+              src={t.logo_url}
+              alt={`${t.name} logo`}
+              className="w-16 h-16 sm:w-20 sm:h-20 object-contain border border-border bg-card shrink-0"
+            />
           ) : (
-            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-              {t.status === "open_for_picks" ? "Picks Locked" : `Tournament ${t.status}`}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 border border-border bg-muted shrink-0" />
+          )}
+          <div className="min-w-0">
+            <h1 className="font-display text-3xl md:text-5xl uppercase leading-tight">{t.name}</h1>
+            <div className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" /> {t.location}
+              </span>
+              <span className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                {tournamentDateRange(t.start_date, t.end_date)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <span
+          className={`inline-flex items-center px-3 py-1 text-[10px] font-bold uppercase tracking-widest shrink-0 ${meta.className}`}
+        >
+          {meta.label}
+        </span>
+      </header>
+
+      {/* PICKS CARD */}
+      <Card className="mt-8 p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Clipboard className="h-5 w-5" />
+              <span className="font-display text-lg uppercase">Picks</span>
+            </div>
+            <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
+            {hasPicks ? (
+              <Badge className="bg-green-600 text-white hover:bg-green-600">Picks Submitted</Badge>
+            ) : (
+              <Badge variant="destructive">Not Entered</Badge>
+            )}
+          </div>
+          {hasPicks && lastEdited > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Submitted: {new Date(lastEdited).toLocaleString()}
             </div>
           )}
         </div>
-        <Link to="/tournament/$id/lineup" params={{ id }} className="px-6 py-3 font-display text-xs uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
-          {isOpen ? "Enter Lineup →" : "View Lineup →"}
-        </Link>
-      </div>
 
-      <div className="mt-10">
-        <h2 className="font-display text-xl uppercase mb-3">Recap</h2>
-        <p className="text-sm text-muted-foreground">{t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}</p>
+        <div className="mt-4 flex items-center gap-2 text-sm">
+          <span className="font-bold uppercase tracking-widest text-xs">Your Team</span>
+          {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+          <span className="text-muted-foreground">·</span>
+          <span className="font-display uppercase">{teamHandle}</span>
+        </div>
+
+        {hasPicks ? (
+          <div className="mt-4 divide-y divide-border border border-border">
+            {[1, 2, 3, 4, 5, 6, 7].map((b) => {
+              const pick = picksByBucket.get(b);
+              return (
+                <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center w-8 h-8 bg-muted text-xs font-bold">
+                      B{b}
+                    </span>
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Bucket {b}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-right truncate">
+                    {pick?.name ?? <span className="text-muted-foreground">—</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <Link
+            to="/tournament/$id/lineup"
+            params={{ id }}
+            className="mt-5 block w-full text-center py-4 font-display text-xs uppercase tracking-widest text-white"
+            style={{ backgroundColor: "var(--forest-deep)" }}
+          >
+            {canSubmit ? "Submit Team Lineup →" : "View Lineup →"}
+          </Link>
+        )}
+      </Card>
+
+      {/* NAV GRID */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Link
+          to="/tournament/$id"
+          params={{ id }}
+          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <Trophy className="h-5 w-5 text-primary" />
+          <div className="flex-1">
+            <div className="font-display text-sm uppercase">Leaderboard</div>
+            <div className="text-xs text-muted-foreground">Live standings</div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+
+        <Link
+          to="/stats"
+          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <BarChart3 className="h-5 w-5 text-primary" />
+          <div className="flex-1">
+            <div className="font-display text-sm uppercase">Statistics</div>
+            <div className="text-xs text-muted-foreground">Pick stats & fun facts — Tap to view</div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+
+        <Collapsible open={blogOpen} onOpenChange={setBlogOpen} className="md:col-span-3">
+          <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors">
+            <FileText className="h-5 w-5 text-primary" />
+            <div className="flex-1 text-left">
+              <div className="font-display text-sm uppercase">Blog</div>
+              <div className="text-xs text-muted-foreground">Tournament recap & notes</div>
+            </div>
+            <ChevronRight
+              className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="border border-t-0 border-border bg-card p-5 text-sm text-muted-foreground whitespace-pre-wrap">
+            {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </div>
   );

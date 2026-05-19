@@ -1,87 +1,40 @@
-## Goal
+## Overhaul Tournament Detail View
 
-Replace the bulk-upload + field-list + (new) purge sections inside `src/routes/_authenticated/admin/tournament/$id/field` with a single, robust, typed `AdvancedFieldPortal` component. The existing Tournament Details, Submitted Picks, Bucket Sizes, and Add Golfer panels stay as-is — this work focuses on the four sub-systems the user spec'd.
+Refactor `src/routes/_authenticated/tournament.$id.tsx` into a dashboard-style layout matching the new spec. No schema changes — uses existing `tournaments`, `golfers`, `picks`, `profiles`, `teams` tables.
 
-## Where it lives
+### 1. Data fetching
+In addition to the current `tournaments` query, fetch in parallel:
+- Active team's `picks` for this tournament (join to `golfers` for `golfer_name`) — keyed `["picks", teamId, tournamentId]`.
+- Current user's `profiles` row to read `team_nickname` (used as the leaderboard display handle).
 
-- New component: `src/components/admin/advanced-field-portal.tsx`
-- Mounted inside `src/routes/_authenticated/admin.tournament.$id.field.tsx` (replaces the existing inline `bulkOpen` upload block and the bottom field list), wrapped by the existing `<AdminDesktopOnly>` gate.
-- Props: `{ tournamentId: string; tournamentName: string; }`
-- Uses existing shadcn components: `Button`, `Input`, `Textarea`, `Alert`, plus `sonner` `toast`. Lucide icons: `Upload`, `AlertTriangle`, `Trash2`, `Undo2`, `FileText`, `Users`, `CheckCircle2`, `XCircle`.
+Compute `submittedAt` = max(`last_edited_at`) across the 7 picks; `hasPicks` = picks.length === 7.
 
-## 1. Bulk Upload Help Panel
+### 2. Header panel
+Replace the simple `<h1>` block with a responsive flex header:
+- Left: logo `<img src={tournament.logo_url}>` (fallback placeholder div if null) + tournament name (`font-display`, large).
+- Below name: location row with `MapPin` icon + `tournament.location`; date row with `Calendar` icon + `tournamentDateRange(start_date, end_date)` (already in `src/lib/format.ts`).
+- Right: status badge. Build a `statusMeta(status)` helper mapping each `tournament_status` enum value to `{ label, className }` using semantic tokens (e.g. `bg-primary/15 text-primary` for open_for_picks, muted for upcoming, destructive for picks_closed, etc.). No raw hex.
 
-A documentation `Alert` at the top of the portal:
-- Header: "CSV Format" with `FileText` icon.
-- A monospace `<pre>` block showing the schema: `Name, OWGR Ranking, Bucket Number (1-7)`.
-- A second `<pre>` block showing a valid sample:
-  ```
-  Scottie Scheffler, 1, 1
-  Rory McIlroy, 2, 1
-  Ludvig Aberg, 5, 2
-  ```
-- Bullet rules (exactly 3 fields, name required, OWGR positive integer, bucket 1–7, no in-batch duplicates).
+### 3. Picks card
+Bordered `Card` wrapper:
+- Header row: `Clipboard` icon + "Picks" title, two Badges (tournament status, submission state: red "Not Entered" / green "Picks Submitted").
+- Top-right meta: when `hasPicks`, show "Submitted: {formatted submittedAt}" and a green `CheckCircle2` next to "Your Team — {profile.team_nickname}".
+- Body: 7-row stack (Bucket 1..7). Left: bucket number chip; right: golfer name or em-dash. Map picks by `bucket` for O(1) lookup.
+- Empty state: when no picks, hide the grid and show a prominent `Link` button to `/tournament/$id/lineup` labeled "Submit Team Lineup" (reuse forest-deep styling). Disable/relabel when status not `open_for_picks` or deadline passed.
 
-## 2. Parser + Per-Line Error Log
+### 4. Navigation accordion grid
+Below the picks card, render a vertical stack (`grid grid-cols-1 md:grid-cols-3 gap-3`) of three uniform clickable cards:
+- Leaderboard — `Trophy` icon, `Link` to `/tournament/$id` standings (route does not yet exist — link to `/tournament/$id` for now and add a TODO comment; or use the existing stats route `/stats`). Will use `/stats` as the destination since no per-tournament leaderboard route exists.
+- Statistics — `BarChart3` icon + muted subtext "Pick stats & fun facts — Tap to view", links to `/stats`.
+- Blog — `FileText` icon. Uses a shadcn `Collapsible` to expand and show `tournament.recap_blog` (or "No recap yet" placeholder) inline.
 
-Pure function `parseFieldCsv(text: string): { rows: ParsedRow[]; errors: LineError[] }` with strict rules:
+Each card: left icon, label + optional subtext, trailing `ChevronRight` (rotates 90° when Blog collapsible is open).
 
-| Rule | Failure message |
-| --- | --- |
-| `split(",")` length ≠ 3 | "Expected 3 comma-separated fields, got N" |
-| Trimmed name empty | "Name is required" |
-| OWGR not `Number.isInteger` or `< 1` | "OWGR must be a positive integer" |
-| Bucket not integer in 1..7 | "Bucket must be an integer from 1 to 7" |
-| Name (case-insensitive) appears more than once in the same paste | "Duplicate name in batch" (flag every occurrence) |
+### 5. Cleanup
+Remove the old "Registration Closes In" panel and the standalone Recap section (now folded into the Blog accordion). Keep the `← Feed` back-link and the lineup `Outlet` passthrough for `/lineup`.
 
-UI:
-- `Textarea` (min-height ~240px, monospace) bound to `bulkText`.
-- Below it, a **Validation Log** panel:
-  - If no input → muted "Paste rows to validate."
-  - Render every line with its line number. Valid rows get a green left border + `CheckCircle2`. Invalid rows get a red left border + `XCircle` and the failure reason.
-  - Summary row: "X valid · Y errors · Z total".
-- **Upload button** disabled when any error exists or no valid rows. On click: single `supabase.from("golfers").insert(rows)` batch insert with `tournament_id` injected. On success: clear textarea, toast `${n} golfers added`, invalidate `["admin-field-golfers", tournamentId]`. On error: toast the Supabase message, keep textarea contents.
-
-## 3. Field Metrics + Active Field List
-
-Side panel (lg:grid-cols-3 layout — upload spans 2, metrics spans 1; stacks on mobile):
-- **Total Registered** card: big number = `golfers.length`, `Users` icon.
-- **Per-bucket chips**: 7 small badges B1–B7 with count, color-coded by bucket (use existing tokens: forest, gold, alert, etc. — defined as a `BUCKET_COLORS` map).
-- **Scrollable list** (`max-h-[480px] overflow-y-auto`) of all golfers in the tournament:
-  - Row: `[BX badge] Name … OWGR #N` with a small `Trash2` delete button.
-  - Sorted by bucket then OWGR.
-
-Reuses the existing `golfers` query (`["admin-field-golfers", id]`) — no new query needed; just lift it or pass via props.
-
-## 4. Danger Zone — Atomic Purge with Undo
-
-Distinct red-bordered container at the bottom (`border-destructive`, `AlertTriangle` icon, "Danger Zone" header).
-
-State machine: `'idle' | 'arming' | 'counting' | 'purging'`.
-
-Flow:
-1. **idle**: Shows warning copy + a "Begin purge" button.
-2. **arming**: Reveals a dynamically generated confirmation string `PURGE_${tournamentName.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}` shown in a `<code>` block, plus an `Input` the admin must type it into exactly. "Cancel" button reverts to idle. "Confirm" button enabled only when input matches verbatim.
-3. **counting**: Replaces the panel with a prominent countdown box: "Purging in Ns…" with a big `Undo2` "STOP / UNDO" button. `useEffect` runs a 1s `setInterval` decrementing from 5; on 0 → transition to purging. Cleanup clears the interval if the user hits Undo (→ back to idle, `toast("Purge cancelled")`) or unmounts.
-4. **purging**: Single `supabase.from("golfers").delete().eq("tournament_id", tournamentId)`. On success: toast "Field roster purged", invalidate queries, back to idle. On error: toast error, back to idle.
-
-The countdown uses `useRef` for the interval handle so Undo immediately aborts before the DELETE fires — DELETE only executes inside the timer callback when the counter hits 0 and the state is still `counting`.
-
-## Types
-
-```ts
-type ParsedRow = { line: number; name: string; owgr: number; bucket: number };
-type LineError = { line: number; raw: string; reason: string };
-```
-
-## Integration steps
-
-1. Create `src/components/admin/advanced-field-portal.tsx` with the parser, the three subsections (Help, Upload+Log, Metrics+List), and the Danger Zone state machine.
-2. In `admin.tournament.$id.field.tsx`: delete the inline `bulkOpen`/`bulkText`/`bulkLog`/`runBulkUpload` block and the existing bottom field list grid; mount `<AdvancedFieldPortal tournamentId={id} tournamentName={tournament?.name ?? ""} />` in their place. Keep Details, Picks, Bucket Sizes, Add Golfer panels untouched.
-3. Verify build + visit `/admin/tournament/:id/field` in the preview.
-
-## Notes / non-goals
-
-- No schema changes; uses existing `golfers` table + RLS (admin write policy already in place).
-- Parser is pure and unit-test-friendly (could add a vitest later — not in scope unless asked).
-- Mobile: the whole admin page is already gated by `AdminDesktopOnly`, so we design desktop-first but keep the portal responsive (`grid-cols-1 lg:grid-cols-3`) for the desktop-tablet landscape range.
+### Technical details
+- New imports: `MapPin, Calendar, Clipboard, CheckCircle2, Trophy, BarChart3, FileText, ChevronRight` from `lucide-react`; `Card`, `Badge`, `Collapsible/Trigger/Content` from `@/components/ui/*`; `useTeams` hook; `tournamentDateRange` from `@/lib/format`.
+- All colors via semantic tokens (`bg-card`, `border-border`, `text-muted-foreground`, `bg-primary`, `bg-destructive`, `text-green-600` allowed only via existing `--success`-style token if present; otherwise add a `--success` token to `src/styles.css`).
+- Keep mobile-first responsive: header stacks under `sm:`, accordion grid is single-column on mobile.
+- No DB migrations, no changes to lineup picker or other routes.
