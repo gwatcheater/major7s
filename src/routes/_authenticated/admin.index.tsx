@@ -357,15 +357,53 @@ function UsersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 }
 
 function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof useQueryClient> }) {
-  const { data: teams = [] } = useQuery({
+  const [newTeamName, setNewTeamName] = useState("");
+  const [editTeamId, setEditTeamId] = useState<string | null>(null);
+  const [editTeamName, setEditTeamName] = useState("");
+
+  const { data: teams = [], refetch: refetchTeams } = useQuery({
     queryKey: ["admin-user-teams", userId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("teams").select("*").eq("owner_user_id", userId);
+        .from("teams").select("*").eq("owner_user_id", userId).order("is_primary", { ascending: false });
       if (error) throw error;
       return data;
     },
   });
+
+  async function addTeam() {
+    if (!newTeamName.trim()) { toast.error("Enter a nickname"); return; }
+    const { error } = await supabase.from("teams").insert({
+      owner_user_id: userId, nickname: newTeamName.trim(), is_primary: false,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team added");
+    setNewTeamName("");
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+  }
+
+  async function saveTeam(teamId: string) {
+    if (!editTeamName.trim()) { toast.error("Nickname required"); return; }
+    const { error } = await supabase.from("teams").update({ nickname: editTeamName.trim() }).eq("id", teamId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team updated");
+    setEditTeamId(null);
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+  }
+
+  async function deleteTeam(teamId: string, isPrimary: boolean) {
+    if (isPrimary) { toast.error("Cannot delete the primary team"); return; }
+    if (!confirm("Delete this team and all of its picks?")) return;
+    const { error } = await supabase.from("teams").delete().eq("id", teamId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Team deleted");
+    refetchTeams();
+    qc.invalidateQueries({ queryKey: ["teams"] });
+    qc.invalidateQueries({ queryKey: ["picks"] });
+  }
+
 
   const teamIds = teams.map((t: any) => t.id);
   const { data: picks = [], refetch: refetchPicks } = useQuery({
