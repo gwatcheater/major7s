@@ -86,19 +86,45 @@ function LineupPicker() {
     const missing = buckets.filter((b) => !selections[b]);
     if (missing.length) { toast.error(`Select a golfer for tier ${missing.join(", ")}`); return; }
 
+    const existingByBucket = new Map<number, any>(existingPicks.map((p: any) => [p.bucket, p]));
+    const hadExisting = existingPicks.length > 0;
+
+    const hasChanges =
+      existingByBucket.get(1)?.golfer_id !== selections[1] ||
+      existingByBucket.get(2)?.golfer_id !== selections[2] ||
+      existingByBucket.get(3)?.golfer_id !== selections[3] ||
+      existingByBucket.get(4)?.golfer_id !== selections[4] ||
+      existingByBucket.get(5)?.golfer_id !== selections[5] ||
+      existingByBucket.get(6)?.golfer_id !== selections[6] ||
+      existingByBucket.get(7)?.golfer_id !== selections[7];
+
+    const currentTweaks = existingPicks.reduce(
+      (m: number, p: any) => Math.max(m, p.tweak_count ?? 0),
+      0,
+    );
+    const tweakIncrement = hadExisting && hasChanges ? 1 : 0;
+    const newTweaks = currentTweaks + tweakIncrement;
+    const nowIso = new Date().toISOString();
+
     for (const b of buckets) {
-      const existing = existingPicks.find((p: any) => p.bucket === b);
+      const existing = existingByBucket.get(b);
       if (existing) {
-        if (existing.golfer_id !== selections[b]) {
-          const { error } = await supabase
-            .from("picks")
-            .update({ golfer_id: selections[b], last_edited_at: new Date().toISOString(), tweak_count: (existing.tweak_count ?? 0) + 1 })
-            .eq("id", existing.id);
-          if (error) { toast.error(error.message); return; }
-        }
+        const { error } = await supabase
+          .from("picks")
+          .update({
+            golfer_id: selections[b],
+            last_edited_at: nowIso,
+            tweak_count: newTweaks,
+          })
+          .eq("id", existing.id);
+        if (error) { toast.error(error.message); return; }
       } else {
         const { error } = await supabase.from("picks").insert({
-          tournament_id: id, team_id: activeTeam!.id, bucket: b, golfer_id: selections[b],
+          tournament_id: id,
+          team_id: activeTeam!.id,
+          bucket: b,
+          golfer_id: selections[b],
+          tweak_count: newTweaks,
         });
         if (error) { toast.error(error.message); return; }
       }

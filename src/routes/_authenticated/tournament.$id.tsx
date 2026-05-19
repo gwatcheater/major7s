@@ -100,6 +100,7 @@ function TournamentHub() {
     if (ts > lastEdited) lastEdited = ts;
   }
   const hasPicks = picks.length > 0;
+  const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
   const teamHandle = profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
@@ -151,7 +152,6 @@ function TournamentHub() {
               <Clipboard className="h-5 w-5" />
               <span className="font-display text-lg uppercase">Picks</span>
             </div>
-            <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
             {hasPicks ? (
               <Badge className="bg-green-600 text-white hover:bg-green-600">Picks Submitted</Badge>
             ) : (
@@ -165,48 +165,65 @@ function TournamentHub() {
           )}
         </div>
 
-        <div className="mt-4 flex items-center gap-2 text-sm">
-          <span className="font-bold uppercase tracking-widest text-xs">Your Team</span>
-          {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-          <span className="text-muted-foreground">·</span>
-          <span className="font-display uppercase">{teamHandle}</span>
+        <div className="mt-4">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-display uppercase text-base">{teamHandle}</span>
+            {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+          </div>
+          {hasPicks && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Tweaks Made: {maxTweaks}
+            </div>
+          )}
         </div>
 
         {hasPicks ? (
-          <div className="mt-4 divide-y divide-border border border-border">
-            {[1, 2, 3, 4, 5, 6, 7].map((b) => {
-              const pick = picksByBucket.get(b);
-              return (
-                <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-8 h-8 bg-muted text-xs font-bold">
-                      B{b}
-                    </span>
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Bucket {b}
+          <>
+            <div className="mt-4 divide-y divide-border border border-border">
+              {[1, 2, 3, 4, 5, 6, 7].map((b) => {
+                const pick = picksByBucket.get(b);
+                return (
+                  <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 bg-muted text-xs font-bold">
+                        B{b}
+                      </span>
+                      <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Bucket {b}
+                      </span>
+                    </div>
+                    <span className="text-sm font-medium text-right truncate">
+                      {pick?.name ?? <span className="text-muted-foreground">—</span>}
                     </span>
                   </div>
-                  <span className="text-sm font-medium text-right truncate">
-                    {pick?.name ?? <span className="text-muted-foreground">—</span>}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {canSubmit && (
+              <Link
+                to="/tournament/$id/lineup"
+                params={{ id }}
+                className="mt-5 block w-full text-center py-3 font-display text-xs uppercase tracking-widest border border-border bg-background hover:bg-accent transition-colors"
+              >
+                Edit Picks
+              </Link>
+            )}
+          </>
         ) : (
           <Link
             to="/tournament/$id/lineup"
             params={{ id }}
             className="mt-5 block w-full text-center py-4 font-display text-xs uppercase tracking-widest text-white"
             style={{ backgroundColor: "var(--forest-deep)" }}
+            aria-disabled={!canSubmit}
           >
             {canSubmit ? "Submit Team Lineup →" : "View Lineup →"}
           </Link>
         )}
       </Card>
 
-      {/* NAV GRID */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* NAV ROWS (stacked) */}
+      <div className="mt-6 flex flex-col gap-3">
         <Link
           to="/tournament/$id"
           params={{ id }}
@@ -232,7 +249,7 @@ function TournamentHub() {
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
 
-        <Collapsible open={blogOpen} onOpenChange={setBlogOpen} className="md:col-span-3">
+        <Collapsible open={blogOpen} onOpenChange={setBlogOpen}>
           <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors">
             <FileText className="h-5 w-5 text-primary" />
             <div className="flex-1 text-left">
