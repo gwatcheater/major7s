@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
@@ -11,47 +11,106 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const search = Route.useSearch();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // nickname removed — derived server-side from email
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [referralName, setReferralName] = useState("");
+  const [teamNickname, setTeamNickname] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState<string | null>(null);
+
+  async function checkApprovalAndProceed(userId: string) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) {
+      await supabase.auth.signOut();
+      throw new Error("Could not verify account status. Please try again.");
+    }
+    const status = (data?.status ?? "pending") as "pending" | "approved" | "suspended";
+    if (status === "approved") {
+      navigate({ to: "/home" });
+      return;
+    }
+    await supabase.auth.signOut();
+    if (status === "suspended") {
+      setPendingMsg("Your account has been suspended. Please contact an administrator.");
+    } else {
+      setPendingMsg("Your account is awaiting administrator approval.");
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    setPendingMsg(null);
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email, password,
           options: {
             emailRedirectTo: window.location.origin,
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              phone,
+              referral_name: referralName,
+              team_nickname: teamNickname,
+              nickname: teamNickname || `${firstName} ${lastName}`.trim() || undefined,
+            },
           },
         });
         if (error) throw error;
-        toast.success("Account created. Welcome to Major7s.");
+        // Sign out — they must wait for admin approval
+        await supabase.auth.signOut();
+        setPendingMsg("Account created. Your account is awaiting administrator approval — you'll be able to sign in once approved.");
+        setMode("signin");
+        if (data.user) {
+          // Make sure no session lingers
+        }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (data.user) await checkApprovalAndProceed(data.user.id);
       }
-      navigate({ to: "/home" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Authentication failed");
     } finally { setLoading(false); }
   }
 
   async function handleGoogle() {
+    setPendingMsg(null);
     setLoading(true);
     const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
     if (result.error) { toast.error("Google sign-in failed"); setLoading(false); return; }
     if (result.redirected) return;
-    navigate({ to: "/home" });
+    // Returned without redirect — verify approval
+    const { data } = await supabase.auth.getUser();
+    if (data.user) {
+      try { await checkApprovalAndProceed(data.user.id); }
+      catch (e) { toast.error(e instanceof Error ? e.message : "Sign-in failed"); }
+    }
+    setLoading(false);
+  }
+
+  async function handleForgotPassword() {
+    if (!email) { toast.error("Enter your email above first"); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) toast.error(error.message);
+    else toast.success("Password reset email sent");
   }
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2" style={{ backgroundColor: "var(--ui-bg)" }}>
-      {/* Hero panel */}
       <div className="hidden lg:flex flex-col justify-between p-12 text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
         <div className="font-display text-3xl tracking-tight uppercase">
           Major<span style={{ color: "var(--gold)" }}>7s</span>
@@ -73,15 +132,20 @@ function LoginPage() {
         </div>
       </div>
 
-      {/* Form */}
       <div className="flex items-center justify-center p-8 lg:p-16">
         <div className="w-full max-w-sm">
           <h2 className="font-display text-2xl uppercase mb-1">
             {mode === "signin" ? "Sign in" : "Create account"}
           </h2>
-          <p className="text-sm text-muted-foreground mb-8">
-            {mode === "signin" ? "Welcome back to the clubhouse." : "Reserve your tee time."}
+          <p className="text-sm text-muted-foreground mb-6">
+            {mode === "signin" ? "Welcome back to the clubhouse." : "Reserve your tee time. Admin approval required."}
           </p>
+
+          {pendingMsg && (
+            <div className="mb-4 p-3 border text-xs" style={{ borderColor: "var(--gold)", backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)" }}>
+              {pendingMsg}
+            </div>
+          )}
 
           <button
             onClick={handleGoogle}
@@ -98,8 +162,38 @@ function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
+            {mode === "signup" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest font-bold">First name</label>
+                    <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={60}
+                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest font-bold">Last name</label>
+                    <input required value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={60}
+                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold">Phone</label>
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30}
+                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold">Referred by</label>
+                  <input value={referralName} onChange={(e) => setReferralName(e.target.value)} maxLength={120}
+                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold">Team nickname</label>
+                  <input value={teamNickname} onChange={(e) => setTeamNickname(e.target.value)} maxLength={60}
+                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                </div>
+              </>
+            )}
             <div>
-
               <label className="text-[10px] uppercase tracking-widest font-bold">Email</label>
               <input
                 type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
@@ -123,14 +217,20 @@ function LoginPage() {
             </button>
           </form>
 
+          {mode === "signin" && (
+            <button onClick={handleForgotPassword} disabled={loading} className="mt-3 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground underline">
+              Forgot password?
+            </button>
+          )}
+
           <p className="mt-6 text-xs text-center text-muted-foreground">
             {mode === "signin" ? "New to Major7s? " : "Already have an account? "}
-            <button onClick={() => setMode(mode === "signin" ? "signup" : "signin")} className="font-bold underline">
+            <button onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setPendingMsg(null); }} className="font-bold underline">
               {mode === "signin" ? "Create one" : "Sign in"}
             </button>
           </p>
           <p className="mt-4 text-[10px] text-center text-muted-foreground">
-            Want admin access? Sign up, then ask an admin to grant the role.
+            New accounts require admin approval before sign-in.
           </p>
         </div>
       </div>

@@ -9,6 +9,17 @@ export const Route = createFileRoute("/_authenticated")({
     if (!data.session) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
+    // Enforce approval status
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", data.session.user.id)
+      .maybeSingle();
+    const status = (profile?.status ?? "pending") as "pending" | "approved" | "suspended";
+    if (status !== "approved") {
+      await supabase.auth.signOut();
+      throw redirect({ to: "/login", search: { redirect: location.href } });
+    }
   },
   component: AuthenticatedLayout,
 });

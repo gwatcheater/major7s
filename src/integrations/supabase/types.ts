@@ -100,25 +100,40 @@ export type Database = {
         Row: {
           created_at: string
           email: string | null
+          first_name: string | null
           id: string
+          last_name: string | null
           nickname: string
+          phone: string | null
+          referral_name: string | null
           status: Database["public"]["Enums"]["profile_status"]
+          team_nickname: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           email?: string | null
+          first_name?: string | null
           id: string
+          last_name?: string | null
           nickname: string
+          phone?: string | null
+          referral_name?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
+          team_nickname?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           email?: string | null
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           nickname?: string
+          phone?: string | null
+          referral_name?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
+          team_nickname?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -270,7 +285,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      profile_status: "pending" | "approved"
+      profile_status: "pending" | "approved" | "suspended"
       tournament_status: "upcoming" | "open" | "locked" | "live" | "completed"
     }
     CompositeTypes: {
@@ -400,7 +415,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      profile_status: ["pending", "approved"],
+      profile_status: ["pending", "approved", "suspended"],
       tournament_status: ["upcoming", "open", "locked", "live", "completed"],
     },
   },
