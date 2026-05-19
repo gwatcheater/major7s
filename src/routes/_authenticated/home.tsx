@@ -14,18 +14,18 @@ export const Route = createFileRoute("/_authenticated/home")({
 interface Tournament {
   id: string;
   name: string;
-  course: string;
+  location: string;
   start_date: string;
   end_date: string;
-  lock_at: string;
-  status: "upcoming" | "open" | "locked" | "live" | "completed";
+  submission_deadline: string;
+  status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
   const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
     upcoming: { label: "Upcoming · Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
-    open: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
-    locked: { label: "Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
+    open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
+    picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
     live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
     completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
   };
@@ -46,7 +46,7 @@ function HomePage() {
       const { data, error } = await supabase
         .from("tournaments")
         .select("*")
-        .in("status", ["upcoming", "open", "locked", "live"])
+        .in("status", ["upcoming", "open_for_picks", "picks_closed", "live"])
         .order("start_date", { ascending: true });
       if (error) throw error;
       return data as Tournament[];
@@ -101,8 +101,8 @@ function HomePage() {
           {tournaments.map((t, i) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
-            const isOpen = t.status === "open";
-            const lockExpired = new Date(t.lock_at).getTime() <= Date.now();
+            const isOpen = t.status === "open_for_picks";
+            const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
             const link = tournamentCardLink(t);
             return (
               <Link
@@ -120,7 +120,7 @@ function HomePage() {
                         {tournamentDateRange(t.start_date, t.end_date)}
                       </p>
                       <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">{t.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-2">{t.course}</p>
+                      <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <StatusBadge status={t.status} />
@@ -145,7 +145,7 @@ function HomePage() {
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
                           Registration Closes In
                         </span>
-                        <Countdown targetIso={t.lock_at} />
+                        <Countdown targetIso={t.submission_deadline} />
                       </div>
                       <span className="px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
                         {complete ? "Edit Lineup →" : "Enter Lineup →"}

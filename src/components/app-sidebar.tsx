@@ -33,7 +33,7 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
       const { data: openTournaments } = await supabase
         .from("tournaments")
         .select("id, name")
-        .in("status", ["open"]);
+        .in("status", ["open_for_picks"]);
       if (!openTournaments || openTournaments.length === 0) return [];
 
       const result: { team: string; tournament: string }[] = [];

@@ -24,13 +24,13 @@ function TournamentHub() {
 
   if (pathname.endsWith(`/tournament/${id}/lineup`)) return <Outlet />;
 
-  const isOpen = t.status === "open" && new Date(t.lock_at).getTime() > Date.now();
+  const isOpen = t.status === "open_for_picks" && new Date(t.submission_deadline).getTime() > Date.now();
 
   return (
     <div className="p-4 md:p-12 max-w-5xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
       <h1 className="font-display text-4xl md:text-5xl uppercase mt-4">{t.name}</h1>
-      <p className="text-muted-foreground mt-1">{t.course}</p>
+      <p className="text-muted-foreground mt-1">{t.location}</p>
       <div className="mt-2 text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--gold)" }}>Status · {t.status}</div>
 
       <div className="mt-8 p-6 border border-border bg-card flex items-center justify-between flex-wrap gap-4">
@@ -38,11 +38,11 @@ function TournamentHub() {
           {isOpen ? (
             <>
               <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Registration Closes In</div>
-              <Countdown targetIso={t.lock_at} />
+              <Countdown targetIso={t.submission_deadline} />
             </>
           ) : (
             <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-              {t.status === "open" ? "Picks Locked" : `Tournament ${t.status}`}
+              {t.status === "open_for_picks" ? "Picks Locked" : `Tournament ${t.status}`}
             </div>
           )}
         </div>

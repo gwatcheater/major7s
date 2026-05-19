@@ -39,11 +39,11 @@ function LineupPicker() {
     queryKey: ["field", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tournament_field")
-        .select("owgr_bucket, golfer:golfers(id, standard_name, owgr_rank)")
+        .from("golfers")
+        .select("id, golfer_name, owgr_rank, bucket_number")
         .eq("tournament_id", id);
       if (error) throw error;
-      return data as any[];
+      return data ?? [];
     },
   });
 
@@ -69,14 +69,14 @@ function LineupPicker() {
   if (!activeTeam) return <div className="p-12">Select a team first.</div>;
   if (!tournament) return <div className="p-12">Loading…</div>;
 
-  const lockExpired = new Date(tournament.lock_at).getTime() <= Date.now();
-  const isLocked = tournament.status !== "open" || lockExpired;
+  const lockExpired = new Date(tournament.submission_deadline).getTime() <= Date.now();
+  const isLocked = tournament.status !== "open_for_picks" || lockExpired;
 
   const byBucket: Record<number, any[]> = {};
-  for (const row of field) {
-    const b = row.owgr_bucket;
+  for (const g of field) {
+    const b = g.bucket_number;
     if (!byBucket[b]) byBucket[b] = [];
-    byBucket[b].push(row.golfer);
+    byBucket[b].push(g);
   }
   Object.values(byBucket).forEach((arr) => arr.sort((a, b) => (a.owgr_rank ?? 999) - (b.owgr_rank ?? 999)));
 
@@ -121,7 +121,7 @@ function LineupPicker() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup · {activeTeam.nickname}</p>
           <h1 className="font-display text-4xl uppercase mt-1">{tournament.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{tournament.course}</p>
+          <p className="text-sm text-muted-foreground mt-1">{tournament.location}</p>
           {hasSubmission && (
             <div className="mt-2 flex gap-2 flex-wrap">
               <span className="font-display text-[10px] uppercase tracking-widest px-2 py-1" style={{ backgroundColor: "var(--muted)", color: "var(--muted-foreground)" }}>
@@ -133,7 +133,7 @@ function LineupPicker() {
         {!isLocked && (
           <div className="text-right">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Closes In</div>
-            <Countdown targetIso={tournament.lock_at} />
+            <Countdown targetIso={tournament.submission_deadline} />
           </div>
         )}
       </header>
@@ -168,7 +168,7 @@ function LineupPicker() {
                   >
                     <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                     {opts.map((g) => (
-                      <option key={g.id} value={g.id}>{g.standard_name} {g.owgr_rank ? `(#${g.owgr_rank})` : ""}</option>
+                      <option key={g.id} value={g.id}>{g.golfer_name} {g.owgr_rank ? `(#${g.owgr_rank})` : ""}</option>
                     ))}
                   </select>
                 </div>
