@@ -736,7 +736,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>profile.team_nickname</TableHead>
+                <TableHead>Name</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
