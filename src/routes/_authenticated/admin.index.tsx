@@ -1,504 +1,737 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { AdminDesktopOnly } from "@/components/admin-desktop-only";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Download,
+  ShieldAlert,
+  UserCheck,
+  UserX,
+  Users,
+  ClipboardList,
+  Trophy,
+  Upload,
+} from "lucide-react";
+import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
+import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  ReferenceLine,
+  Tooltip as ReTooltip,
+} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
-  component: () => <AdminDesktopOnly><AdminPanel /></AdminDesktopOnly>,
+  component: AdminConsole,
 });
 
-function AdminPanel() {
-  const { isAdmin } = useAuth();
-  const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "tournaments" | "golfers" | "users">("overview");
+type Status = "pending" | "approved" | "rejected";
+type TournamentStatus = "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
 
-  if (!isAdmin) {
-    return (
-      <div className="p-12 max-w-2xl">
-        <h1 className="font-display text-3xl uppercase mb-3">Admin Panel</h1>
-        <p className="text-sm text-muted-foreground">
-          You don't have admin access. Ask an existing admin to grant you the role (in the user_roles table, add a row with your user id and role 'admin').
-        </p>
-        <Link to="/home" className="mt-6 inline-block text-xs uppercase tracking-widest underline">← Back</Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-8 md:p-12 max-w-6xl">
-      <header className="mb-8 flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Governance</p>
-          <h1 className="font-display text-4xl uppercase mt-1">Admin Panel</h1>
-        </div>
-        <Link to="/admin/users" className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
-          Manage Users →
-        </Link>
-      </header>
-
-
-      <div className="flex gap-1 border-b border-border mb-8">
-        {(["overview", "tournaments", "golfers", "users"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs uppercase tracking-widest font-bold border-b-2 -mb-px ${tab === t ? "border-primary" : "border-transparent text-muted-foreground"}`}
-          >{t}</button>
-        ))}
-      </div>
-
-      {tab === "overview" ? <Overview qc={qc} />
-        : tab === "tournaments" ? <TournamentsAdmin qc={qc} />
-        : tab === "golfers" ? <GolfersAdmin qc={qc} />
-        : <UsersAdmin qc={qc} />}
-    </div>
-  );
-}
-
-type Status = "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
-const STATUSES: Status[] = ["upcoming", "open_for_picks", "picks_closed", "live", "completed"];
-const NEXT: Record<Status, Status | null> = {
-  upcoming: "open_for_picks",
-  open_for_picks: "picks_closed",
-  picks_closed: "live",
-  live: "completed",
-  completed: null,
+const TSTATUS_LABEL: Record<TournamentStatus, string> = {
+  upcoming: "Upcoming",
+  open_for_picks: "Open for Picks",
+  picks_closed: "Picks Closed",
+  live: "Live",
+  completed: "Completed",
 };
 
-function Overview({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
-  const { data: tournaments = [], refetch } = useQuery({
-    queryKey: ["admin-overview-tournaments"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("tournaments").select("*").order("start_date");
-      if (error) throw error;
-      return data;
-    },
-  });
+function AdminConsole() {
+  const { isAdmin, loading } = useAuth();
 
-  async function setStatus(id: string, status: Status) {
-    const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`Status → ${status}`);
-      refetch();
-      qc.invalidateQueries({ queryKey: ["tournaments-active"] });
-      qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
-    }
-  }
-
-  const grouped = STATUSES.map((s) => ({ status: s, items: tournaments.filter((t: any) => t.status === s) }));
-  const counts = Object.fromEntries(grouped.map((g) => [g.status, g.items.length]));
-
-  if (tournaments.length === 0) {
+  if (loading) return <div className="p-12 text-sm text-muted-foreground">Loading…</div>;
+  if (!isAdmin) {
     return (
-      <div className="bg-card border border-border p-8 text-center">
-        <p className="text-sm text-muted-foreground mb-3">No tournaments yet.</p>
-        <p className="text-xs text-muted-foreground">Switch to the <span className="font-bold uppercase">Tournaments</span> tab to create one.</p>
+      <div className="p-12 max-w-xl">
+        <Alert variant="destructive">
+          <ShieldAlert className="size-4" />
+          <AlertTitle>Restricted</AlertTitle>
+          <AlertDescription>You don't have admin access.</AlertDescription>
+        </Alert>
+        <Link to="/home" className="mt-6 inline-block text-xs uppercase underline">← Home</Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* Status summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {STATUSES.map((s) => (
-          <div key={s} className="bg-card border border-border p-4">
-            <div className="text-[10px] uppercase tracking-widest font-bold" style={{ color: "var(--gold)" }}>{s}</div>
-            <div className="font-display text-3xl mt-1">{counts[s] ?? 0}</div>
-          </div>
-        ))}
-      </div>
+    <TooltipProvider>
+      <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto">
+        <header className="mb-6">
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
+            Governance
+          </p>
+          <h1 className="font-display text-3xl md:text-4xl uppercase mt-1">Admin Management Center</h1>
+        </header>
 
-      {/* Grouped tournaments */}
-      {grouped.map(({ status, items }) => (
-        items.length > 0 && (
-          <section key={status}>
-            <h2 className="font-display text-lg uppercase mb-3 flex items-baseline gap-3">
-              <span>{status}</span>
-              <span className="text-xs text-muted-foreground font-sans normal-case tracking-normal">{items.length} tournament{items.length === 1 ? "" : "s"}</span>
-            </h2>
-            <div className="space-y-2">
-              {items.map((t: any) => (
-                <div key={t.id} className="bg-card border border-border p-4 flex flex-wrap gap-4 items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display text-sm uppercase truncate">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">{t.location}</div>
-                    <div className="text-[10px] text-muted-foreground mt-1">
-                      {t.start_date} → {t.end_date} · lock {new Date(t.submission_deadline).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap items-center">
-                    {NEXT[status] && (
-                      <button
-                        onClick={() => setStatus(t.id, NEXT[status]!)}
-                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white"
-                        style={{ backgroundColor: "var(--forest-deep)" }}
-                      >
-                        Advance → {NEXT[status]}
-                      </button>
-                    )}
-                    <select
-                      value={t.status}
-                      onChange={(e) => setStatus(t.id, e.target.value as Status)}
-                      className="text-xs border border-input px-2 py-1 bg-white"
-                    >
-                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <Link
-                      to="/admin/tournament/$id/field"
-                      params={{ id: t.id }}
-                      className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
-                    >
-                      Field
-                    </Link>
-                    <Link
-                      to="/tournament/$id"
-                      params={{ id: t.id }}
-                      className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted"
-                    >
-                      View
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )
-      ))}
-    </div>
+        <Tabs defaultValue="approvals" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+            <TabsTrigger value="approvals" className="text-xs gap-1.5"><UserCheck className="size-3.5" />Approvals</TabsTrigger>
+            <TabsTrigger value="bulk" className="text-xs gap-1.5"><Users className="size-3.5" />Bulk Import</TabsTrigger>
+            <TabsTrigger value="tournament" className="text-xs gap-1.5"><Trophy className="size-3.5" />Tournament</TabsTrigger>
+            <TabsTrigger value="picks" className="text-xs gap-1.5"><ClipboardList className="size-3.5" />Submissions</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="approvals" className="mt-6"><ApprovalsTab /></TabsContent>
+          <TabsContent value="bulk" className="mt-6"><BulkImportTab /></TabsContent>
+          <TabsContent value="tournament" className="mt-6"><TournamentTab /></TabsContent>
+          <TabsContent value="picks" className="mt-6"><SubmissionsTab /></TabsContent>
+        </Tabs>
+      </div>
+    </TooltipProvider>
   );
 }
 
-
-function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
-  const [name, setName] = useState("");
-  const [course, setCourse] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [lockAt, setLockAt] = useState("");
-
-  const { data: tournaments = [], refetch } = useQuery({
-    queryKey: ["admin-tournaments"],
+/* ============================================================
+   TAB 1 — USER APPROVAL QUEUE
+   ============================================================ */
+function ApprovalsTab() {
+  const qc = useQueryClient();
+  const { data: pending = [], isLoading } = useQuery({
+    queryKey: ["admin-pending-profiles"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("tournaments").select("*").order("start_date");
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nickname, email, first_name, last_name, phone, team_nickname, referral_name, created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
-  async function create() {
-    if (!name || !course || !startDate || !endDate || !lockAt) {
-      toast.error("Fill all fields"); return;
+  async function setStatus(id: string, status: Status, label: string) {
+    const { error } = await supabase.from("profiles").update({ status }).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`User ${label}`);
+      qc.invalidateQueries({ queryKey: ["admin-pending-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-approved-profiles"] });
     }
-    const { error } = await supabase.from("tournaments").insert({
-      name, location: course, start_date: startDate, end_date: endDate, submission_deadline: new Date(lockAt).toISOString(), status: "upcoming",
-    });
-    if (error) toast.error(error.message);
-    else { toast.success("Tournament created"); setName(""); setCourse(""); setStartDate(""); setEndDate(""); setLockAt(""); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
-  }
-
-  async function updateStatus(id: string, status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed") {
-    const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
-    if (error) toast.error(error.message);
-    else { toast.success(`Status → ${status}`); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
   }
 
   return (
-    <div className="grid lg:grid-cols-2 gap-8">
-      <div>
-        <h2 className="font-display text-lg uppercase mb-4">Create Tournament</h2>
-        <div className="space-y-3 bg-card p-6 border border-border">
-          <Field label="Name"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="The Masters" /></Field>
-          <Field label="Course"><input className={inputCls} value={course} onChange={(e) => setCourse(e.target.value)} placeholder="Augusta National GC" /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Start Date"><input type="date" className={inputCls} value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
-            <Field label="End Date"><input type="date" className={inputCls} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Pending Approval Queue</span>
+          <span className="text-xs font-mono text-muted-foreground">{pending.length} waiting</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground p-4">Loading…</p>
+        ) : pending.length === 0 ? (
+          <Alert>
+            <CheckCircle2 className="size-4" />
+            <AlertTitle>All clear</AlertTitle>
+            <AlertDescription>No users are awaiting approval.</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Team</TableHead>
+                  <TableHead>Referral</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pending.map((p) => {
+                  const full = [p.first_name, p.last_name].filter(Boolean).join(" ") || p.nickname;
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        <div className="font-medium">{full}</div>
+                        <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">{p.phone ?? "—"}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{p.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{p.referral_name ?? "—"}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => setStatus(p.id, "approved", "approved")}
+                          >
+                            <UserCheck className="size-3.5" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-rose-600 hover:bg-rose-700 text-white"
+                            onClick={() => setStatus(p.id, "rejected", "rejected")}
+                          >
+                            <UserX className="size-3.5" /> Reject
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-          <Field label="Lock Cutoff (server time)">
-            <input type="datetime-local" className={inputCls} value={lockAt} onChange={(e) => setLockAt(e.target.value)} />
-          </Field>
-          <button onClick={create} className="w-full py-3 font-display text-xs uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
-            Create
-          </button>
-        </div>
-      </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-      <div>
-        <h2 className="font-display text-lg uppercase mb-4">Existing Tournaments</h2>
-        <div className="space-y-2">
-          {tournaments.length === 0 && <p className="text-sm text-muted-foreground">None yet.</p>}
-          {tournaments.map((t: any) => (
-            <div key={t.id} className="bg-card p-4 border border-border">
-              <div className="flex justify-between items-start gap-3">
-                <div className="min-w-0">
-                  <div className="font-display text-sm uppercase">{t.name}</div>
-                  <div className="text-xs text-muted-foreground">{t.location}</div>
-                  <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "var(--gold)" }}>{t.status}</div>
-                </div>
-                <select
-                  value={t.status}
-                  onChange={(e) => updateStatus(t.id, e.target.value as "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed")}
-                  className="text-xs border border-input px-2 py-1 bg-white"
-                >
-                  <option value="upcoming">upcoming</option>
-                  <option value="open_for_picks">open</option>
-                  <option value="picks_closed">locked</option>
-                  <option value="live">live</option>
-                  <option value="completed">completed</option>
-                </select>
+/* ============================================================
+   TAB 2 — BULK USER GENERATION
+   ============================================================ */
+function BulkImportTab() {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<null | { succeeded: number; failed: number; results: Array<{ email: string; ok: boolean; error?: string }> }>(null);
+  const bulk = useServerFn(bulkCreateApprovedUsers);
+  const qc = useQueryClient();
+
+  const parsed = useMemo(() => {
+    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; team_nickname: string; referral_name: string }> = [];
+    const errors: Array<{ line: number; reason: string }> = [];
+    text.split(/\r?\n/).forEach((raw, idx) => {
+      const line = idx + 1;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      const parts = trimmed.split(",").map((p) => p.trim());
+      if (parts.length < 1 || !parts[0]) {
+        errors.push({ line, reason: "Missing email" });
+        return;
+      }
+      const [email, first_name = "", last_name = "", phone = "", team_nickname = "", referral_name = ""] = parts;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push({ line, reason: `Invalid email: ${email}` });
+        return;
+      }
+      rows.push({ email, first_name, last_name, phone, team_nickname, referral_name });
+    });
+    return { rows, errors };
+  }, [text]);
+
+  async function execute() {
+    if (parsed.rows.length === 0 || parsed.errors.length > 0) return;
+    setBusy(true);
+    setReport(null);
+    try {
+      const res = await bulk({ data: { rows: parsed.rows } });
+      setReport(res);
+      if (res.succeeded > 0) toast.success(`Created ${res.succeeded} approved user${res.succeeded === 1 ? "" : "s"}`);
+      if (res.failed > 0) toast.error(`${res.failed} row${res.failed === 1 ? "" : "s"} failed`);
+      qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-approved-profiles"] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Bulk import failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bulk User Generation</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Alert>
+          <Upload className="size-4" />
+          <AlertTitle>Expected Format</AlertTitle>
+          <AlertDescription>
+            <code className="text-xs font-mono">Email, FirstName, LastName, Phone, TeamName, ReferralName</code>
+            <p className="text-xs mt-1 text-muted-foreground">One user per line. Only Email is required. Accounts are auto-approved.</p>
+          </AlertDescription>
+        </Alert>
+
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={"jane@example.com, Jane, Doe, 555-1212, Birdie Brigade, Mike\njohn@example.com, John, Smith"}
+          className="min-h-[220px] font-mono text-sm"
+        />
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button onClick={execute} disabled={busy || parsed.rows.length === 0 || parsed.errors.length > 0}>
+            {busy ? "Importing…" : `Execute Bulk Import (${parsed.rows.length})`}
+          </Button>
+          <div className="text-xs font-mono text-muted-foreground">
+            <span className="text-emerald-600">{parsed.rows.length} valid</span>
+            {" · "}
+            <span className="text-destructive">{parsed.errors.length} errors</span>
+          </div>
+        </div>
+
+        {parsed.errors.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Fix these rows before importing</AlertTitle>
+            <AlertDescription>
+              <ul className="text-xs mt-1 list-disc pl-5">
+                {parsed.errors.map((e) => (
+                  <li key={e.line}>Line {e.line}: {e.reason}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {report && (
+          <div className="border rounded-md p-3 text-xs space-y-1 max-h-64 overflow-y-auto">
+            <div className="font-bold">Result: {report.succeeded} succeeded, {report.failed} failed</div>
+            {report.results.map((r, i) => (
+              <div key={i} className={r.ok ? "text-emerald-600" : "text-destructive"}>
+                {r.ok ? "✓" : "✗"} {r.email}{r.error ? ` — ${r.error}` : ""}
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function GolfersAdmin(_props: { qc: ReturnType<typeof useQueryClient> }) {
-  return (
-    <div className="bg-card border border-border p-8 max-w-2xl">
-      <h2 className="font-display text-lg uppercase mb-3">Golfers are per-tournament</h2>
-      <p className="text-sm text-muted-foreground mb-4">
-        With the new schema, each tournament has its own field of golfers. Open a tournament's <span className="font-bold">Field</span> page to add, edit, and bucket its golfers.
-      </p>
-      <Link
-        to="/admin"
-        search={{}}
-        className="inline-block text-xs uppercase tracking-widest underline"
-      >
-        Go to Overview → choose a tournament → Field
-      </Link>
-    </div>
-  );
-}
-
-const inputCls = "w-full px-3 py-2 border border-input bg-white text-sm rounded-sm focus:outline-none focus:border-primary";
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function UsersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
-
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["admin-profiles"],
+/* ============================================================
+   TAB 3 — TOURNAMENT FIELD MANAGER
+   ============================================================ */
+function TournamentTab() {
+  const qc = useQueryClient();
+  const { data: tournaments = [] } = useQuery({
+    queryKey: ["admin-tournaments-list"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("profiles").select("id, nickname, email, status, created_at")
-        .order("created_at", { ascending: false });
+        .from("tournaments")
+        .select("id, name, location, status, start_date, end_date, submission_deadline, logo_url")
+        .order("start_date", { ascending: false });
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = tournaments.find((t) => t.id === selectedId) ?? tournaments[0] ?? null;
+
   return (
-    <div>
-      <h2 className="font-display text-lg uppercase mb-4">Users ({profiles.length})</h2>
-      <div className="space-y-2">
-        {profiles.map((p: any) => (
-          <div key={p.id} className="bg-card border border-border">
-            <button
-              onClick={() => setExpandedUserId(expandedUserId === p.id ? null : p.id)}
-              className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30"
+    <div className="space-y-6">
+      <CreateTournamentForm onCreated={(id) => { qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] }); setSelectedId(id); }} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+            <span>Manage Existing Tournament</span>
+            <select
+              value={selected?.id ?? ""}
+              onChange={(e) => setSelectedId(e.target.value)}
+              className="text-xs px-2 py-1 border border-input rounded-md bg-background"
             >
-              <div>
-                <div className="font-display text-sm uppercase">{p.nickname}</div>
-                <div className="text-xs text-muted-foreground">{p.email}</div>
-              </div>
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                {expandedUserId === p.id ? "Hide" : "Manage"}
-              </span>
-            </button>
-            {expandedUserId === p.id && <UserPickManager userId={p.id} qc={qc} />}
-          </div>
-        ))}
-        {profiles.length === 0 && <p className="text-sm text-muted-foreground">No users yet.</p>}
-      </div>
+              {tournaments.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!selected ? (
+            <p className="text-sm text-muted-foreground">Create a tournament to begin.</p>
+          ) : (
+            <div className="space-y-6">
+              <RosterDiagnostics tournamentId={selected.id} />
+              <AdvancedFieldPortal tournamentId={selected.id} tournamentName={selected.name} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof useQueryClient> }) {
-  const [newTeamName, setNewTeamName] = useState("");
-  const [editTeamId, setEditTeamId] = useState<string | null>(null);
-  const [editTeamName, setEditTeamName] = useState("");
+function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }) {
+  const [form, setForm] = useState({
+    name: "",
+    location: "",
+    logo_url: "",
+    start_date: "",
+    end_date: "",
+    submission_deadline: "",
+    status: "upcoming" as TournamentStatus,
+  });
+  const [saving, setSaving] = useState(false);
 
-  const { data: teams = [], refetch: refetchTeams } = useQuery({
-    queryKey: ["admin-user-teams", userId],
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name || !form.location || !form.start_date || !form.end_date || !form.submission_deadline) {
+      toast.error("Fill in all required fields");
+      return;
+    }
+    setSaving(true);
+    const { data, error } = await supabase.from("tournaments").insert({
+      name: form.name,
+      location: form.location,
+      logo_url: form.logo_url || null,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      submission_deadline: new Date(form.submission_deadline).toISOString(),
+      status: form.status,
+    }).select("id").single();
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Tournament created");
+    setForm({ name: "", location: "", logo_url: "", start_date: "", end_date: "", submission_deadline: "", status: "upcoming" });
+    onCreated(data.id);
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Create New Tournament</CardTitle></CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={120} /></div>
+          <div><Label>Location *</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} maxLength={120} /></div>
+          <div className="md:col-span-2"><Label>Logo URL</Label><Input value={form.logo_url} onChange={(e) => setForm({ ...form, logo_url: e.target.value })} placeholder="https://…" /></div>
+          <div><Label>Start Date *</Label><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
+          <div><Label>End Date *</Label><Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
+          <div><Label>Submission Deadline *</Label><Input type="datetime-local" value={form.submission_deadline} onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })} /></div>
+          <div>
+            <Label>Status</Label>
+            <select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value as TournamentStatus })}
+              className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
+            >
+              {(Object.keys(TSTATUS_LABEL) as TournamentStatus[]).map((s) => (
+                <option key={s} value={s}>{TSTATUS_LABEL[s]}</option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <Button type="submit" disabled={saving}>{saving ? "Creating…" : "Create Tournament"}</Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RosterDiagnostics({ tournamentId }: { tournamentId: string }) {
+  const { data: golfers = [] } = useQuery({
+    queryKey: ["admin-roster-diag", tournamentId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("teams").select("*").eq("owner_user_id", userId).order("is_primary", { ascending: false });
+        .from("golfers")
+        .select("bucket_number")
+        .eq("tournament_id", tournamentId);
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
-  async function addTeam() {
-    if (!newTeamName.trim()) { toast.error("Enter a nickname"); return; }
-    const { error } = await supabase.from("teams").insert({
-      owner_user_id: userId, nickname: newTeamName.trim(), is_primary: false,
-    });
-    if (error) { toast.error(error.message); return; }
-    toast.success("Team added");
-    setNewTeamName("");
-    refetchTeams();
-    qc.invalidateQueries({ queryKey: ["teams"] });
-  }
+  const chart = useMemo(() => {
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
+    for (const g of golfers) counts[g.bucket_number] = (counts[g.bucket_number] ?? 0) + 1;
+    return [1, 2, 3, 4, 5, 6, 7].map((b) => ({ bucket: `B${b}`, count: counts[b] ?? 0 }));
+  }, [golfers]);
 
-  async function saveTeam(teamId: string) {
-    if (!editTeamName.trim()) { toast.error("Nickname required"); return; }
-    const { error } = await supabase.from("teams").update({ nickname: editTeamName.trim() }).eq("id", teamId);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Team updated");
-    setEditTeamId(null);
-    refetchTeams();
-    qc.invalidateQueries({ queryKey: ["teams"] });
-  }
+  const warnings = chart.filter((c) => c.count > 0 && c.count < 4);
 
-  async function deleteTeam(teamId: string, isPrimary: boolean) {
-    if (isPrimary) { toast.error("Cannot delete the primary team"); return; }
-    if (!confirm("Delete this team and all of its picks?")) return;
-    const { error } = await supabase.from("teams").delete().eq("id", teamId);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Team deleted");
-    refetchTeams();
-    qc.invalidateQueries({ queryKey: ["teams"] });
-    qc.invalidateQueries({ queryKey: ["picks"] });
-  }
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Roster Balance Diagnostics</CardTitle></CardHeader>
+      <CardContent>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chart}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="bucket" />
+              <YAxis allowDecimals={false} />
+              <ReTooltip />
+              <ReferenceLine y={4} stroke="#dc2626" strokeDasharray="4 4" label={{ value: "Min 4", fontSize: 10, fill: "#dc2626" }} />
+              <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        {warnings.length > 0 && (
+          <Alert variant="destructive" className="mt-3">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Asymmetry Warning</AlertTitle>
+            <AlertDescription className="text-xs">
+              Bucket{warnings.length > 1 ? "s" : ""} {warnings.map((w) => w.bucket).join(", ")} below the 4-entry threshold.
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
+/* ============================================================
+   TAB 4 — SUBMISSIONS LEADERBOARD
+   ============================================================ */
+function SubmissionsTab() {
+  const { data: tournaments = [] } = useQuery({
+    queryKey: ["admin-tournaments-picks-list"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, start_date")
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const activeId = tournamentId ?? tournaments[0]?.id ?? null;
 
-  const teamIds = teams.map((t: any) => t.id);
-  const { data: picks = [], refetch: refetchPicks } = useQuery({
-    queryKey: ["admin-user-picks", userId, teamIds.join(",")],
-    enabled: teamIds.length > 0,
+  const { data: approved = [] } = useQuery({
+    queryKey: ["admin-approved-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nickname, email, first_name, last_name, phone, team_nickname")
+        .eq("status", "approved");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ["admin-teams-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, owner_user_id, nickname, is_primary");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: picks = [] } = useQuery({
+    enabled: !!activeId,
+    queryKey: ["admin-picks-for-tournament", activeId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("id, team_id, tournament_id, bucket, golfer_id, submitted_at, tweak_count, tournament:tournaments(name), golfer:golfers(golfer_name)")
-        .in("team_id", teamIds);
+        .select("team_id, bucket, golfer_id, tweak_count")
+        .eq("tournament_id", activeId!);
       if (error) throw error;
-      return data as any[];
+      return data ?? [];
     },
   });
 
-  async function deletePick(id: string) {
-    if (!confirm("Delete this pick? This bypasses the lock.")) return;
-    const { error } = await supabase.from("picks").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Pick deleted");
-    refetchPicks();
-    qc.invalidateQueries({ queryKey: ["picks"] });
-    qc.invalidateQueries({ queryKey: ["roster-status"] });
+  const { data: golfers = [] } = useQuery({
+    enabled: !!activeId,
+    queryKey: ["admin-golfers-for-tournament", activeId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("golfers")
+        .select("id, golfer_name, bucket_number")
+        .eq("tournament_id", activeId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const golferById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of golfers) m.set(g.id, g.golfer_name);
+    return m;
+  }, [golfers]);
+
+  // Group picks by team
+  const picksByTeam = useMemo(() => {
+    const m = new Map<string, { buckets: Record<number, string>; tweaks: number }>();
+    for (const p of picks) {
+      const entry = m.get(p.team_id) ?? { buckets: {}, tweaks: 0 };
+      entry.buckets[p.bucket] = p.golfer_id;
+      entry.tweaks = Math.max(entry.tweaks, p.tweak_count ?? 0);
+      m.set(p.team_id, entry);
+    }
+    return m;
+  }, [picks]);
+
+  // Build rows: approved users who own primary team, with picks if present
+  const rows = useMemo(() => {
+    const teamByOwner = new Map<string, { id: string; nickname: string }>();
+    for (const t of teams) {
+      if (t.is_primary) teamByOwner.set(t.owner_user_id, { id: t.id, nickname: t.nickname });
+    }
+    return approved.map((u) => {
+      const team = teamByOwner.get(u.id);
+      const entry = team ? picksByTeam.get(team.id) : undefined;
+      return {
+        userId: u.id,
+        fullName: [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname,
+        email: u.email ?? "",
+        phone: u.phone ?? "",
+        teamName: team?.nickname ?? u.team_nickname ?? "—",
+        buckets: entry?.buckets ?? {},
+        tweaks: entry?.tweaks ?? 0,
+        hasSubmission: !!entry,
+      };
+    });
+  }, [approved, teams, picksByTeam]);
+
+  const totalApproved = approved.length;
+  const totalSubmissions = rows.filter((r) => r.hasSubmission).length;
+  const missing = rows.filter((r) => !r.hasSubmission);
+
+  function copyEmails() {
+    const list = missing.map((m) => m.email).filter(Boolean).join(", ");
+    navigator.clipboard.writeText(list).then(
+      () => toast.success(`Copied ${missing.length} email${missing.length === 1 ? "" : "s"}`),
+      () => toast.error("Clipboard copy failed"),
+    );
   }
 
-  // Group by team → tournament; detect duplicate buckets within a (team, tournament)
-  const grouped: Record<string, Record<string, any[]>> = {};
-  for (const p of picks) {
-    grouped[p.team_id] ??= {};
-    grouped[p.team_id][p.tournament_id] ??= [];
-    grouped[p.team_id][p.tournament_id].push(p);
+  function exportCsv() {
+    const headers = ["Full Name", "Email", "Phone", "Team", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "Tweaks"];
+    const lines = [headers.join(",")];
+    for (const r of rows) {
+      const cells = [
+        r.fullName,
+        r.email,
+        r.phone,
+        r.teamName,
+        ...[1, 2, 3, 4, 5, 6, 7].map((b) => golferById.get(r.buckets[b]) ?? ""),
+        String(r.tweaks),
+      ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
+      lines.push(cells.join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const tname = tournaments.find((t) => t.id === activeId)?.name ?? "tournament";
+    a.href = url;
+    a.download = `picks-${tname.replace(/\s+/g, "-").toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="border-t border-border p-4 bg-muted/20 space-y-4">
-      <div className="flex gap-2 items-center pb-3 border-b border-border">
-        <input
-          value={newTeamName}
-          onChange={(e) => setNewTeamName(e.target.value)}
-          placeholder="New team nickname…"
-          className="flex-1 px-2 py-1 text-xs border border-input bg-white"
-        />
-        <button onClick={addTeam} className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
-          Add team
-        </button>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Label className="text-xs uppercase tracking-widest">Tournament</Label>
+        <select
+          value={activeId ?? ""}
+          onChange={(e) => setTournamentId(e.target.value)}
+          className="text-sm px-3 py-1.5 border border-input rounded-md bg-background"
+        >
+          {tournaments.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
       </div>
-      {teams.length === 0 && <p className="text-xs text-muted-foreground">No teams.</p>}
-      {teams.map((team: any) => {
-        const tournaments = grouped[team.id] ?? {};
-        return (
-          <div key={team.id}>
-            <div className="flex items-center justify-between mb-2 gap-2">
-              {editTeamId === team.id ? (
-                <>
-                  <input
-                    value={editTeamName}
-                    onChange={(e) => setEditTeamName(e.target.value)}
-                    className="flex-1 px-2 py-1 text-xs border border-input bg-white"
-                  />
-                  <button onClick={() => saveTeam(team.id)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save</button>
-                  <button onClick={() => setEditTeamId(null)} className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border">Cancel</button>
-                </>
-              ) : (
-                <>
-                  <div className="font-display text-xs uppercase flex-1" style={{ color: "var(--gold)" }}>
-                    {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
-                  </div>
-                  <button
-                    onClick={() => { setEditTeamId(team.id); setEditTeamName(team.nickname); }}
-                    className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border hover:bg-muted"
-                  >Edit</button>
-                  {!team.is_primary && (
-                    <button
-                      onClick={() => deleteTeam(team.id, team.is_primary)}
-                      className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-destructive text-destructive hover:bg-destructive hover:text-white"
-                    >Delete</button>
-                  )}
-                </>
-              )}
-            </div>
 
-            {Object.keys(tournaments).length === 0 ? (
-              <p className="text-xs text-muted-foreground pl-2">No picks yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(tournaments).map(([tid, ps]) => {
-                  const bucketCounts: Record<number, number> = {};
-                  for (const p of ps) bucketCounts[p.bucket] = (bucketCounts[p.bucket] ?? 0) + 1;
-                  return (
-                    <div key={tid} className="bg-card border border-border p-3">
-                      <div className="text-xs font-bold mb-2">{ps[0]?.tournament?.name ?? tid}</div>
-                      <div className="space-y-1">
-                        {ps.sort((a, b) => a.bucket - b.bucket).map((p) => {
-                          const isExtra = bucketCounts[p.bucket] > 1;
-                          return (
-                            <div key={p.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b border-border last:border-0">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-mono text-muted-foreground">B{p.bucket}</span>
-                                <span className="truncate">{p.golfer?.golfer_name ?? p.golfer_id}</span>
-                                {isExtra && (
-                                  <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5" style={{ backgroundColor: "var(--alert)", color: "white" }}>
-                                    Extra
-                                  </span>
-                                )}
-                              </div>
-                              <button
-                                onClick={() => deletePick(p.id)}
-                                className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 border border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Kpi label="Total Active Approved Users" value={totalApproved} />
+        <Kpi label="Total Submissions Made" value={totalSubmissions} />
+        <Kpi label="Missing Entries" value={missing.length} highlight={missing.length > 0} />
+      </div>
+
+      {missing.length > 0 && (
+        <Alert>
+          <AlertTriangle className="size-4" />
+          <AlertTitle className="flex items-center justify-between flex-wrap gap-2">
+            <span>{missing.length} approved user{missing.length === 1 ? "" : "s"} have not submitted</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={copyEmails}>
+                  <Copy className="size-3.5" /> Copy All Email Addresses
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Comma-separated, ready to paste into an email blast.</TooltipContent>
+            </Tooltip>
+          </AlertTitle>
+          <AlertDescription>
+            <div className="mt-2 max-h-48 overflow-y-auto text-xs">
+              <table className="w-full">
+                <tbody>
+                  {missing.map((m) => (
+                    <tr key={m.userId} className="border-b last:border-0">
+                      <td className="py-1 pr-2">{m.fullName}</td>
+                      <td className="py-1 pr-2 text-muted-foreground">{m.teamName}</td>
+                      <td className="py-1 text-muted-foreground">{m.email}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+            <span>Submissions Spreadsheet</span>
+            <Button size="sm" variant="outline" onClick={exportCsv}>
+              <Download className="size-3.5" /> Export Picks to CSV
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Team</TableHead>
+                {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                  <TableHead key={b}>Bucket {b}</TableHead>
+                ))}
+                <TableHead className="text-right">Tweaks</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.userId}>
+                  <TableCell>
+                    <div className="font-medium">{r.fullName}</div>
+                    <div className="text-xs text-muted-foreground">{r.email}</div>
+                    <div className="text-xs text-muted-foreground">{r.phone}</div>
+                  </TableCell>
+                  <TableCell className="text-sm">{r.teamName}</TableCell>
+                  {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                    <TableCell key={b} className="text-xs">
+                      {golferById.get(r.buckets[b]) ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+function Kpi({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <Card className={highlight ? "border-destructive" : ""}>
+      <CardContent className="p-5">
+        <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">{label}</div>
+        <div className={`font-display text-4xl mt-1 ${highlight ? "text-destructive" : ""}`}>{value}</div>
+      </CardContent>
+    </Card>
   );
 }
