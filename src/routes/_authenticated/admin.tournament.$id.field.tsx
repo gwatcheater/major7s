@@ -49,6 +49,10 @@ function AdminFieldPage() {
   const [bulkText, setBulkText] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkLog, setBulkLog] = useState<string[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [picksOpen, setPicksOpen] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; course: string; start_date: string; end_date: string; lock_at: string } | null>(null);
+
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
     queryKey: ["admin-field-tournament", id],
