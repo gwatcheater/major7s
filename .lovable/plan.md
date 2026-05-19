@@ -1,63 +1,48 @@
 ## Scope
 
-Two files change:
-- `src/routes/_authenticated/tournament.$id.tsx` — header polish, picks card refactor, vertical nav rows, edit button.
-- `src/routes/_authenticated/tournament.$id.lineup.tsx` — tweak counter fix across all 7 buckets.
+Rewrite `src/routes/_authenticated/profile.tsx` as `ProfileSettingsView`. No DB schema changes — `profiles` already has `first_name`, `last_name`, `phone`, `team_nickname`, `referral_name`, `nickname`, `email`.
 
-No DB migration. Schema stays one row per (team, tournament, bucket) — the requested `bucket_N_golfer_id` shape doesn't exist, so the tweak logic is adapted to the actual row-per-bucket model while preserving the requested semantics (any bucket differs → increment by 1, once per save).
+## Layout
 
-## 1. Header (TournamentHub)
+- `max-w-3xl mx-auto p-4 md:p-10`
+- Top: `← Back to Dashboard` link (`/home`) + header ("Profile & Settings").
+- Body: `flex flex-col gap-6` containing two `<section>` cards (`bg-card border rounded-md p-5 md:p-6`). Fully responsive; inputs use `py-2.5` for touch.
 
-- Keep current layout: logo `<img src={t.logo_url}>` with placeholder fallback, `font-display` title, `MapPin` + `t.location`, `Calendar` + `tournamentDateRange(start,end)`, status badge on the right using `STATUS_META`.
-- No structural change needed beyond confirming alignment; minor: make status badge accent map already covers `upcoming / open_for_picks / picks_closed / live / completed`.
+## 1. Personal Details card
 
-## 2. Picks Card Refactor
+`User` icon + "Personal Details" title.
 
-- **Remove** the tournament status `Badge` next to "Picks" title. Keep only ONE submission-state badge:
-  - `hasPicks` → green "Picks Submitted"
-  - else → red `destructive` "Not Entered"
-- **Top-right timestamp**: when `hasPicks`, show `Submitted: {new Date(lastEdited).toLocaleString()}` as subtle muted xs text.
-- **Team handle line**: `{teamHandle}` (from `profile.team_nickname` → `activeTeam.nickname` → `profile.nickname`) followed by green `CheckCircle2`. Remove the "Your Team ·" prefix; team name is the primary label.
-- **Tweaks line** (NEW): directly under team handle, render `text-xs text-muted-foreground` line: `Tweaks Made: {maxTweaks}` where `maxTweaks = Math.max(0, ...picks.map(p => p.tweak_count ?? 0))`.
-- **Roster grid**: keep the existing 7-row B1–B7 list when `hasPicks`.
-- **Empty state**: full-width "Submit Team Lineup →" button → `/tournament/$id/lineup` (disabled styling if `!canSubmit`).
-- **Edit Picks button** (NEW): when `hasPicks && canSubmit`, render below the roster a secondary "Edit Picks" `Link` button to `/tournament/$id/lineup`. Hidden when status ∈ {`picks_closed`, `live`, `completed`} or deadline passed.
+Form fields (controlled state hydrated from `useQuery` of `profiles`):
+- First Name / Last Name — `grid md:grid-cols-2 gap-4`, required.
+- **Team Name (Leaderboard Display)** — exact label, bound to `team_nickname` (also mirrored into `nickname` on save so leaderboard stays in sync). Subtext: "This unique name will be visible to all players on the master leaderboard."
+- Mobile Number — `type="tel" inputMode="tel"`, bound to `phone`, phone regex validation.
+- Referral Name — text input, bound to `referral_name`.
+- Email Address — disabled `<input>` showing `user.email` with absolutely-positioned `Lock` icon inside the field, plus subtext with lock icon: "Email address is tied to your account identity and cannot be changed."
+- **Save Changes** button at bottom: validates required fields + phone format, then `supabase.from("profiles").update({...}).eq("id", user.id)`. Success toast: `"Profile updated successfully"`. Invalidates `["profile"]`.
 
-## 3. Vertical Nav Rows
+## 2. Account Security card
 
-Change grid from `grid-cols-1 md:grid-cols-3` to a vertical stack: `flex flex-col gap-3`. Each row is full-width, white/`bg-card` background, slate border (`border-border`), uniform padding (`p-4`), left-aligned icon, label + optional subtext, right-aligned `ChevronRight`.
+`Shield` icon + "Account Security" title.
 
-- Row 1: `Trophy` "Leaderboard" → `/tournament/$id` (live standings).
-- Row 2: `BarChart3` "Statistics" — subtext "Pick stats & fun facts — Tap to view" → `/stats`.
-- Row 3: `FileText` "Blog" — `Collapsible` toggling `t.recap_blog` content.
+Three password inputs (`type="password"`, autoComplete hints):
+- Current Password
+- New Password (hint "Minimum 8 characters.")
+- Confirm New Password
 
-## 4. Tweak Calculation Fix (lineup.tsx)
+**Change Password** button:
+1. Validate all three present, new ≥ 8 chars.
+2. If `newPw !== confirmPw` → toast error "New password and confirmation do not match" and abort.
+3. Re-auth: `supabase.auth.signInWithPassword({ email, password: currentPw })`. On failure → toast "Current password is incorrect".
+4. `supabase.auth.updateUser({ password: newPw })` → toast "Password updated successfully" and clear all three fields.
 
-The current save loop increments `tweak_count` per-bucket-changed (one per row touched). The user wants exactly **+1 per save** if any of the 7 buckets differs from DB. Adapted to the row-per-bucket schema:
+## Removed from existing file
 
-```ts
-const buckets = [1,2,3,4,5,6,7];
-const existingByBucket = new Map(existingPicks.map(p => [p.bucket, p]));
+- Tab navigation + `TabButton` (single-page stack instead).
+- "Team Names" sub-section + `TeamRow` helper (team name now lives directly in Personal Details).
+- `useTeams` import.
 
-const hasChanges =
-  existingByBucket.get(1)?.golfer_id !== selections[1] ||
-  existingByBucket.get(2)?.golfer_id !== selections[2] ||
-  existingByBucket.get(3)?.golfer_id !== selections[3] ||
-  existingByBucket.get(4)?.golfer_id !== selections[4] ||
-  existingByBucket.get(5)?.golfer_id !== selections[5] ||
-  existingByBucket.get(6)?.golfer_id !== selections[6] ||
-  existingByBucket.get(7)?.golfer_id !== selections[7];
+## Notes
 
-const hadExisting = existingPicks.length > 0;
-const tweakIncrement = hadExisting && hasChanges ? 1 : 0;
-const currentTweaks = Math.max(0, ...existingPicks.map(p => p.tweak_count ?? 0));
-const newTweaks = currentTweaks + tweakIncrement;
-```
-
-Then in the upsert loop: for any inserted/updated row, write `tweak_count: newTweaks` and `last_edited_at: now()`. This ensures all 7 rows stay in lockstep and the counter increments exactly once per save when something actually changed.
-
-## Out of scope
-
-- No schema change (the user's `bucket_N_golfer_id` columns and `team_picks.tweaks_count` don't exist; mapping to actual `picks` rows preserves intent).
-- No new route; "Edit Picks" reuses `/tournament/$id/lineup`.
-- No changes to home feed, admin, or other routes.
+- Reuse the small `Field` + `Input` helpers (extended with `inputMode`/`autoComplete`) and `SkeletonForm`.
+- Keep styling tokens (`var(--gold)`, `var(--forest-deep)`) consistent with the rest of the app.
+- No new routes, no schema migration, no other files touched.
