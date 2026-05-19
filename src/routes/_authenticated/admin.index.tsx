@@ -28,10 +28,16 @@ function AdminPanel() {
 
   return (
     <div className="p-8 md:p-12 max-w-6xl">
-      <header className="mb-8">
-        <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Governance</p>
-        <h1 className="font-display text-4xl uppercase mt-1">Admin Panel</h1>
+      <header className="mb-8 flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Governance</p>
+          <h1 className="font-display text-4xl uppercase mt-1">Admin Panel</h1>
+        </div>
+        <Link to="/admin/users" className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
+          Manage Users →
+        </Link>
       </header>
+
 
       <div className="flex gap-1 border-b border-border mb-8">
         {(["overview", "tournaments", "golfers", "users"] as const).map((t) => (
