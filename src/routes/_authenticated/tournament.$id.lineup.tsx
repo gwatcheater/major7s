@@ -163,7 +163,7 @@ function LineupPicker() {
   );
   const liveTweaks = maxTweaks + (hasSubmission ? changedCount : 0);
   const teamHandle =
-    profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
+    activeTeam?.nickname || profile?.team_nickname || profile?.nickname || "Your Team";
 
   return (
     <div className="p-4 md:p-12 max-w-4xl">
