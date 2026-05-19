@@ -753,7 +753,7 @@ function SubmissionsTab() {
               ) : (
                 pivotedRows.map((r) => (
                   <TableRow key={r.teamId}>
-                    <TableCell className="text-sm">{r.teamName}</TableCell>
+                    <TableCell className="text-sm">{profileById.get(r.ownerUserId)?.team_nickname ?? "—"}</TableCell>
                     {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                       <TableCell key={b} className="text-xs">
                         {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
