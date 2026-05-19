@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./use-auth";
+import { useImpersonation } from "@/context/impersonation-context";
 
 export interface Team {
   id: string;
@@ -26,25 +27,33 @@ const TeamsContext = createContext<TeamsState>({
   refetch: () => {},
 });
 
-const STORAGE_KEY = "major7s.activeTeamId";
+const STORAGE_KEY_BASE = "major7s.activeTeamId";
 
 export function TeamsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { getEffectiveUserId } = useImpersonation();
+  const effectiveId = getEffectiveUserId(user?.id);
+  const storageKey = effectiveId ? `${STORAGE_KEY_BASE}:${effectiveId}` : STORAGE_KEY_BASE;
   const queryClient = useQueryClient();
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(STORAGE_KEY);
+    return window.localStorage.getItem(storageKey);
   });
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setActiveTeamIdState(window.localStorage.getItem(storageKey));
+  }, [storageKey]);
+
   const { data: teams = [], isLoading, refetch } = useQuery({
-    queryKey: ["teams", user?.id],
-    enabled: !!user,
+    queryKey: ["teams", effectiveId],
+    enabled: !!effectiveId,
     queryFn: async () => {
-      if (!user) return [];
+      if (!effectiveId) return [];
       const { data, error } = await supabase
         .from("teams")
         .select("*")
-        .eq("owner_user_id", user.id)
+        .eq("owner_user_id", effectiveId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -57,14 +66,13 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     if (!activeTeamId || !teams.find((t) => t.id === activeTeamId)) {
       const primary = teams.find((t) => t.is_primary) ?? teams[0];
       setActiveTeamIdState(primary.id);
-      window.localStorage.setItem(STORAGE_KEY, primary.id);
+      window.localStorage.setItem(storageKey, primary.id);
     }
-  }, [teams, activeTeamId]);
+  }, [teams, activeTeamId, storageKey]);
 
   const setActiveTeamId = (id: string) => {
     setActiveTeamIdState(id);
-    window.localStorage.setItem(STORAGE_KEY, id);
-    // Invalidate team-scoped queries
+    window.localStorage.setItem(storageKey, id);
     queryClient.invalidateQueries({ queryKey: ["picks"] });
     queryClient.invalidateQueries({ queryKey: ["roster-status"] });
   };

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useImpersonation } from "@/context/impersonation-context";
 import { toast } from "sonner";
 import { Loader2, Lock, User, Shield, ArrowLeft } from "lucide-react";
 
@@ -14,14 +15,16 @@ const PHONE_RE = /^[+]?[\d\s().-]{7,20}$/;
 
 function ProfileSettingsView() {
   const { user } = useAuth();
+  const { impersonatingId, getEffectiveUserId } = useImpersonation();
+  const effectiveId = getEffectiveUserId(user?.id);
   const qc = useQueryClient();
 
   const { data: profile, isLoading, refetch } = useQuery({
-    queryKey: ["profile", user?.id],
-    enabled: !!user,
+    queryKey: ["profile", effectiveId],
+    enabled: !!effectiveId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("profiles").select("*").eq("id", user!.id).single();
+        .from("profiles").select("*").eq("id", effectiveId!).single();
       if (error) throw error;
       return data;
     },
@@ -87,7 +90,7 @@ function ProfileSettingsView() {
       referral_name: referral.trim() || null,
       team_nickname: trimmedTeam,
       nickname: trimmedTeam,
-    }).eq("id", user!.id);
+    }).eq("id", effectiveId!);
     setSaving(false);
     if (error) { toast.error(`Update failed: ${error.message}`); return; }
     toast.success("Profile updated successfully");
@@ -167,7 +170,7 @@ function ProfileSettingsView() {
               <Field label="Email Address">
                 <div className="relative">
                   <input
-                    value={user.email ?? ""}
+                    value={profile?.email ?? user.email ?? ""}
                     disabled
                     readOnly
                     className="w-full px-3 py-2.5 pr-9 border border-input bg-muted text-sm rounded-sm text-muted-foreground cursor-not-allowed"
@@ -201,6 +204,9 @@ function ProfileSettingsView() {
           </div>
           <p className="text-xs text-muted-foreground mb-6">Update your password. You'll stay signed in on this device.</p>
 
+          {impersonatingId ? (
+            <p className="text-xs text-muted-foreground italic">Password changes are disabled in Shadow Mode.</p>
+          ) : (
           <div className="space-y-4">
             <Field label="Current Password">
               <Input value={currentPw} onChange={setCurrentPw} type="password" placeholder="••••••••" autoComplete="current-password" />
@@ -224,6 +230,7 @@ function ProfileSettingsView() {
               </button>
             </div>
           </div>
+          )}
         </section>
       </div>
     </div>

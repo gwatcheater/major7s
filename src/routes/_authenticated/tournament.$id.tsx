@@ -14,6 +14,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useAuth } from "@/hooks/use-auth";
+import { useImpersonation } from "@/context/impersonation-context";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -42,6 +43,8 @@ function statusMeta(status: string) {
 function TournamentHub() {
   const { id } = Route.useParams();
   const { user } = useAuth();
+  const { getEffectiveUserId } = useImpersonation();
+  const effectiveId = getEffectiveUserId(user?.id);
   const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [blogOpen, setBlogOpen] = useState(false);
@@ -82,13 +85,13 @@ function TournamentHub() {
   });
 
   const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    enabled: !!user,
+    queryKey: ["profile", effectiveId],
+    enabled: !!effectiveId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
         .select("team_nickname, nickname")
-        .eq("id", user!.id)
+        .eq("id", effectiveId!)
         .single();
       if (error) throw error;
       return data;

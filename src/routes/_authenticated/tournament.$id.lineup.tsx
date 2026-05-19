@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
+import { useImpersonation } from "@/context/impersonation-context";
 import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
@@ -25,6 +26,7 @@ const BUCKET_LABELS: Record<number, string> = {
 function LineupPicker() {
   const { id } = Route.useParams();
   const { activeTeam } = useTeams();
+  const { getEffectiveUserId, impersonatingId } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -62,12 +64,13 @@ function LineupPicker() {
   });
 
   const { data: profile } = useQuery({
-    queryKey: ["profile", "lineup"],
+    queryKey: ["profile", "lineup", impersonatingId ?? "self"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      const targetId = getEffectiveUserId(user?.id);
+      if (!targetId) return null;
       const { data } = await supabase.from("profiles")
-        .select("team_nickname, nickname").eq("id", user.id).maybeSingle();
+        .select("team_nickname, nickname").eq("id", targetId).maybeSingle();
       return data;
     },
   });

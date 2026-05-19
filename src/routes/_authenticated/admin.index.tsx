@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  EyeOff,
   ShieldAlert,
   UserCheck,
   UserX,
@@ -28,6 +29,7 @@ import {
   Trophy,
   Upload,
 } from "lucide-react";
+import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 import {
@@ -104,6 +106,24 @@ function AdminConsole() {
 /* ============================================================
    TAB 1 — USER APPROVAL QUEUE
    ============================================================ */
+function SimulateButton({ targetId, displayName }: { targetId: string; displayName: string }) {
+  const { startImpersonation } = useImpersonation();
+  const navigate = useNavigate();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => {
+        startImpersonation(targetId);
+        toast.success(`Simulation initialized: Acting as ${displayName}`);
+        navigate({ to: "/home" });
+      }}
+    >
+      <EyeOff className="size-3.5" /> 🕵️ Simulate User
+    </Button>
+  );
+}
+
 function ApprovalsTab() {
   const qc = useQueryClient();
   const { data: pending = [], isLoading } = useQuery({
@@ -186,6 +206,7 @@ function ApprovalsTab() {
                           >
                             <UserX className="size-3.5" /> Reject
                           </Button>
+                          <SimulateButton targetId={p.id} displayName={full} />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -741,27 +762,35 @@ function SubmissionsTab() {
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
                 <TableHead className="text-right">Tweaks</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pivotedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
                     No submissions yet for this tournament.
                   </TableCell>
                 </TableRow>
               ) : (
-                pivotedRows.map((r) => (
-                  <TableRow key={r.teamId}>
-                    <TableCell className="text-sm">{profileById.get(r.ownerUserId)?.team_nickname ?? "—"}</TableCell>
-                    {[1, 2, 3, 4, 5, 6, 7].map((b) => (
-                      <TableCell key={b} className="text-xs">
-                        {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
+                pivotedRows.map((r) => {
+                  const p = profileById.get(r.ownerUserId);
+                  const full = [p?.first_name, p?.last_name].filter(Boolean).join(" ") || p?.nickname || p?.team_nickname || "user";
+                  return (
+                    <TableRow key={r.teamId}>
+                      <TableCell className="text-sm">{p?.team_nickname ?? "—"}</TableCell>
+                      {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                        <TableCell key={b} className="text-xs">
+                          {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                      <TableCell className="text-right">
+                        <SimulateButton targetId={r.ownerUserId} displayName={full} />
                       </TableCell>
-                    ))}
-                    <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
-                  </TableRow>
-                ))
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
