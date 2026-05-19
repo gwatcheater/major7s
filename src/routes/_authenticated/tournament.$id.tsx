@@ -64,7 +64,7 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("bucket, golfer_id, last_edited_at, submitted_at, tweak_count")
+        .select("id, bucket, golfer_id, last_edited_at, submitted_at, tweak_count")
         .eq("team_id", activeTeam!.id)
         .eq("tournament_id", id);
       if (error) throw error;
