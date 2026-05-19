@@ -1,7 +1,4 @@
-// Computes the TanStack Router link target for a tournament card.
-// The hub route ("/tournament/$id") is used unless the tournament is currently
-// "open_for_picks" AND the lock cutoff is still in the future, in which case we deep-link
-// straight into the lineup picker.
+// Tournament card always links to the hub. The hub provides "Enter Lineup".
 export interface TournamentLinkInput {
   id: string;
   status: string;
@@ -9,18 +6,13 @@ export interface TournamentLinkInput {
 }
 
 export interface TournamentLinkTarget {
-  to: "/tournament/$id" | "/tournament/$id/lineup";
+  to: "/tournament/$id";
   params: { id: string };
 }
 
 export function tournamentCardLink(
   t: TournamentLinkInput,
-  nowMs: number = Date.now(),
+  _nowMs: number = Date.now(),
 ): TournamentLinkTarget {
-  const lockExpired = new Date(t.submission_deadline).getTime() <= nowMs;
-  const goToLineup = t.status === "open_for_picks" && !lockExpired;
-  return {
-    to: goToLineup ? "/tournament/$id/lineup" : "/tournament/$id",
-    params: { id: t.id },
-  };
+  return { to: "/tournament/$id", params: { id: t.id } };
 }

@@ -154,37 +154,21 @@ async function renderHome() {
 // --- Tests ----------------------------------------------------------------
 
 describe("tournamentCardLink helper", () => {
-  it("deep-links to /lineup when open and lock is in the future", () => {
-    const now = Date.parse("2026-01-01T00:00:00Z");
+  it.each([
+    ["open_for_picks", "2099-01-01T00:00:00Z"],
+    ["open_for_picks", "2020-01-01T00:00:00Z"],
+    ["upcoming", "2099-01-01T00:00:00Z"],
+    ["picks_closed", "2099-01-01T00:00:00Z"],
+    ["live", "2099-01-01T00:00:00Z"],
+    ["completed", "2099-01-01T00:00:00Z"],
+  ])("always routes to the hub (status=%s)", (status, deadline) => {
     expect(
       tournamentCardLink(
-        { id: "a", status: "open_for_picks", submission_deadline: "2026-06-01T00:00:00Z" },
-        now,
+        { id: "x", status, submission_deadline: deadline },
+        Date.parse("2026-01-01T00:00:00Z"),
       ),
-    ).toEqual({ to: "/tournament/$id/lineup", params: { id: "a" } });
+    ).toEqual({ to: "/tournament/$id", params: { id: "x" } });
   });
-
-  it("falls back to hub when open but lock has expired", () => {
-    const now = Date.parse("2026-01-01T00:00:00Z");
-    expect(
-      tournamentCardLink(
-        { id: "a", status: "open_for_picks", submission_deadline: "2020-01-01T00:00:00Z" },
-        now,
-      ),
-    ).toEqual({ to: "/tournament/$id", params: { id: "a" } });
-  });
-
-  it.each(["upcoming", "picks_closed", "live", "completed"])(
-    "routes to hub for status=%s",
-    (status) => {
-      expect(
-        tournamentCardLink(
-          { id: "x", status, submission_deadline: "2099-01-01T00:00:00Z" },
-          Date.parse("2026-01-01T00:00:00Z"),
-        ),
-      ).toEqual({ to: "/tournament/$id", params: { id: "x" } });
-    },
-  );
 });
 
 describe("Home tournament cards (e2e render)", () => {
@@ -192,34 +176,31 @@ describe("Home tournament cards (e2e render)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders one anchor per tournament with the correct href + params", async () => {
+  it("every card's primary click target navigates to the hub", async () => {
     await renderHome();
-
-    const expected: Record<string, string> = {
-      "t-open-future": "/tournament/t-open-future/lineup",
-      "t-open-expired": "/tournament/t-open-expired",
-      "t-upcoming": "/tournament/t-upcoming",
-      "t-live": "/tournament/t-live",
-      "t-locked": "/tournament/t-locked",
-    };
 
     for (const t of tournaments) {
       const heading = screen.getByText(t.name);
-      const anchor = heading.closest("a");
-      expect(anchor, `anchor for ${t.id}`).not.toBeNull();
-      expect(anchor!.getAttribute("href")).toBe(expected[t.id]);
+      const card = heading.closest("div.relative.bg-card") as HTMLElement;
+      expect(card, `card for ${t.id}`).not.toBeNull();
+      const hubLink = within(card).getByLabelText(`Open ${t.name}`);
+      expect(hubLink.getAttribute("href")).toBe(`/tournament/${t.id}`);
     }
   });
 
-  it('shows "Enter Lineup" CTA only on cards whose link targets /lineup', async () => {
+  it('shows nested "Enter Lineup" link only when picks are open and unexpired', async () => {
     await renderHome();
 
-    const openCard = screen.getByText("Open Future Major").closest("a")!;
-    expect(within(openCard).getByText(/Enter Lineup/i)).toBeInTheDocument();
-    expect(openCard.getAttribute("href")).toMatch(/\/lineup$/);
+    const openCard = screen
+      .getByText("Open Future Major")
+      .closest("div.relative.bg-card") as HTMLElement;
+    const cta = within(openCard).getByText(/Enter Lineup/i).closest("a");
+    expect(cta).not.toBeNull();
+    expect(cta!.getAttribute("href")).toBe("/tournament/t-open-future/lineup");
 
-    const expiredCard = screen.getByText("Open Locked Major").closest("a")!;
+    const expiredCard = screen
+      .getByText("Open Locked Major")
+      .closest("div.relative.bg-card") as HTMLElement;
     expect(within(expiredCard).queryByText(/Enter Lineup/i)).toBeNull();
-    expect(expiredCard.getAttribute("href")).not.toMatch(/\/lineup$/);
   });
 });

@@ -104,16 +104,22 @@ function HomePage() {
             const isOpen = t.status === "open_for_picks";
             const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
             const link = tournamentCardLink(t);
+            const showLineupCta = isOpen && !lockExpired;
             return (
-              <Link
+              <div
                 key={t.id}
-                to={link.to}
-                params={link.params}
                 className="relative bg-card border border-border overflow-hidden flex flex-col md:flex-row hover:border-primary/30 transition-colors animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
-                <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }} />
-                <div className="flex-1 p-6 md:p-8">
+                {/* Full-card click target navigates to the hub */}
+                <Link
+                  to={link.to}
+                  params={link.params}
+                  aria-label={`Open ${t.name}`}
+                  className="absolute inset-0 z-10"
+                />
+                <div className="absolute top-0 left-0 w-1 h-full pointer-events-none" style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }} />
+                <div className="flex-1 p-6 md:p-8 relative pointer-events-none">
                   <div className="flex justify-between items-start mb-6 gap-4">
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--gold)" }}>
@@ -139,7 +145,7 @@ function HomePage() {
                     </div>
                   </div>
 
-                  {isOpen && !lockExpired ? (
+                  {showLineupCta ? (
                     <div className="flex items-end justify-between border-t border-border pt-4 mt-4 flex-wrap gap-4">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
@@ -147,9 +153,15 @@ function HomePage() {
                         </span>
                         <Countdown targetIso={t.submission_deadline} />
                       </div>
-                      <span className="px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
+                      <Link
+                        to="/tournament/$id/lineup"
+                        params={{ id: t.id }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="relative z-20 pointer-events-auto px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white"
+                        style={{ backgroundColor: "var(--forest-deep)" }}
+                      >
                         {complete ? "Edit Lineup →" : "Enter Lineup →"}
-                      </span>
+                      </Link>
                     </div>
                   ) : (
                     <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
@@ -157,7 +169,7 @@ function HomePage() {
                     </div>
                   )}
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>
