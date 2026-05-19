@@ -61,8 +61,20 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("bucket, golfer_id, last_edited_at, submitted_at, golfers(golfer_name)")
+        .select("bucket, golfer_id, last_edited_at, submitted_at, tweak_count")
         .eq("team_id", activeTeam!.id)
+        .eq("tournament_id", id);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: golfers = [] } = useQuery({
+    queryKey: ["golfers", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("golfers")
+        .select("id, golfer_name")
         .eq("tournament_id", id);
       if (error) throw error;
       return data ?? [];
@@ -91,10 +103,14 @@ function TournamentHub() {
   const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
   const canSubmit = t.status === "open_for_picks" && !lockExpired;
 
+  const golferNameById = new Map<string, string>(
+    golfers.map((g: any) => [g.id, g.golfer_name]),
+  );
+
   const picksByBucket = new Map<number, { name: string }>();
   let lastEdited = 0;
   for (const p of picks) {
-    const name = (p as any).golfers?.golfer_name ?? "—";
+    const name = golferNameById.get((p as any).golfer_id) ?? "—";
     picksByBucket.set(p.bucket as number, { name });
     const ts = new Date(p.last_edited_at as string).getTime();
     if (ts > lastEdited) lastEdited = ts;
@@ -184,14 +200,9 @@ function TournamentHub() {
                 const pick = picksByBucket.get(b);
                 return (
                   <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex items-center justify-center w-8 h-8 bg-muted text-xs font-bold">
-                        B{b}
-                      </span>
-                      <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Bucket {b}
-                      </span>
-                    </div>
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Bucket {b}
+                    </span>
                     <span className="text-sm font-medium text-right truncate">
                       {pick?.name ?? <span className="text-muted-foreground">—</span>}
                     </span>
