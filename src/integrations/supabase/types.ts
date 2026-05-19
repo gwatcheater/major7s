@@ -16,30 +16,41 @@ export type Database = {
     Tables: {
       golfers: {
         Row: {
-          aliases: Json
+          bucket_number: number
           created_at: string
+          golfer_name: string
           id: string
           owgr_rank: number | null
-          standard_name: string
+          tournament_id: string
           updated_at: string
         }
         Insert: {
-          aliases?: Json
+          bucket_number: number
           created_at?: string
+          golfer_name: string
           id?: string
           owgr_rank?: number | null
-          standard_name: string
+          tournament_id: string
           updated_at?: string
         }
         Update: {
-          aliases?: Json
+          bucket_number?: number
           created_at?: string
+          golfer_name?: string
           id?: string
           owgr_rank?: number | null
-          standard_name?: string
+          tournament_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "golfers_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       picks: {
         Row: {
@@ -165,86 +176,47 @@ export type Database = {
         }
         Relationships: []
       }
-      tournament_field: {
-        Row: {
-          created_at: string
-          golfer_id: string
-          id: string
-          owgr_bucket: number
-          tournament_id: string
-        }
-        Insert: {
-          created_at?: string
-          golfer_id: string
-          id?: string
-          owgr_bucket: number
-          tournament_id: string
-        }
-        Update: {
-          created_at?: string
-          golfer_id?: string
-          id?: string
-          owgr_bucket?: number
-          tournament_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tournament_field_golfer_id_fkey"
-            columns: ["golfer_id"]
-            isOneToOne: false
-            referencedRelation: "golfers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tournament_field_tournament_id_fkey"
-            columns: ["tournament_id"]
-            isOneToOne: false
-            referencedRelation: "tournaments"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       tournaments: {
         Row: {
           bucket_sizes: Json
-          course: string
           created_at: string
           end_date: string
           id: string
-          lock_at: string
+          location: string
           logo_url: string | null
           name: string
           recap_blog: string | null
           start_date: string
           status: Database["public"]["Enums"]["tournament_status"]
+          submission_deadline: string
           updated_at: string
         }
         Insert: {
           bucket_sizes?: Json
-          course: string
           created_at?: string
           end_date: string
           id?: string
-          lock_at: string
+          location: string
           logo_url?: string | null
           name: string
           recap_blog?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["tournament_status"]
+          submission_deadline: string
           updated_at?: string
         }
         Update: {
           bucket_sizes?: Json
-          course?: string
           created_at?: string
           end_date?: string
           id?: string
-          lock_at?: string
+          location?: string
           logo_url?: string | null
           name?: string
           recap_blog?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["tournament_status"]
+          submission_deadline?: string
           updated_at?: string
         }
         Relationships: []
@@ -285,8 +257,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
-      profile_status: "pending" | "approved" | "suspended"
-      tournament_status: "upcoming" | "open" | "locked" | "live" | "completed"
+      profile_status: "pending" | "approved" | "rejected"
+      tournament_status:
+        | "upcoming"
+        | "open_for_picks"
+        | "picks_closed"
+        | "live"
+        | "completed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -415,8 +392,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      profile_status: ["pending", "approved", "suspended"],
-      tournament_status: ["upcoming", "open", "locked", "live", "completed"],
+      profile_status: ["pending", "approved", "rejected"],
+      tournament_status: [
+        "upcoming",
+        "open_for_picks",
+        "picks_closed",
+        "live",
+        "completed",
+      ],
     },
   },
 } as const
