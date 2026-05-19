@@ -439,14 +439,52 @@ function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof
 
   return (
     <div className="border-t border-border p-4 bg-muted/20 space-y-4">
+      <div className="flex gap-2 items-center pb-3 border-b border-border">
+        <input
+          value={newTeamName}
+          onChange={(e) => setNewTeamName(e.target.value)}
+          placeholder="New team nickname…"
+          className="flex-1 px-2 py-1 text-xs border border-input bg-white"
+        />
+        <button onClick={addTeam} className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
+          Add team
+        </button>
+      </div>
       {teams.length === 0 && <p className="text-xs text-muted-foreground">No teams.</p>}
       {teams.map((team: any) => {
         const tournaments = grouped[team.id] ?? {};
         return (
           <div key={team.id}>
-            <div className="font-display text-xs uppercase mb-2" style={{ color: "var(--gold)" }}>
-              {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
+            <div className="flex items-center justify-between mb-2 gap-2">
+              {editTeamId === team.id ? (
+                <>
+                  <input
+                    value={editTeamName}
+                    onChange={(e) => setEditTeamName(e.target.value)}
+                    className="flex-1 px-2 py-1 text-xs border border-input bg-white"
+                  />
+                  <button onClick={() => saveTeam(team.id)} className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save</button>
+                  <button onClick={() => setEditTeamId(null)} className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border">Cancel</button>
+                </>
+              ) : (
+                <>
+                  <div className="font-display text-xs uppercase flex-1" style={{ color: "var(--gold)" }}>
+                    {team.nickname} {team.is_primary && <span className="text-[9px] text-muted-foreground">(primary)</span>}
+                  </div>
+                  <button
+                    onClick={() => { setEditTeamId(team.id); setEditTeamName(team.nickname); }}
+                    className="px-2 py-1 text-[10px] uppercase tracking-widest border border-border hover:bg-muted"
+                  >Edit</button>
+                  {!team.is_primary && (
+                    <button
+                      onClick={() => deleteTeam(team.id, team.is_primary)}
+                      className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-destructive text-destructive hover:bg-destructive hover:text-white"
+                    >Delete</button>
+                  )}
+                </>
+              )}
             </div>
+
             {Object.keys(tournaments).length === 0 ? (
               <p className="text-xs text-muted-foreground pl-2">No picks yet.</p>
             ) : (
