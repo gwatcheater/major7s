@@ -204,6 +204,9 @@ function ProfileSettingsView() {
           </div>
           <p className="text-xs text-muted-foreground mb-6">Update your password. You'll stay signed in on this device.</p>
 
+          {impersonatingId ? (
+            <p className="text-xs text-muted-foreground italic">Password changes are disabled in Shadow Mode.</p>
+          ) : (
           <div className="space-y-4">
             <Field label="Current Password">
               <Input value={currentPw} onChange={setCurrentPw} type="password" placeholder="••••••••" autoComplete="current-password" />
@@ -227,6 +230,7 @@ function ProfileSettingsView() {
               </button>
             </div>
           </div>
+          )}
         </section>
       </div>
     </div>
