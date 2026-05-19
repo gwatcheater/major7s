@@ -90,9 +90,22 @@ export function UsersDirectoryTab() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
-                          <Settings className="size-3.5" /> ⚙️ Manage Account
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
+                            <Settings className="size-3.5" /> ⚙️ Manage Account
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              startImpersonation(u.id);
+                              toast.success(`Simulation initialized: Acting as ${full}`);
+                              navigate({ to: "/home" });
+                            }}
+                          >
+                            <EyeOff className="size-3.5" /> 🕵️ Simulate User
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
