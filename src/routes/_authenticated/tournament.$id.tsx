@@ -85,13 +85,13 @@ function TournamentHub() {
   });
 
   const { data: profile } = useQuery({
-    queryKey: ["profile", user?.id],
-    enabled: !!user,
+    queryKey: ["profile", effectiveId],
+    enabled: !!effectiveId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
         .select("team_nickname, nickname")
-        .eq("id", user!.id)
+        .eq("id", effectiveId!)
         .single();
       if (error) throw error;
       return data;
