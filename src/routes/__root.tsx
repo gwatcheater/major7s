@@ -12,6 +12,8 @@ import appCss from "../styles.css?url";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { TeamsProvider } from "@/hooks/use-teams";
 import { NowProvider } from "@/hooks/use-now";
+import { ImpersonationProvider } from "@/context/impersonation-context";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
