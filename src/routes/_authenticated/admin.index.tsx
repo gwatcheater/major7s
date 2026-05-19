@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { AdminDesktopOnly } from "@/components/admin-desktop-only";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
-  component: AdminPanel,
+  component: () => <AdminDesktopOnly><AdminPanel /></AdminDesktopOnly>,
 });
 
 function AdminPanel() {
