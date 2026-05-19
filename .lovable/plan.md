@@ -1,84 +1,55 @@
-## Heads-up: 2 important nuances first
+# Multi-Team User Management + Shadow Mode Team Switcher
 
-1. **RLS already permits admin writes** to other users' picks / teams / profiles (existing policies use `has_role(auth.uid(), 'admin')`). So impersonation works client-side — no DB or service-role layer needed. The admin's real auth session keeps making the requests; we just *target a different user_id* in the WHERE clauses and inserts. No new server function is required.
-2. **`use-teams` is hard-bound to `useAuth().user.id`**. The cleanest place to inject impersonation is inside this hook so every consumer (lineup form, dashboard, header) automatically loads the impersonated user's teams without per-call changes.
+## 1. New file: `src/components/admin/users-directory-tab.tsx`
 
----
+Self-contained tab exporting `UsersDirectoryTab`.
 
-## File-by-file plan
+- **Master table** — queries `profiles` (id, nickname, email, first/last name, team_nickname, status) ordered by `created_at desc`. Columns: User · Email · Primary Team · Status badge · Actions. Per row: **"⚙️ Manage Account"** button → opens dialog.
+- **`ManageAccountDialog`** (shadcn `Dialog`, title **"Account Configuration Panel"**, max-w-2xl, scrollable):
+  - Sub-section card **"Registered Team Entries"** running `useQuery(["admin-user-teams", user.id])` against `teams where owner_user_id = user.id`, sorted `is_primary desc, created_at asc`.
+  - Each team row: `<Input>` pre-filled with nickname (tracked in local `edits` state) · **Primary** badge (emerald) or **Secondary** badge (slate) · **🗑️ Delete** button, disabled when `is_primary`. Delete triggers two sequential `window.confirm()` prompts, then `supabase.from("teams").delete().eq("id", team.id)`, toast, `refetch()`, and `qc.invalidateQueries({queryKey:["teams"]})`.
+  - Footer block **"Register New Team Entry"**: text input + **＋ Add Team** button → `supabase.from("teams").insert({ owner_user_id: user.id, nickname, is_primary: false })`, toast, refetch.
+  - Bottom dialog actions: **Close** and **Save Configuration Changes**. Save loops over edited nicknames, runs `supabase.from("teams").update({nickname}).eq("id",team.id)` per row, shows toast **"User team configuration updated successfully"**, clears `edits`, refetches.
+  - Local state (`edits`, `newTeamName`) resets in a `useEffect([user.id])` so switching users between dialogs doesn't bleed values.
 
-### NEW · `src/context/impersonation-context.tsx`
-- Context + `useImpersonation()` hook exposing:
-  - `impersonatingId: string | null`
-  - `impersonatedProfile: { id, first_name, last_name, team_nickname, nickname } | null` (auto-fetched when id is set, via `supabase.from("profiles").select(...).eq("id", impersonatingId)`)
-  - `isAdminSession: boolean` (mirrors `useAuth().isAdmin`)
-  - `startImpersonation(userId)` / `stopImpersonation()`
-  - `getEffectiveUserId(sessionUserId: string | undefined): string | undefined`
-- Persist `impersonatingId` in `sessionStorage` (key `major7s.shadow`) so a refresh keeps the simulation but a new tab/window does not.
-- On `startImpersonation`: clears the per-user `major7s.activeTeamId` localStorage key so the impersonated user's primary team is picked fresh.
-- `stopImpersonation`: clears storage, resets context state, invalidates queries `["teams"]`, `["profile"]`, `["picks"]`, `["roster-status"]`, `["missing-picks"]`.
-- Guard: `startImpersonation` is a no-op unless `isAdminSession === true`.
+RLS already permits these writes for admins (`Teams: owner inserts/updates/deletes own` policies include `has_role(auth.uid(),'admin')`), so no migration is required.
 
-### NEW · `src/components/impersonation-banner.tsx`
-- Returns `null` when not impersonating.
-- Otherwise a `fixed bottom-0 inset-x-0 z-50` bar, amber background (`bg-amber-500 text-amber-950`), with:
-  - `⚠️ SHADOW MODE ACTIVE: Currently simulating {full name} (Team: {team_nickname})`
-  - A right-aligned shadcn `Button` size="sm" variant="secondary" labeled `🛑 Stop Simulation` → calls `stopImpersonation()` then `router.navigate({ to: "/admin" })`.
+## 2. Edit: `src/routes/_authenticated/admin.index.tsx`
 
-### EDIT · `src/routes/__root.tsx`
-- Wrap children with `<ImpersonationProvider>` *inside* `<AuthProvider>` and *outside* `<TeamsProvider>` (so teams sees the effective user).
-- Mount `<ImpersonationBanner />` once near `<Outlet />` (after the auth layout, so it floats above everything).
+- Import `UsersDirectoryTab` and a `Users` lucide icon (already imported).
+- `TabsList`: bump `md:grid-cols-4` → `md:grid-cols-5`, add a fifth `<TabsTrigger value="users">` labeled **"Users"**.
+- Add matching `<TabsContent value="users"><UsersDirectoryTab /></TabsContent>` after the Submissions tab content.
 
-### EDIT · `src/hooks/use-teams.tsx`
-- Replace the line `const { user } = useAuth();` with `const { user } = useAuth(); const { getEffectiveUserId } = useImpersonation(); const effectiveId = getEffectiveUserId(user?.id);`
-- Query becomes `.eq("owner_user_id", effectiveId)` with `queryKey: ["teams", effectiveId]` and `enabled: !!effectiveId`.
-- localStorage key for active team becomes `major7s.activeTeamId:${effectiveId}` so admin's own selection isn't trampled.
+No other edits to the existing four tabs.
 
-### EDIT · `src/routes/_authenticated/profile.tsx`
-- Pull `getEffectiveUserId` from impersonation context.
-- Swap every `user!.id` / `user?.id` used for *profile reads/updates* to `effectiveId`. Keep `useAuth()` only for the auth gate (`if (!user) return …`).
-- The password change UI must stay gated by the **real** session — disable the password block when `impersonatingId` is set (with a small notice "Password changes disabled in Shadow Mode"). Reason: `supabase.auth.updateUser({ password })` always targets the signed-in admin; we will not let an admin overwrite their own password by accident from this screen.
+## 3. Edit: `src/components/impersonation-banner.tsx`
 
-### EDIT · `src/routes/_authenticated/tournament.$id.tsx`
-- Same pattern: derive `effectiveId`, use it for the `profile` query (L85) and any other `user.id` usage. `useTeams()` already returns the simulated user's team.
+Expand the amber banner row to host a team picker next to the name:
 
-### EDIT · `src/routes/_authenticated/tournament.$id.lineup.tsx`
-- `effectiveId` swap on the profile lookup at L70 (`.eq("id", effectiveId)`).
-- `activeTeam!.id` in the picks insert/update keeps working because `useTeams` now resolves to the simulated user's team.
-- No change to tweak math — `tweak_count = max(existing) + changed` already runs against `existingPicks` which is fetched by `activeTeam.id`, i.e. the simulated user's team.
+- Bring in `useEffect`, `useState`, `supabase`, `useTeams` from `@/hooks/use-teams`, and shadcn `Select` primitives (`Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`).
+- When `impersonatingId` is set, run `useQuery(["impersonated-teams", impersonatingId])` → `teams where owner_user_id = impersonatingId` (ordered `is_primary desc, created_at asc`).
+- Read current selection from `localStorage.getItem(\`major7s.activeTeamId:${impersonatingId}\`)`, initialise to that or to the primary team's id once data lands.
+- Render label **"Active Lineup Entry:"** + `<Select>` of team nicknames. Disable while loading or when 0 teams.
+- `onValueChange(id)`:
+  1. `localStorage.setItem(\`major7s.activeTeamId:${impersonatingId}\`, id)`
+  2. `useTeams().refetch()` (call the hook at component top, use the returned `refetch`)
+  3. `queryClient.invalidateQueries({ queryKey: ["picks"] })` and `["roster-status"]` so the lineup page re-binds to the new team.
+  4. Local state update to keep the trigger label in sync.
+- Update the team text in the banner heading to reflect the currently selected team's nickname instead of `profile.team_nickname`.
 
-### EDIT · `src/routes/_authenticated/admin.index.tsx`
-- Import `useImpersonation` + `useNavigate` from `@tanstack/react-router`.
-- Add a column "Actions" *(or append to existing)* in two places:
-  1. **ApprovalsTab** table — alongside the Approve/Reject buttons, render a `Simulate` button. Available for any row regardless of status (admins may want to debug a pending account too).
-  2. **SubmissionsTab** master grid — append a final `<TableHead></TableHead>` and a per-row cell with the same button, keyed off `r.ownerUserId`.
-- Button content: `<EyeOff className="size-3.5" /> 🕵️ Simulate User` (Lucide `EyeOff` reads as "incognito").
-- Handler:
-  ```ts
-  startImpersonation(targetId);
-  toast.success(`Simulation initialized: Acting as ${displayName}`);
-  navigate({ to: "/home" });
-  ```
-- CSV / KPI logic is untouched.
+This lets the admin toggle Team A/B/C for the impersonated user while staying in Shadow Mode; the existing `use-teams` hook (`STORAGE_KEY_BASE = "major7s.activeTeamId"`) already keys off the same `major7s.activeTeamId:<effectiveId>` localStorage entry, so writing to it + refetch propagates instantly to `tournament.$id.lineup.tsx` and any other team-scoped view.
 
----
+## Technical notes
 
-## What I am explicitly NOT doing
+- All Supabase calls use the existing browser client; admin RLS handles authorization. No new server functions, no schema migrations.
+- React Query invalidations target `["teams"]`, `["picks"]`, `["roster-status"]` — the same keys already used by `impersonation-context.tsx#invalidateScopedQueries`.
+- The "Manage Account" button uses the existing shadcn `Dialog` (already present at `src/components/ui/dialog.tsx`) and `Badge` (`src/components/ui/badge.tsx`). No new dependencies.
+- Double-confirmation uses two `window.confirm()` calls to keep scope minimal; an upgrade path to `AlertDialog` is possible later if desired.
 
-- No DB migration. Existing RLS already covers admin writes via `has_role`.
-- No server-side function. All swaps are client-side query-target swaps; the admin's real Supabase session is what authenticates each request.
-- No audit log table. Could be added later (recommend it before production), but out of scope for this turn.
-- No realtime-broadcast or "kick out the real user" semantics — Shadow Mode is read/edit-as, not a session takeover.
+## Files touched
 
-## Security checklist baked into the implementation
-
-- `startImpersonation` no-ops unless `isAdminSession === true`.
-- Banner is a global UI signal that cannot be dismissed without ending the simulation.
-- Profile password change is disabled in Shadow Mode to prevent self-pwn.
-- `sessionStorage` (not localStorage) so closing the tab ends the simulation.
-- Re-using existing RLS policies — no service-role keys ever touch the client.
-
-## Open questions (answer if you want a different shape, otherwise I'll proceed as above)
-
-1. Should ending the simulation drop the admin back at `/admin` (current plan) or at the user dashboard `/home` from where they were impersonating? Current plan: `/admin`.
-2. Want me to also add the Simulate button on the Bulk Import tab? Currently no — that tab has no per-row UI.
+```text
++ src/components/admin/users-directory-tab.tsx   (new, ~250 lines)
+~ src/routes/_authenticated/admin.index.tsx      (tab list + content, ~6 lines)
+~ src/components/impersonation-banner.tsx        (rewrite, ~80 lines)
+```
