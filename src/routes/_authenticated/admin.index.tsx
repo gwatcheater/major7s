@@ -652,7 +652,7 @@ function SubmissionsTab() {
         r.ownerUserId,
         `"${fullName}"`,
         p?.email ?? "",
-        p?.team_nickname ?? "",
+        `"${p?.team_nickname ?? "—"}"`,
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
       ];
       lines.push(row.join(","));
@@ -736,7 +736,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>profile.team_nickname</TableHead>
+                <TableHead>Name</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
