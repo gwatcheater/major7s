@@ -643,7 +643,7 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = "UUID,Full Name,Email,Team Name (Leaderboard Display),Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const headers = "UUID,Full Name,Email,profile.team_nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
@@ -652,7 +652,7 @@ function SubmissionsTab() {
         r.ownerUserId,
         `"${fullName}"`,
         p?.email ?? "",
-        r.teamName,
+        p?.team_nickname ?? "",
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
       ];
       lines.push(row.join(","));
@@ -736,7 +736,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Team Name (Leaderboard Display)</TableHead>
+                <TableHead>profile.team_nickname</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
@@ -753,7 +753,7 @@ function SubmissionsTab() {
               ) : (
                 pivotedRows.map((r) => (
                   <TableRow key={r.teamId}>
-                    <TableCell className="text-sm">{r.teamName}</TableCell>
+                    <TableCell className="text-sm">{profileById.get(r.ownerUserId)?.team_nickname ?? "—"}</TableCell>
                     {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                       <TableCell key={b} className="text-xs">
                         {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
