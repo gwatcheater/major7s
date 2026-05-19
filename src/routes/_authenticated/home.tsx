@@ -24,8 +24,8 @@ interface Tournament {
 function StatusBadge({ status }: { status: Tournament["status"] }) {
   const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
     upcoming: { label: "Upcoming · Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
-    open: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
-    locked: { label: "Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
+    open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
+    picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
     live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
     completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
   };
