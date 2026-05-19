@@ -28,21 +28,15 @@ import {
   ClipboardList,
   Trophy,
   Upload,
+  MapPin,
+  Image as ImageIcon,
+  Calendar as CalendarIcon,
+  Save,
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceLine,
-  Tooltip as ReTooltip,
-} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminConsole,
@@ -420,7 +414,15 @@ function TournamentTab() {
             <p className="text-sm text-muted-foreground">Create a tournament to begin.</p>
           ) : (
             <div className="space-y-6">
-              <RosterDiagnostics tournamentId={selected.id} />
+              <TournamentStatusControl
+                key={`status-${selected.id}`}
+                tournamentId={selected.id}
+                currentStatus={selected.status as TournamentStatus}
+              />
+              <EditTournamentDetailsForm
+                key={`edit-${selected.id}`}
+                tournament={selected}
+              />
               <AdvancedFieldPortal tournamentId={selected.id} tournamentName={selected.name} />
             </div>
           )}
@@ -497,56 +499,209 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
   );
 }
 
-function RosterDiagnostics({ tournamentId }: { tournamentId: string }) {
-  const { data: golfers = [] } = useQuery({
-    queryKey: ["admin-roster-diag", tournamentId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("golfers")
-        .select("bucket_number")
-        .eq("tournament_id", tournamentId);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+function TournamentStatusControl({
+  tournamentId,
+  currentStatus,
+}: {
+  tournamentId: string;
+  currentStatus: TournamentStatus;
+}) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<TournamentStatus>(currentStatus);
+  const [saving, setSaving] = useState(false);
 
-  const chart = useMemo(() => {
-    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
-    for (const g of golfers) counts[g.bucket_number] = (counts[g.bucket_number] ?? 0) + 1;
-    return [1, 2, 3, 4, 5, 6, 7].map((b) => ({ bucket: `B${b}`, count: counts[b] ?? 0 }));
-  }, [golfers]);
+  async function update(next: TournamentStatus) {
+    if (next === status) return;
+    const prev = status;
+    setStatus(next);
+    setSaving(true);
+    const { error } = await supabase
+      .from("tournaments")
+      .update({ status: next })
+      .eq("id", tournamentId);
+    setSaving(false);
+    if (error) {
+      setStatus(prev);
+      toast.error(error.message);
+      return;
+    }
+    toast.success(`Status updated → ${TSTATUS_LABEL[next]}`);
+    qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
+  }
 
-  const warnings = chart.filter((c) => c.count > 0 && c.count < 4);
+  const states: TournamentStatus[] = ["upcoming", "open_for_picks", "picks_closed", "live", "completed"];
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Roster Balance Diagnostics</CardTitle></CardHeader>
+    <Card className="border-2" style={{ borderColor: "var(--gold)" }}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          🏆 Global Tournament Lifecycle Status
+          {saving && <span className="text-xs font-normal text-muted-foreground">(saving…)</span>}
+        </CardTitle>
+      </CardHeader>
       <CardContent>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chart}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="bucket" />
-              <YAxis allowDecimals={false} />
-              <ReTooltip />
-              <ReferenceLine y={4} stroke="#dc2626" strokeDasharray="4 4" label={{ value: "Min 4", fontSize: 10, fill: "#dc2626" }} />
-              <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        {warnings.length > 0 && (
-          <Alert variant="destructive" className="mt-3">
-            <AlertTriangle className="size-4" />
-            <AlertTitle>Asymmetry Warning</AlertTitle>
-            <AlertDescription className="text-xs">
-              Bucket{warnings.length > 1 ? "s" : ""} {warnings.map((w) => w.bucket).join(", ")} below the 4-entry threshold.
-            </AlertDescription>
-          </Alert>
-        )}
+        <RadioGroup
+          value={status}
+          onValueChange={(v) => update(v as TournamentStatus)}
+          className="grid grid-cols-2 md:grid-cols-5 gap-2"
+        >
+          {states.map((s) => {
+            const active = status === s;
+            return (
+              <Label
+                key={s}
+                htmlFor={`tstat-${s}`}
+                className={`flex items-center gap-2 px-3 py-3 rounded-md border-2 cursor-pointer transition-colors ${
+                  active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-input hover:bg-accent"
+                }`}
+              >
+                <RadioGroupItem id={`tstat-${s}`} value={s} className={active ? "border-primary-foreground" : ""} />
+                <span className="text-xs font-semibold uppercase tracking-wide">{TSTATUS_LABEL[s]}</span>
+              </Label>
+            );
+          })}
+        </RadioGroup>
       </CardContent>
     </Card>
   );
 }
+
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function EditTournamentDetailsForm({
+  tournament,
+}: {
+  tournament: {
+    id: string;
+    name: string;
+    location: string;
+    logo_url: string | null;
+    start_date: string;
+    end_date: string;
+    submission_deadline: string;
+  };
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: tournament.name,
+    location: tournament.location,
+    logo_url: tournament.logo_url ?? "",
+    start_date: tournament.start_date,
+    end_date: tournament.end_date,
+    submission_deadline: toDatetimeLocal(tournament.submission_deadline),
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name || !form.location || !form.start_date || !form.end_date || !form.submission_deadline) {
+      toast.error("Fill in all required fields");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("tournaments")
+      .update({
+        name: form.name,
+        location: form.location,
+        logo_url: form.logo_url || null,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        submission_deadline: new Date(form.submission_deadline).toISOString(),
+      })
+      .eq("id", tournament.id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Tournament details updated");
+    qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Edit Tournament Details</CardTitle></CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <Label>Tournament Name</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={120} />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Location / Venue</Label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                maxLength={120}
+              />
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <Label>Logo Image URL</Label>
+            <div className="relative">
+              <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="https://…"
+                value={form.logo_url}
+                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Start Date</Label>
+            <div className="relative">
+              <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                type="date"
+                value={form.start_date}
+                onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>End Date</Label>
+            <div className="relative">
+              <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                type="date"
+                value={form.end_date}
+                onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <Label>Submission Deadline (date & time)</Label>
+            <Input
+              type="datetime-local"
+              value={form.submission_deadline}
+              onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Button type="submit" disabled={saving} className="gap-2">
+              <Save className="size-4" />
+              {saving ? "Updating…" : "Update Tournament Details"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+
 
 /* ============================================================
    TAB 4 — SUBMISSIONS LEADERBOARD
