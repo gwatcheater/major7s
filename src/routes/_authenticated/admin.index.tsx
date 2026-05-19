@@ -206,7 +206,8 @@ function ApprovalsTab() {
 function BulkImportTab() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState<null | { succeeded: number; failed: number; results: Array<{ email: string; ok: boolean; error?: string }> }>(null);
+  const [conflictMode, setConflictMode] = useState<"skip" | "overwrite" | "abort">("skip");
+  const [report, setReport] = useState<null | { succeeded: number; failed: number; created?: number; overwritten?: number; skipped?: number; aborted?: boolean; results: Array<{ email: string; ok: boolean; action?: string; error?: string }> }>(null);
   const bulk = useServerFn(bulkCreateApprovedUsers);
   const qc = useQueryClient();
 
