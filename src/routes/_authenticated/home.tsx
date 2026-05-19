@@ -19,6 +19,7 @@ interface Tournament {
   end_date: string;
   submission_deadline: string;
   status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
+  logo_url?: string;
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
@@ -121,12 +122,21 @@ function HomePage() {
                 <div className="absolute top-0 left-0 w-1 h-full pointer-events-none" style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }} />
                 <div className="flex-1 p-6 md:p-8 relative pointer-events-none">
                   <div className="flex justify-between items-start mb-6 gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--gold)" }}>
-                        {tournamentDateRange(t.start_date, t.end_date)}
-                      </p>
-                      <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">{t.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
+                    <div className="flex items-start gap-4 min-w-0">
+                      {t.logo_url && (
+                        <img
+                          src={t.logo_url}
+                          alt={`${t.name} logo`}
+                          className="h-12 w-12 object-contain rounded-lg border bg-card shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--gold)" }}>
+                          {tournamentDateRange(t.start_date, t.end_date)}
+                        </p>
+                        <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">{t.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <StatusBadge status={t.status} />
