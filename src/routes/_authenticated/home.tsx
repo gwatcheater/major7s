@@ -19,6 +19,7 @@ interface Tournament {
   end_date: string;
   submission_deadline: string;
   status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
+  logo_url?: string;
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
