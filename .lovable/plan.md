@@ -1,46 +1,55 @@
-## Scope
-One file: `src/routes/_authenticated/admin.index.tsx`, inside `SubmissionsTab`. Two surgical edits.
+## Audit Result Summary
 
-## 1. Grid table (lines ~695–733)
+The four-tab admin shell, the deletion safeguard, and the diagnostics chart are all **already present** in the current codebase. The only genuinely missing item from your spec is the CSV **conflict-ingestion selector** in the Bulk Import tab.
 
-**Header row** — replace the existing `<TableHead>User</TableHead>` (followed by `Team`) with a single:
-```tsx
-<TableHead>Team Name (Leaderboard Display)</TableHead>
-```
-Keep Bucket 1–7 and Tweaks headers as-is.
+---
 
-**Body row** — remove the entire user details `<TableCell>` (full name / email / phone block at lines 718–722) and remove the separate `Team` cell. Replace with one cell rendering the team name:
-```tsx
-<TableCell className="text-sm">{r.teamName}</TableCell>
-```
-Bucket cells (1–7) and Tweaks cell remain unchanged.
+## 1. Dropped Tab & Sub-Page Audit
 
-Update the empty-state `colSpan` from `10` to `9` (1 team + 7 buckets + 1 tweaks).
+| Feature | Status | Location |
+|---|---|---|
+| Tab A — User Approval Queue | **Intact** | `admin.index.tsx` → `ApprovalsTab()` lines ~106–203. Table at L151–194 with `setStatus(p.id, "approved" / "rejected")` action buttons (L177, L184). |
+| Tab B — Bulk User Upload Ingestion | **Intact** | `admin.index.tsx` → `BulkImportTab()` lines ~205–315. Textarea L267, server fn `bulkCreateApprovedUsers` (L209) auto-sets `status="approved"` in `src/lib/admin-users.functions.ts`. |
+| Tab C — Tournament Field Manager | **Intact** | `admin.index.tsx` → `TournamentTab()` lines ~317 onward. Form fields incl. `logo_url` (L410), `submission_deadline` (L413), 5-status toggle, plus **Roster Balance Diagnostics** chart at L456–483 (Recharts LineChart, ReferenceLine y=4 "Min 4" threshold, asymmetry alert L472–480). |
+| Tab D — Submissions | **Intact** | `SubmissionsTab()` L489+ (just patched). |
 
-The `nameFor()` helper becomes unused on the grid — leave it (still useful for safety) or remove if cleanup desired.
+All four tabs are wired in `<TabsList>` at L86–91 and rendered L93–96. **No tabs are dropped or unlinked.**
 
-## 2. `exportCsv()` (lines 604–627)
+---
 
-Replace header and cell mapping:
+## 2. Overwritten Logic & Code Differences
 
-```ts
-const headers = ["UUID","First Name","Last Name","Email","Team Name (Leaderboard Display)","Bucket 1","Bucket 2","Bucket 3","Bucket 4","Bucket 5","Bucket 6","Bucket 7"];
-const lines = [headers.join(",")];
-for (const r of pivotedRows) {
-  const p = profileById.get(r.ownerUserId);
-  const cells = [
-    r.ownerUserId,
-    p?.first_name ?? "",
-    p?.last_name ?? "",
-    p?.email ?? "",
-    r.teamName,
-    ...[1,2,3,4,5,6,7].map((b) => r.buckets[b] ?? ""),
-  ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
-  lines.push(cells.join(","));
-}
-```
+| Utility | Status | Evidence |
+|---|---|---|
+| 5-second delayed admin deletion safeguard + `PURGE_*` phrase match | **Intact** | `src/components/admin/advanced-field-portal.tsx` — `PURGE_${slug}` token at L127, `undoCountdown()` at L458, confirmation copy L495 + L540, undo button L545. Lives on the per-tournament Field Manager route `admin.tournament.$id.field.tsx`, not on the main admin index. |
+| CSV bulk conflict ingestion selector (Skip / Overwrite / Abort) | **Missing** | No matches for `Skip / Overwrite / Abort` anywhere. `BulkImportTab` (L205–315) has no radio group; behaviour today is fixed: duplicate emails simply fail per-row inside `bulkCreateApprovedUsers` and surface in `report.failed`. |
+| "Copy All Email Addresses" clipboard extractor | **Intact** | `SubmissionsTab.copyEmails()` L589 + button L657–658, pulling from `usersWhoHaveNotEnteredYet`. |
 
-Phone and tweaks are excluded; no trailing UUID column. Blob/download logic unchanged.
+---
+
+## 3. Recovery Checklist & Next Steps
+
+Only one item needs work.
+
+### Conflict Ingestion Selector — **[Completely Deleted / Requires Fresh Injection]**
+
+**Where to inject:**
+- UI: `admin.index.tsx` inside `BulkImportTab`, between the format `<Alert>` (L258–265) and the `<Textarea>` (L267). Add a shadcn `RadioGroup` with three options: `skip` (default), `overwrite`, `abort`.
+- State: add `const [conflictMode, setConflictMode] = useState<"skip" | "overwrite" | "abort">("skip");` near L206.
+- Wire-through: pass `conflictMode` in the `bulk({ data: { rows, conflictMode } })` call at L239.
+- Server: extend `bulkCreateApprovedUsers` in `src/lib/admin-users.functions.ts`:
+  - Add `conflictMode` to the Zod input schema.
+  - On `createUser` error matching "already registered" / duplicate email:
+    - `skip` → mark row `{ ok: false, error: "skipped (exists)" }`, continue.
+    - `overwrite` → look up existing user via `supabaseAdmin.auth.admin.listUsers`, update `profiles` metadata, force `status="approved"`, continue.
+    - `abort` → throw, halting the loop; existing successes already persisted are returned.
+  - Surface the mode in the final toast (e.g. `Imported X · Skipped Y · Overwritten Z`).
+
+### Everything else — **[Partially Intact / No patch required]**
+
+- Approvals tab, Bulk Import textarea, Tournament form + Diagnostics chart, Deletion safeguard, Copy-emails button — all verified present at the line numbers above.
 
 ## Out of scope
-KPIs, missing-users panel, copy-emails, queries, RLS, schema.
+- No schema changes.
+- No alterations to the Submissions tab (just patched).
+- No new routes; safeguard stays under `admin.tournament.$id.field.tsx`.
