@@ -643,19 +643,19 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = ["UUID","First Name","Last Name","Email","Team Name (Leaderboard Display)","Bucket 1","Bucket 2","Bucket 3","Bucket 4","Bucket 5","Bucket 6","Bucket 7"];
-    const lines = [headers.join(",")];
+    const headers = "UUID,Full Name,Email,Team Name (Leaderboard Display),Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
-      const cells = [
+      const fullName = [p?.first_name, p?.last_name].filter(Boolean).join(" ") || p?.nickname || "";
+      const row = [
         r.ownerUserId,
-        p?.first_name ?? "",
-        p?.last_name ?? "",
+        `"${fullName}"`,
         p?.email ?? "",
         r.teamName,
-        ...[1, 2, 3, 4, 5, 6, 7].map((b) => r.buckets[b] ?? ""),
-      ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
-      lines.push(cells.join(","));
+        ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
+      ];
+      lines.push(row.join(","));
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
