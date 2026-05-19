@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
+import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 import {
   LineChart,
@@ -86,17 +87,19 @@ function AdminConsole() {
         </header>
 
         <Tabs defaultValue="approvals" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
             <TabsTrigger value="approvals" className="text-xs gap-1.5"><UserCheck className="size-3.5" />Approvals</TabsTrigger>
             <TabsTrigger value="bulk" className="text-xs gap-1.5"><Users className="size-3.5" />Bulk Import</TabsTrigger>
             <TabsTrigger value="tournament" className="text-xs gap-1.5"><Trophy className="size-3.5" />Tournament</TabsTrigger>
             <TabsTrigger value="picks" className="text-xs gap-1.5"><ClipboardList className="size-3.5" />Submissions</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs gap-1.5"><Users className="size-3.5" />Users</TabsTrigger>
           </TabsList>
 
           <TabsContent value="approvals" className="mt-6"><ApprovalsTab /></TabsContent>
           <TabsContent value="bulk" className="mt-6"><BulkImportTab /></TabsContent>
           <TabsContent value="tournament" className="mt-6"><TournamentTab /></TabsContent>
           <TabsContent value="picks" className="mt-6"><SubmissionsTab /></TabsContent>
+          <TabsContent value="users" className="mt-6"><UsersDirectoryTab /></TabsContent>
         </Tabs>
       </div>
     </TooltipProvider>
