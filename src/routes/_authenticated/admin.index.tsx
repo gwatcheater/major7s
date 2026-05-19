@@ -602,17 +602,17 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = ["Full Name", "Email", "Phone", "Team", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "Tweaks"];
+    const headers = ["UUID","First Name","Last Name","Email","Team Name (Leaderboard Display)","Bucket 1","Bucket 2","Bucket 3","Bucket 4","Bucket 5","Bucket 6","Bucket 7"];
     const lines = [headers.join(",")];
     for (const r of pivotedRows) {
-      const n = nameFor(r);
+      const p = profileById.get(r.ownerUserId);
       const cells = [
-        n.full,
-        n.email,
-        n.phone,
+        r.ownerUserId,
+        p?.first_name ?? "",
+        p?.last_name ?? "",
+        p?.email ?? "",
         r.teamName,
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => r.buckets[b] ?? ""),
-        String(r.tweaks),
       ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
       lines.push(cells.join(","));
     }

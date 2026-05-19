@@ -1,81 +1,46 @@
-
 ## Scope
-File: `src/routes/_authenticated/admin.index.tsx` — only the `SubmissionsTab` (lines ~489–726). No schema or other-tab changes.
+One file: `src/routes/_authenticated/admin.index.tsx`, inside `SubmissionsTab`. Two surgical edits.
 
-## Two caveats up front
-1. The exact PostgREST embed in your message — `teams!inner( … profiles:profiles!owner_user_id (…) )` — will fail. There is **no FK from `teams.owner_user_id` to `public.profiles.id`** in this DB (the FK on auth users lives in `auth`). PostgREST needs a declared relationship to embed. I will instead embed `teams!inner(id, nickname, owner_user_id)` on `picks` (that FK does exist) and join to `profiles` in JS via a Map.
-2. `tweak_count` is per-row-per-bucket in this schema, so the per-team aggregate is `Math.max(...rows.map(r => r.tweak_count))`, as requested.
+## 1. Grid table (lines ~695–733)
 
-## Changes inside `SubmissionsTab`
-
-### A. Replace the picks query with an embedded join
-Swap the current `picks` query for:
-```ts
-.from("picks")
-.select(`
-  id,
-  bucket,
-  tweak_count,
-  tournament_id,
-  golfers ( golfer_name ),
-  teams!inner ( id, nickname, owner_user_id )
-`)
-.eq("tournament_id", activeId!)
+**Header row** — replace the existing `<TableHead>User</TableHead>` (followed by `Team`) with a single:
+```tsx
+<TableHead>Team Name (Leaderboard Display)</TableHead>
 ```
-This removes the need for the separate `teams` query and the `golferById` lookup map (golfer name comes back inline). The standalone `teams` and `golfers` queries on this tab get deleted.
+Keep Bucket 1–7 and Tweaks headers as-is.
 
-### B. JavaScript pivot (one row per team)
-Group fetched rows by `teams.id`:
-```ts
-type Pivoted = {
-  teamId: string;
-  teamName: string;
-  ownerUserId: string;
-  buckets: Record<1|2|3|4|5|6|7, string | undefined>; // golfer_name
-  tweaks: number;
-};
+**Body row** — remove the entire user details `<TableCell>` (full name / email / phone block at lines 718–722) and remove the separate `Team` cell. Replace with one cell rendering the team name:
+```tsx
+<TableCell className="text-sm">{r.teamName}</TableCell>
 ```
-- `buckets[row.bucket] = row.golfers?.golfer_name`
-- `tweaks = Math.max(tweaks, row.tweak_count)`
+Bucket cells (1–7) and Tweaks cell remain unchanged.
 
-### C. Tournament-scoped intersection (the real bug fix)
+Update the empty-state `colSpan` from `10` to `9` (1 team + 7 buckets + 1 tweaks).
+
+The `nameFor()` helper becomes unused on the grid — leave it (still useful for safety) or remove if cleanup desired.
+
+## 2. `exportCsv()` (lines 604–627)
+
+Replace header and cell mapping:
+
 ```ts
-const activeApprovedUsers = approved; // already filtered status="approved" by the query
-const usersWithPicksForThisTournament = new Set(
-  pivotedRows.map(r => r.ownerUserId).filter(Boolean)
-);
-const usersWhoHaveNotEnteredYet = activeApprovedUsers.filter(
-  u => !usersWithPicksForThisTournament.has(u.id)
-);
+const headers = ["UUID","First Name","Last Name","Email","Team Name (Leaderboard Display)","Bucket 1","Bucket 2","Bucket 3","Bucket 4","Bucket 5","Bucket 6","Bucket 7"];
+const lines = [headers.join(",")];
+for (const r of pivotedRows) {
+  const p = profileById.get(r.ownerUserId);
+  const cells = [
+    r.ownerUserId,
+    p?.first_name ?? "",
+    p?.last_name ?? "",
+    p?.email ?? "",
+    r.teamName,
+    ...[1,2,3,4,5,6,7].map((b) => r.buckets[b] ?? ""),
+  ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
+  lines.push(cells.join(","));
+}
 ```
 
-Why this fixes the reported bugs:
-- Today the "missing" list is derived from approved users joined to their **primary team only**. A user who submitted under a non-primary team is wrongly marked missing.
-- "Total Submissions Made" today = `rows.filter(hasSubmission).length`, which is also constrained to primary-team matches. After the fix it's strictly `usersWithPicksForThisTournament.size`, which counts every distinct owner who has saved picks for this tournament.
-
-### D. KPI wiring
-- `Total Active Approved Users` → `activeApprovedUsers.length`
-- `Total Submissions Made` → `usersWithPicksForThisTournament.size`
-- `Missing Entries` → `usersWhoHaveNotEnteredYet.length`
-
-### E. Warning panel + Copy emails
-The "X approved users have not submitted" alert and the `copyEmails()` handler both read from `usersWhoHaveNotEnteredYet` instead of the old `missing` array. Entries disappear the moment a user's picks save and the query invalidates.
-
-### F. Spreadsheet grid + CSV
-Render one row per **submitted team** (from the pivoted array), columns:
-- User: `profile.first_name profile.last_name`, email, phone (lookup approved profile by `ownerUserId`; fall back to team nickname if no matching profile)
-- Team: `teamName`
-- B1–B7: `buckets[b] ?? "—"` (already the resolved `golfer_name`)
-- Tweaks: `tweaks`
-
-`exportCsv()` uses the same pivoted rows + the same name resolution so CSV cells are populated golfer names, not blanks.
-
-### G. Query invalidation
-Add the new query key `["admin-picks-for-tournament", activeId]` to the invalidation list inside `ApprovalsTab.setStatus` is **not** needed (status changes don't affect picks), but the pick-save flow already invalidates picks queries elsewhere — no change required here.
+Phone and tweaks are excluded; no trailing UUID column. Blob/download logic unchanged.
 
 ## Out of scope
-- Tabs 1–3 (Approvals, Bulk Import, Tournament) are untouched.
-- No DB migration, no FK additions, no RLS changes.
-
-## Risk
-Low. All changes are local to one component; queries already run under admin RLS (admin reads all profiles/teams/picks). The embedded select uses an existing FK (`picks.team_id → teams.id`).
+KPIs, missing-users panel, copy-emails, queries, RLS, schema.
