@@ -652,7 +652,7 @@ function SubmissionsTab() {
         r.ownerUserId,
         `"${fullName}"`,
         p?.email ?? "",
-        r.teamName,
+        p?.team_nickname ?? "",
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
       ];
       lines.push(row.join(","));
