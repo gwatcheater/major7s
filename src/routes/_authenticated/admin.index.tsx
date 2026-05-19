@@ -62,8 +62,8 @@ type Status = "upcoming" | "open_for_picks" | "picks_closed" | "live" | "complet
 const STATUSES: Status[] = ["upcoming", "open_for_picks", "picks_closed", "live", "completed"];
 const NEXT: Record<Status, Status | null> = {
   upcoming: "open_for_picks",
-  open: "picks_closed",
-  locked: "live",
+  open_for_picks: "picks_closed",
+  picks_closed: "live",
   live: "completed",
   completed: null,
 };
@@ -195,7 +195,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       toast.error("Fill all fields"); return;
     }
     const { error } = await supabase.from("tournaments").insert({
-      name, course, start_date: startDate, end_date: endDate, submission_deadline: new Date(lockAt).toISOString(), status: "upcoming",
+      name, location: course, start_date: startDate, end_date: endDate, submission_deadline: new Date(lockAt).toISOString(), status: "upcoming",
     });
     if (error) toast.error(error.message);
     else { toast.success("Tournament created"); setName(""); setCourse(""); setStartDate(""); setEndDate(""); setLockAt(""); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
