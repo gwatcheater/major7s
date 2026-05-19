@@ -695,8 +695,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Team</TableHead>
+                <TableHead>Team Name (Leaderboard Display)</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
@@ -706,30 +705,22 @@ function SubmissionsTab() {
             <TableBody>
               {pivotedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">
                     No submissions yet for this tournament.
                   </TableCell>
                 </TableRow>
               ) : (
-                pivotedRows.map((r) => {
-                  const n = nameFor(r);
-                  return (
-                    <TableRow key={r.teamId}>
-                      <TableCell>
-                        <div className="font-medium">{n.full}</div>
-                        <div className="text-xs text-muted-foreground">{n.email}</div>
-                        <div className="text-xs text-muted-foreground">{n.phone}</div>
+                pivotedRows.map((r) => (
+                  <TableRow key={r.teamId}>
+                    <TableCell className="text-sm">{r.teamName}</TableCell>
+                    {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                      <TableCell key={b} className="text-xs">
+                        {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="text-sm">{r.teamName}</TableCell>
-                      {[1, 2, 3, 4, 5, 6, 7].map((b) => (
-                        <TableCell key={b} className="text-xs">
-                          {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
-                    </TableRow>
-                  );
-                })
+                    ))}
+                    <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
