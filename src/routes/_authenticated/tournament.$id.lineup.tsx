@@ -64,12 +64,13 @@ function LineupPicker() {
   });
 
   const { data: profile } = useQuery({
-    queryKey: ["profile", "lineup"],
+    queryKey: ["profile", "lineup", impersonatingId ?? "self"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      const targetId = getEffectiveUserId(user?.id);
+      if (!targetId) return null;
       const { data } = await supabase.from("profiles")
-        .select("team_nickname, nickname").eq("id", user.id).maybeSingle();
+        .select("team_nickname, nickname").eq("id", targetId).maybeSingle();
       return data;
     },
   });
