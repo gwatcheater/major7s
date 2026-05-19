@@ -761,6 +761,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>UUID</TableHead>
                 <TableHead>Name</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
@@ -772,17 +773,18 @@ function SubmissionsTab() {
             <TableBody>
               {pivotedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-6">
                     No submissions yet for this tournament.
                   </TableCell>
                 </TableRow>
               ) : (
                 pivotedRows.map((r) => {
                   const p = profileById.get(r.ownerUserId);
-                  const full = [p?.first_name, p?.last_name].filter(Boolean).join(" ") || p?.nickname || p?.team_nickname || "user";
+                  const full = [p?.first_name, p?.last_name].filter(Boolean).join(" ") || p?.nickname || r.teamName || "user";
                   return (
                     <TableRow key={r.teamId}>
-                      <TableCell className="text-sm">{p?.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-[10px] text-muted-foreground">{r.teamId}</TableCell>
+                      <TableCell className="text-sm">{r.teamName ?? "—"}</TableCell>
                       {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                         <TableCell key={b} className="text-xs">
                           {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
