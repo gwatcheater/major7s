@@ -106,6 +106,24 @@ function AdminConsole() {
 /* ============================================================
    TAB 1 — USER APPROVAL QUEUE
    ============================================================ */
+function SimulateButton({ targetId, displayName }: { targetId: string; displayName: string }) {
+  const { startImpersonation } = useImpersonation();
+  const navigate = useNavigate();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => {
+        startImpersonation(targetId);
+        toast.success(`Simulation initialized: Acting as ${displayName}`);
+        navigate({ to: "/home" });
+      }}
+    >
+      <EyeOff className="size-3.5" /> 🕵️ Simulate User
+    </Button>
+  );
+}
+
 function ApprovalsTab() {
   const qc = useQueryClient();
   const { data: pending = [], isLoading } = useQuery({
