@@ -133,7 +133,7 @@ function LineupPicker() {
     qc.invalidateQueries({ queryKey: ["picks"] });
     qc.invalidateQueries({ queryKey: ["roster-status"] });
     qc.invalidateQueries({ queryKey: ["missing-picks"] });
-    navigate({ to: "/home" });
+    navigate({ to: "/tournament/$id", params: { id } });
   }
 
   const maxTweaks = Math.max(0, ...existingPicks.map((p: any) => p.tweak_count ?? 0));
