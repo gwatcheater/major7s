@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useImpersonation } from "@/context/impersonation-context";
 import { toast } from "sonner";
 import { Loader2, Lock, User, Shield, ArrowLeft } from "lucide-react";
 
@@ -14,14 +15,16 @@ const PHONE_RE = /^[+]?[\d\s().-]{7,20}$/;
 
 function ProfileSettingsView() {
   const { user } = useAuth();
+  const { impersonatingId, getEffectiveUserId } = useImpersonation();
+  const effectiveId = getEffectiveUserId(user?.id);
   const qc = useQueryClient();
 
   const { data: profile, isLoading, refetch } = useQuery({
-    queryKey: ["profile", user?.id],
-    enabled: !!user,
+    queryKey: ["profile", effectiveId],
+    enabled: !!effectiveId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("profiles").select("*").eq("id", user!.id).single();
+        .from("profiles").select("*").eq("id", effectiveId!).single();
       if (error) throw error;
       return data;
     },
