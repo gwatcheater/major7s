@@ -26,6 +26,7 @@ const BUCKET_LABELS: Record<number, string> = {
 function LineupPicker() {
   const { id } = Route.useParams();
   const { activeTeam } = useTeams();
+  const { getEffectiveUserId, impersonatingId } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
