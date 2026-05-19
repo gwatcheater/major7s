@@ -39,11 +39,11 @@ function LineupPicker() {
     queryKey: ["field", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tournament_field")
-        .select("bucket_number, golfer:golfers(id, golfer_name, owgr_rank)")
+        .from("golfers")
+        .select("id, golfer_name, owgr_rank, bucket_number")
         .eq("tournament_id", id);
       if (error) throw error;
-      return data as any[];
+      return data ?? [];
     },
   });
 
@@ -73,10 +73,10 @@ function LineupPicker() {
   const isLocked = tournament.status !== "open_for_picks" || lockExpired;
 
   const byBucket: Record<number, any[]> = {};
-  for (const row of field) {
-    const b = row.bucket_number;
+  for (const g of field) {
+    const b = g.bucket_number;
     if (!byBucket[b]) byBucket[b] = [];
-    byBucket[b].push(row.golfer);
+    byBucket[b].push(g);
   }
   Object.values(byBucket).forEach((arr) => arr.sort((a, b) => (a.owgr_rank ?? 999) - (b.owgr_rank ?? 999)));
 
