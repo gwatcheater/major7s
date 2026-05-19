@@ -16,7 +16,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  AlertTriangle,
   CheckCircle2,
   Copy,
   Download,
@@ -28,21 +27,15 @@ import {
   ClipboardList,
   Trophy,
   Upload,
+  MapPin,
+  Image as ImageIcon,
+  Calendar as CalendarIcon,
+  Save,
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceLine,
-  Tooltip as ReTooltip,
-} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminConsole,
