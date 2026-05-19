@@ -121,7 +121,7 @@ function LineupPicker() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup · {activeTeam.nickname}</p>
           <h1 className="font-display text-4xl uppercase mt-1">{tournament.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{tournament.course}</p>
+          <p className="text-sm text-muted-foreground mt-1">{tournament.location}</p>
           {hasSubmission && (
             <div className="mt-2 flex gap-2 flex-wrap">
               <span className="font-display text-[10px] uppercase tracking-widest px-2 py-1" style={{ backgroundColor: "var(--muted)", color: "var(--muted-foreground)" }}>

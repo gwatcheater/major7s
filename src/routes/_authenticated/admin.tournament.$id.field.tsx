@@ -52,7 +52,7 @@ function AdminFieldPage() {
   const [bulkLog, setBulkLog] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
-  const [detailsDraft, setDetailsDraft] = useState<{ name: string; course: string; start_date: string; end_date: string; submission_deadline: string } | null>(null);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; location: string; start_date: string; end_date: string; submission_deadline: string } | null>(null);
 
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
@@ -211,7 +211,7 @@ function AdminFieldPage() {
     })();
     setDetailsDraft({
       name: (tournament as any).name ?? "",
-      course: (tournament as any).course ?? "",
+      location: (tournament as any).location ?? "",
       start_date: (tournament as any).start_date ?? "",
       end_date: (tournament as any).end_date ?? "",
       submission_deadline: lockLocal,
@@ -333,7 +333,7 @@ function AdminFieldPage() {
       <header className="mt-4 mb-8">
         <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Field Management</p>
         <h1 className="font-display text-3xl uppercase mt-1">{tournament?.name ?? "Tournament"}</h1>
-        <p className="text-sm text-muted-foreground">{tournament?.course}</p>
+        <p className="text-sm text-muted-foreground">{tournament?.location}</p>
       </header>
 
       {/* Tournament details */}
@@ -354,7 +354,7 @@ function AdminFieldPage() {
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Course</label>
-                  <input className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.course} onChange={(e) => setDetailsDraft({ ...detailsDraft, course: e.target.value })} />
+                  <input className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.location} onChange={(e) => setDetailsDraft({ ...detailsDraft, location: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

@@ -18,7 +18,7 @@ const tournaments = [
   {
     id: "t-open-future",
     name: "Open Future Major",
-    course: "Augusta",
+    location: "Augusta",
     start_date: "2099-04-01",
     end_date: "2099-04-04",
     submission_deadline: "2099-04-01T00:00:00.000Z",
@@ -28,7 +28,7 @@ const tournaments = [
   {
     id: "t-open-expired",
     name: "Open Locked Major",
-    course: "Pebble",
+    location: "Pebble",
     start_date: "2020-06-01",
     end_date: "2020-06-04",
     submission_deadline: "2020-06-01T00:00:00.000Z",
@@ -38,7 +38,7 @@ const tournaments = [
   {
     id: "t-upcoming",
     name: "Upcoming Major",
-    course: "St Andrews",
+    location: "St Andrews",
     start_date: "2099-07-01",
     end_date: "2099-07-04",
     submission_deadline: "2099-07-01T00:00:00.000Z",
@@ -48,7 +48,7 @@ const tournaments = [
   {
     id: "t-live",
     name: "Live Major",
-    course: "Oakmont",
+    location: "Oakmont",
     start_date: "2099-05-01",
     end_date: "2099-05-04",
     submission_deadline: "2099-05-01T00:00:00.000Z",
@@ -58,7 +58,7 @@ const tournaments = [
   {
     id: "t-locked",
     name: "Locked Major",
-    course: "Bethpage",
+    location: "Bethpage",
     start_date: "2099-08-01",
     end_date: "2099-08-04",
     submission_deadline: "2099-08-01T00:00:00.000Z",

@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_authenticated/home")({
 interface Tournament {
   id: string;
   name: string;
-  course: string;
+  location: string;
   start_date: string;
   end_date: string;
   submission_deadline: string;
@@ -120,7 +120,7 @@ function HomePage() {
                         {tournamentDateRange(t.start_date, t.end_date)}
                       </p>
                       <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">{t.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-2">{t.course}</p>
+                      <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <StatusBadge status={t.status} />

@@ -126,7 +126,7 @@ function Overview({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <div key={t.id} className="bg-card border border-border p-4 flex flex-wrap gap-4 items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="font-display text-sm uppercase truncate">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">{t.course}</div>
+                    <div className="text-xs text-muted-foreground">{t.location}</div>
                     <div className="text-[10px] text-muted-foreground mt-1">
                       {t.start_date} → {t.end_date} · lock {new Date(t.submission_deadline).toLocaleString()}
                     </div>
@@ -236,7 +236,7 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
                   <div className="font-display text-sm uppercase">{t.name}</div>
-                  <div className="text-xs text-muted-foreground">{t.course}</div>
+                  <div className="text-xs text-muted-foreground">{t.location}</div>
                   <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "var(--gold)" }}>{t.status}</div>
                 </div>
                 <select
