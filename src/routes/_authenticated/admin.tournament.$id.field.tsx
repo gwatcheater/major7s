@@ -52,7 +52,7 @@ function AdminFieldPage() {
   const [bulkLog, setBulkLog] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
-  const [detailsDraft, setDetailsDraft] = useState<{ name: string; course: string; start_date: string; end_date: string; lock_at: string } | null>(null);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; course: string; start_date: string; end_date: string; submission_deadline: string } | null>(null);
 
 
   const { data: tournament, refetch: refetchTournament } = useQuery({
@@ -74,7 +74,7 @@ function AdminFieldPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("golfers")
-        .select("id, standard_name, owgr_rank, aliases")
+        .select("id, golfer_name, owgr_rank, aliases")
         .order("owgr_rank", { ascending: true, nullsFirst: false })
         .limit(2000);
       if (error) throw error;
@@ -87,7 +87,7 @@ function AdminFieldPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_field")
-        .select("id, golfer_id, owgr_bucket")
+        .select("id, golfer_id, bucket_number")
         .eq("tournament_id", id);
       if (error) throw error;
       return data;
@@ -99,7 +99,7 @@ function AdminFieldPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("id, bucket, team_id, golfer_id, submitted_at, team:teams(nickname, owner_user_id, is_primary), golfer:golfers(standard_name)")
+        .select("id, bucket, team_id, golfer_id, submitted_at, team:teams(nickname, owner_user_id, is_primary), golfer:golfers(golfer_name)")
         .eq("tournament_id", id)
         .order("submitted_at", { ascending: true });
       if (error) throw error;
@@ -110,7 +110,7 @@ function AdminFieldPage() {
 
   const fieldMap = useMemo(() => {
     const m = new Map<string, { id: string; bucket: number }>();
-    for (const f of field) m.set(f.golfer_id, { id: f.id, bucket: f.owgr_bucket });
+    for (const f of field) m.set(f.golfer_id, { id: f.id, bucket: f.bucket_number });
     return m;
   }, [field]);
 
@@ -126,7 +126,7 @@ function AdminFieldPage() {
   async function addToField(golferId: string, rank: number | null) {
     const bucket = suggestBucketFromSizes(rank, sizes);
     const { error } = await supabase.from("tournament_field").insert({
-      tournament_id: id, golfer_id: golferId, owgr_bucket: bucket,
+      tournament_id: id, golfer_id: golferId, bucket_number: bucket,
     });
     if (error) { toast.error(error.message); return; }
     toast.success(`Added to B${bucket}`);
@@ -140,7 +140,7 @@ function AdminFieldPage() {
   }
 
   async function setBucket(rowId: string, bucket: number) {
-    const { error } = await supabase.from("tournament_field").update({ owgr_bucket: bucket }).eq("id", rowId);
+    const { error } = await supabase.from("tournament_field").update({ bucket_number: bucket }).eq("id", rowId);
     if (error) toast.error(error.message);
     else { refetch(); qc.invalidateQueries({ queryKey: ["field", id] }); }
   }
@@ -175,7 +175,7 @@ function AdminFieldPage() {
 
     const results = await Promise.all(
       updates.map((u) =>
-        supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id),
+        supabase.from("tournament_field").update({ bucket_number: u.bucket }).eq("id", u.id),
       ),
     );
     const failed = results.find((r) => r.error);
@@ -205,7 +205,7 @@ function AdminFieldPage() {
   function openDetails() {
     if (!tournament) return;
     const lockLocal = (() => {
-      const d = new Date((tournament as any).lock_at);
+      const d = new Date((tournament as any).submission_deadline);
       const tz = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - tz).toISOString().slice(0, 16);
     })();
@@ -214,20 +214,20 @@ function AdminFieldPage() {
       course: (tournament as any).course ?? "",
       start_date: (tournament as any).start_date ?? "",
       end_date: (tournament as any).end_date ?? "",
-      lock_at: lockLocal,
+      submission_deadline: lockLocal,
     });
     setDetailsOpen(true);
   }
 
   async function saveDetails() {
     if (!detailsDraft) return;
-    const { name, course, start_date, end_date, lock_at } = detailsDraft;
-    if (!name || !course || !start_date || !end_date || !lock_at) {
+    const { name, course, start_date, end_date, submission_deadline } = detailsDraft;
+    if (!name || !course || !start_date || !end_date || !submission_deadline) {
       toast.error("All fields required"); return;
     }
     const { error } = await supabase
       .from("tournaments")
-      .update({ name, course, start_date, end_date, lock_at: new Date(lock_at).toISOString() })
+      .update({ name, course, start_date, end_date, submission_deadline: new Date(submission_deadline).toISOString() })
       .eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Tournament updated");
@@ -261,12 +261,12 @@ function AdminFieldPage() {
     // Build lookup: normalized name -> golfer
     const lookup = new Map<string, any>();
     for (const g of golfers as any[]) {
-      lookup.set(normalize(g.standard_name), g);
+      lookup.set(normalize(g.golfer_name), g);
       const aliases = Array.isArray(g.aliases) ? g.aliases : [];
       for (const a of aliases) if (typeof a === "string") lookup.set(normalize(a), g);
     }
 
-    const inserts: Array<{ tournament_id: string; golfer_id: string; owgr_bucket: number }> = [];
+    const inserts: Array<{ tournament_id: string; golfer_id: string; bucket_number: number }> = [];
     const updates: Array<{ id: string; bucket: number }> = [];
     let skipped = 0;
 
@@ -285,9 +285,9 @@ function AdminFieldPage() {
       const existing = fieldMap.get(g.id);
       if (existing) {
         if (existing.bucket !== bucket) updates.push({ id: existing.id, bucket });
-        else log.push(`OK   "${g.standard_name}" already in B${bucket}`);
+        else log.push(`OK   "${g.golfer_name}" already in B${bucket}`);
       } else {
-        inserts.push({ tournament_id: id, golfer_id: g.id, owgr_bucket: bucket });
+        inserts.push({ tournament_id: id, golfer_id: g.id, bucket_number: bucket });
       }
     }
 
@@ -299,7 +299,7 @@ function AdminFieldPage() {
     }
     if (updates.length > 0) {
       const res = await Promise.all(
-        updates.map((u) => supabase.from("tournament_field").update({ owgr_bucket: u.bucket }).eq("id", u.id)),
+        updates.map((u) => supabase.from("tournament_field").update({ bucket_number: u.bucket }).eq("id", u.id)),
       );
       const failed = res.filter((r) => r.error);
       ok += updates.length - failed.length;
@@ -317,15 +317,15 @@ function AdminFieldPage() {
 
   const q = search.trim().toLowerCase();
   const available = golfers.filter((g: any) =>
-    !fieldMap.has(g.id) && (q === "" || g.standard_name.toLowerCase().includes(q))
+    !fieldMap.has(g.id) && (q === "" || g.golfer_name.toLowerCase().includes(q))
   );
 
   const fieldRows = field
     .map((f) => ({ ...f, golfer: golfers.find((g: any) => g.id === f.golfer_id) }))
-    .sort((a, b) => a.owgr_bucket - b.owgr_bucket || ((a.golfer?.owgr_rank ?? 999) - (b.golfer?.owgr_rank ?? 999)));
+    .sort((a, b) => a.bucket_number - b.bucket_number || ((a.golfer?.owgr_rank ?? 999) - (b.golfer?.owgr_rank ?? 999)));
 
   const counts: Record<number, number> = {};
-  for (const f of field) counts[f.owgr_bucket] = (counts[f.owgr_bucket] ?? 0) + 1;
+  for (const f of field) counts[f.bucket_number] = (counts[f.bucket_number] ?? 0) + 1;
 
   return (
     <div className="p-8 md:p-12 max-w-6xl">
@@ -368,7 +368,7 @@ function AdminFieldPage() {
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-widest font-bold block mb-1">Lock cutoff</label>
-                  <input type="datetime-local" className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.lock_at} onChange={(e) => setDetailsDraft({ ...detailsDraft, lock_at: e.target.value })} />
+                  <input type="datetime-local" className="w-full px-3 py-2 border border-input bg-white text-sm" value={detailsDraft.submission_deadline} onChange={(e) => setDetailsDraft({ ...detailsDraft, submission_deadline: e.target.value })} />
                 </div>
                 <div className="flex gap-2">
                   <button onClick={saveDetails} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Save</button>
@@ -407,7 +407,7 @@ function AdminFieldPage() {
                       <div key={p.id} className="flex items-center justify-between text-xs gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-mono text-muted-foreground">B{p.bucket}</span>
-                          <span className="truncate">{p.golfer?.standard_name ?? p.golfer_id}</span>
+                          <span className="truncate">{p.golfer?.golfer_name ?? p.golfer_id}</span>
                         </div>
                         <button onClick={() => deletePick(p.id)} className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors">
                           Delete
@@ -557,14 +557,14 @@ function AdminFieldPage() {
             {fieldRows.map((row) => (
               <div key={row.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{row.golfer?.standard_name ?? "—"}</div>
+                  <div className="truncate">{row.golfer?.golfer_name ?? "—"}</div>
                   <div className="text-[10px] text-muted-foreground font-mono">OWGR {row.golfer?.owgr_rank ?? "—"}</div>
                 </div>
                 <select
-                  value={row.owgr_bucket}
+                  value={row.bucket_number}
                   onChange={(e) => setBucket(row.id, parseInt(e.target.value, 10))}
                   className="text-xs border border-input px-2 py-1 bg-white"
-                  title={BUCKET_LABELS[row.owgr_bucket]}
+                  title={BUCKET_LABELS[row.bucket_number]}
                 >
                   {BUCKETS.map((b) => <option key={b} value={b}>B{b}</option>)}
                 </select>
@@ -595,7 +595,7 @@ function AdminFieldPage() {
               return (
                 <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate">{g.standard_name}</div>
+                    <div className="truncate">{g.golfer_name}</div>
                     <div className="text-[10px] text-muted-foreground font-mono">OWGR {g.owgr_rank ?? "—"} · suggests B{suggested}</div>
                   </div>
                   <button

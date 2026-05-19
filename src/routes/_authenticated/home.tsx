@@ -17,8 +17,8 @@ interface Tournament {
   course: string;
   start_date: string;
   end_date: string;
-  lock_at: string;
-  status: "upcoming" | "open" | "locked" | "live" | "completed";
+  submission_deadline: string;
+  status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
@@ -46,7 +46,7 @@ function HomePage() {
       const { data, error } = await supabase
         .from("tournaments")
         .select("*")
-        .in("status", ["upcoming", "open", "locked", "live"])
+        .in("status", ["upcoming", "open_for_picks", "picks_closed", "live"])
         .order("start_date", { ascending: true });
       if (error) throw error;
       return data as Tournament[];
@@ -101,8 +101,8 @@ function HomePage() {
           {tournaments.map((t, i) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
-            const isOpen = t.status === "open";
-            const lockExpired = new Date(t.lock_at).getTime() <= Date.now();
+            const isOpen = t.status === "open_for_picks";
+            const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
             const link = tournamentCardLink(t);
             return (
               <Link
@@ -145,7 +145,7 @@ function HomePage() {
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
                           Registration Closes In
                         </span>
-                        <Countdown targetIso={t.lock_at} />
+                        <Countdown targetIso={t.submission_deadline} />
                       </div>
                       <span className="px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>
                         {complete ? "Edit Lineup →" : "Enter Lineup →"}

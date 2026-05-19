@@ -21,8 +21,8 @@ const tournaments = [
     course: "Augusta",
     start_date: "2099-04-01",
     end_date: "2099-04-04",
-    lock_at: "2099-04-01T00:00:00.000Z",
-    status: "open" as const,
+    submission_deadline: "2099-04-01T00:00:00.000Z",
+    status: "open_for_picks" as const,
   },
   // Open but lock already passed → hub only
   {
@@ -31,8 +31,8 @@ const tournaments = [
     course: "Pebble",
     start_date: "2020-06-01",
     end_date: "2020-06-04",
-    lock_at: "2020-06-01T00:00:00.000Z",
-    status: "open" as const,
+    submission_deadline: "2020-06-01T00:00:00.000Z",
+    status: "open_for_picks" as const,
   },
   // Upcoming → hub
   {
@@ -41,7 +41,7 @@ const tournaments = [
     course: "St Andrews",
     start_date: "2099-07-01",
     end_date: "2099-07-04",
-    lock_at: "2099-07-01T00:00:00.000Z",
+    submission_deadline: "2099-07-01T00:00:00.000Z",
     status: "upcoming" as const,
   },
   // Live → hub
@@ -51,7 +51,7 @@ const tournaments = [
     course: "Oakmont",
     start_date: "2099-05-01",
     end_date: "2099-05-04",
-    lock_at: "2099-05-01T00:00:00.000Z",
+    submission_deadline: "2099-05-01T00:00:00.000Z",
     status: "live" as const,
   },
   // Locked → hub
@@ -61,8 +61,8 @@ const tournaments = [
     course: "Bethpage",
     start_date: "2099-08-01",
     end_date: "2099-08-04",
-    lock_at: "2099-08-01T00:00:00.000Z",
-    status: "locked" as const,
+    submission_deadline: "2099-08-01T00:00:00.000Z",
+    status: "picks_closed" as const,
   },
 ];
 
@@ -158,7 +158,7 @@ describe("tournamentCardLink helper", () => {
     const now = Date.parse("2026-01-01T00:00:00Z");
     expect(
       tournamentCardLink(
-        { id: "a", status: "open", lock_at: "2026-06-01T00:00:00Z" },
+        { id: "a", status: "open_for_picks", submission_deadline: "2026-06-01T00:00:00Z" },
         now,
       ),
     ).toEqual({ to: "/tournament/$id/lineup", params: { id: "a" } });
@@ -168,18 +168,18 @@ describe("tournamentCardLink helper", () => {
     const now = Date.parse("2026-01-01T00:00:00Z");
     expect(
       tournamentCardLink(
-        { id: "a", status: "open", lock_at: "2020-01-01T00:00:00Z" },
+        { id: "a", status: "open_for_picks", submission_deadline: "2020-01-01T00:00:00Z" },
         now,
       ),
     ).toEqual({ to: "/tournament/$id", params: { id: "a" } });
   });
 
-  it.each(["upcoming", "locked", "live", "completed"])(
+  it.each(["upcoming", "picks_closed", "live", "completed"])(
     "routes to hub for status=%s",
     (status) => {
       expect(
         tournamentCardLink(
-          { id: "x", status, lock_at: "2099-01-01T00:00:00Z" },
+          { id: "x", status, submission_deadline: "2099-01-01T00:00:00Z" },
           Date.parse("2026-01-01T00:00:00Z"),
         ),
       ).toEqual({ to: "/tournament/$id", params: { id: "x" } });

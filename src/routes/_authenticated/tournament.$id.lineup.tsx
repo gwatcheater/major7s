@@ -40,7 +40,7 @@ function LineupPicker() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_field")
-        .select("owgr_bucket, golfer:golfers(id, standard_name, owgr_rank)")
+        .select("bucket_number, golfer:golfers(id, golfer_name, owgr_rank)")
         .eq("tournament_id", id);
       if (error) throw error;
       return data as any[];
@@ -69,12 +69,12 @@ function LineupPicker() {
   if (!activeTeam) return <div className="p-12">Select a team first.</div>;
   if (!tournament) return <div className="p-12">Loading…</div>;
 
-  const lockExpired = new Date(tournament.lock_at).getTime() <= Date.now();
-  const isLocked = tournament.status !== "open" || lockExpired;
+  const lockExpired = new Date(tournament.submission_deadline).getTime() <= Date.now();
+  const isLocked = tournament.status !== "open_for_picks" || lockExpired;
 
   const byBucket: Record<number, any[]> = {};
   for (const row of field) {
-    const b = row.owgr_bucket;
+    const b = row.bucket_number;
     if (!byBucket[b]) byBucket[b] = [];
     byBucket[b].push(row.golfer);
   }
@@ -133,7 +133,7 @@ function LineupPicker() {
         {!isLocked && (
           <div className="text-right">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Closes In</div>
-            <Countdown targetIso={tournament.lock_at} />
+            <Countdown targetIso={tournament.submission_deadline} />
           </div>
         )}
       </header>
@@ -168,7 +168,7 @@ function LineupPicker() {
                   >
                     <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                     {opts.map((g) => (
-                      <option key={g.id} value={g.id}>{g.standard_name} {g.owgr_rank ? `(#${g.owgr_rank})` : ""}</option>
+                      <option key={g.id} value={g.id}>{g.golfer_name} {g.owgr_rank ? `(#${g.owgr_rank})` : ""}</option>
                     ))}
                   </select>
                 </div>

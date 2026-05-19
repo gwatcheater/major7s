@@ -58,11 +58,11 @@ function AdminPanel() {
   );
 }
 
-type Status = "upcoming" | "open" | "locked" | "live" | "completed";
-const STATUSES: Status[] = ["upcoming", "open", "locked", "live", "completed"];
+type Status = "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
+const STATUSES: Status[] = ["upcoming", "open_for_picks", "picks_closed", "live", "completed"];
 const NEXT: Record<Status, Status | null> = {
-  upcoming: "open",
-  open: "locked",
+  upcoming: "open_for_picks",
+  open: "picks_closed",
   locked: "live",
   live: "completed",
   completed: null,
@@ -128,7 +128,7 @@ function Overview({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     <div className="font-display text-sm uppercase truncate">{t.name}</div>
                     <div className="text-xs text-muted-foreground">{t.course}</div>
                     <div className="text-[10px] text-muted-foreground mt-1">
-                      {t.start_date} → {t.end_date} · lock {new Date(t.lock_at).toLocaleString()}
+                      {t.start_date} → {t.end_date} · lock {new Date(t.submission_deadline).toLocaleString()}
                     </div>
                   </div>
                   <div className="flex gap-2 flex-wrap items-center">
@@ -195,13 +195,13 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       toast.error("Fill all fields"); return;
     }
     const { error } = await supabase.from("tournaments").insert({
-      name, course, start_date: startDate, end_date: endDate, lock_at: new Date(lockAt).toISOString(), status: "upcoming",
+      name, course, start_date: startDate, end_date: endDate, submission_deadline: new Date(lockAt).toISOString(), status: "upcoming",
     });
     if (error) toast.error(error.message);
     else { toast.success("Tournament created"); setName(""); setCourse(""); setStartDate(""); setEndDate(""); setLockAt(""); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
   }
 
-  async function updateStatus(id: string, status: "upcoming" | "open" | "locked" | "live" | "completed") {
+  async function updateStatus(id: string, status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed") {
     const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success(`Status → ${status}`); refetch(); qc.invalidateQueries({ queryKey: ["tournaments-active"] }); }
@@ -241,12 +241,12 @@ function TournamentsAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </div>
                 <select
                   value={t.status}
-                  onChange={(e) => updateStatus(t.id, e.target.value as "upcoming" | "open" | "locked" | "live" | "completed")}
+                  onChange={(e) => updateStatus(t.id, e.target.value as "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed")}
                   className="text-xs border border-input px-2 py-1 bg-white"
                 >
                   <option value="upcoming">upcoming</option>
-                  <option value="open">open</option>
-                  <option value="locked">locked</option>
+                  <option value="open_for_picks">open</option>
+                  <option value="picks_closed">locked</option>
                   <option value="live">live</option>
                   <option value="completed">completed</option>
                 </select>
@@ -275,9 +275,9 @@ function GolfersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     if (lines.length === 0) { toast.error("Paste at least one row"); return; }
     const rows = lines.map((line) => {
       const [name, rank] = line.split(",").map((s) => s.trim());
-      return { standard_name: name, owgr_rank: rank ? parseInt(rank, 10) : null };
+      return { golfer_name: name, owgr_rank: rank ? parseInt(rank, 10) : null };
     });
-    const { error } = await supabase.from("golfers").upsert(rows, { onConflict: "standard_name" });
+    const { error } = await supabase.from("golfers").upsert(rows, { onConflict: "golfer_name" });
     if (error) toast.error(error.message);
     else { toast.success(`Upserted ${rows.length} golfers`); setCsv(""); refetch(); qc.invalidateQueries(); }
   }
@@ -301,7 +301,7 @@ function GolfersAdmin({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <div className="bg-card border border-border max-h-[600px] overflow-y-auto">
           {golfers.map((g: any) => (
             <div key={g.id} className="flex justify-between px-4 py-2 border-b border-border text-sm">
-              <span>{g.standard_name}</span>
+              <span>{g.golfer_name}</span>
               <span className="font-mono text-xs text-muted-foreground">{g.owgr_rank ?? "—"}</span>
             </div>
           ))}
@@ -419,7 +419,7 @@ function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("id, team_id, tournament_id, bucket, golfer_id, submitted_at, tweak_count, tournament:tournaments(name), golfer:golfers(standard_name)")
+        .select("id, team_id, tournament_id, bucket, golfer_id, submitted_at, tweak_count, tournament:tournaments(name), golfer:golfers(golfer_name)")
         .in("team_id", teamIds);
       if (error) throw error;
       return data as any[];
@@ -509,7 +509,7 @@ function UserPickManager({ userId, qc }: { userId: string; qc: ReturnType<typeof
                             <div key={p.id} className="flex items-center justify-between text-xs gap-2 py-1 border-b border-border last:border-0">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="font-mono text-muted-foreground">B{p.bucket}</span>
-                                <span className="truncate">{p.golfer?.standard_name ?? p.golfer_id}</span>
+                                <span className="truncate">{p.golfer?.golfer_name ?? p.golfer_id}</span>
                                 {isExtra && (
                                   <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5" style={{ backgroundColor: "var(--alert)", color: "white" }}>
                                     Extra
