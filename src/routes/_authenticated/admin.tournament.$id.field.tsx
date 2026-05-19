@@ -201,6 +201,52 @@ function AdminFieldPage() {
     refetchTournament();
   }
 
+  function openDetails() {
+    if (!tournament) return;
+    const lockLocal = (() => {
+      const d = new Date((tournament as any).lock_at);
+      const tz = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - tz).toISOString().slice(0, 16);
+    })();
+    setDetailsDraft({
+      name: (tournament as any).name ?? "",
+      course: (tournament as any).course ?? "",
+      start_date: (tournament as any).start_date ?? "",
+      end_date: (tournament as any).end_date ?? "",
+      lock_at: lockLocal,
+    });
+    setDetailsOpen(true);
+  }
+
+  async function saveDetails() {
+    if (!detailsDraft) return;
+    const { name, course, start_date, end_date, lock_at } = detailsDraft;
+    if (!name || !course || !start_date || !end_date || !lock_at) {
+      toast.error("All fields required"); return;
+    }
+    const { error } = await supabase
+      .from("tournaments")
+      .update({ name, course, start_date, end_date, lock_at: new Date(lock_at).toISOString() })
+      .eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Tournament updated");
+    setDetailsDraft(null);
+    refetchTournament();
+    qc.invalidateQueries({ queryKey: ["tournaments-active"] });
+    qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
+  }
+
+  async function deletePick(pickId: string) {
+    if (!confirm("Delete this pick?")) return;
+    const { error } = await supabase.from("picks").delete().eq("id", pickId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pick deleted");
+    refetchPicks();
+    qc.invalidateQueries({ queryKey: ["picks"] });
+  }
+
+
+
   function normalize(s: string) {
     return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   }
