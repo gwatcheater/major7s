@@ -38,6 +38,8 @@ interface TeamRow {
 
 export function UsersDirectoryTab() {
   const [selected, setSelected] = useState<ProfileRow | null>(null);
+  const { startImpersonation } = useImpersonation();
+  const navigate = useNavigate();
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-profiles"],
