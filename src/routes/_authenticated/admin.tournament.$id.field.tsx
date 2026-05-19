@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { AdminDesktopOnly } from "@/components/admin-desktop-only";
+import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 
 export const Route = createFileRoute("/_authenticated/admin/tournament/$id/field")({
   component: () => <AdminDesktopOnly><AdminFieldPage /></AdminDesktopOnly>,
@@ -29,10 +30,7 @@ function AdminFieldPage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [sizeDraft, setSizeDraft] = useState<Record<number, string> | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkText, setBulkText] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkLog, setBulkLog] = useState<string[]>([]);
+  
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
   const [detailsDraft, setDetailsDraft] = useState<{ name: string; location: string; start_date: string; end_date: string; submission_deadline: string } | null>(null);
@@ -197,53 +195,9 @@ function AdminFieldPage() {
     qc.invalidateQueries({ queryKey: ["picks"] });
   }
 
-  async function runBulkUpload() {
-    const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) { toast.error("Paste at least one row"); return; }
-    setBulkBusy(true);
-    const log: string[] = [];
-    const inserts: Array<{ tournament_id: string; golfer_name: string; owgr_rank: number | null; bucket_number: number }> = [];
-    let skipped = 0;
-
-    for (const line of lines) {
-      const parts = line.split(/[\t,]/).map((p) => p.trim()).filter(Boolean);
-      if (parts.length < 2) { log.push(`SKIP "${line}" — need name + bucket`); skipped++; continue; }
-      // Format: Name, Rank?, Bucket  — bucket is always the last numeric token
-      const bucket = parseInt(parts[parts.length - 1], 10);
-      if (!Number.isFinite(bucket) || bucket < 1 || bucket > 7) {
-        log.push(`SKIP "${line}" — bucket must be 1–7`); skipped++; continue;
-      }
-      let rank: number | null = null;
-      let nameParts = parts.slice(0, -1);
-      if (nameParts.length >= 2) {
-        const maybeRank = parseInt(nameParts[nameParts.length - 1], 10);
-        if (Number.isFinite(maybeRank)) {
-          rank = maybeRank;
-          nameParts = nameParts.slice(0, -1);
-        }
-      }
-      const name = nameParts.join(" ").trim();
-      if (!name) { log.push(`SKIP "${line}" — empty name`); skipped++; continue; }
-      inserts.push({ tournament_id: id, golfer_name: name, owgr_rank: rank, bucket_number: bucket });
-    }
-
-    let ok = 0;
-    if (inserts.length > 0) {
-      const { error, count } = await supabase.from("golfers").insert(inserts, { count: "exact" });
-      if (error) log.push(`ERROR insert: ${error.message}`);
-      else ok = count ?? inserts.length;
-    }
-
-    log.unshift(`Processed ${lines.length} · added ${ok} · skipped ${skipped}`);
-    setBulkLog(log);
-    setBulkBusy(false);
-    setBulkText("");
-    toast.success(`Bulk upload: ${ok} added, ${skipped} skipped`);
-    refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
-  }
-
   const counts: Record<number, number> = {};
   for (const g of golfers) counts[g.bucket_number] = (counts[g.bucket_number] ?? 0) + 1;
+
 
   return (
     <div className="p-8 md:p-12 max-w-6xl">
@@ -371,10 +325,10 @@ function AdminFieldPage() {
         </div>
       </div>
 
-      {/* Add single golfer + bulk */}
-      <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        <div className="border border-border bg-card p-4">
-          <h2 className="font-display text-sm uppercase tracking-widest mb-3">Add golfer</h2>
+      {/* Add single golfer */}
+      <div className="mb-6">
+        <div className="border border-border bg-card p-4 max-w-xl">
+          <h2 className="font-display text-sm uppercase tracking-widest mb-3">Add single golfer</h2>
           <div className="space-y-2">
             <input className={inputCls} placeholder="Golfer name" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <div className="grid grid-cols-2 gap-2">
@@ -383,74 +337,17 @@ function AdminFieldPage() {
                 {BUCKETS.map((b) => <option key={b} value={b}>Bucket {b}</option>)}
               </select>
             </div>
-            <button onClick={addGolfer} className="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Add</button>
-          </div>
-        </div>
-
-        <div className="border border-border bg-card">
-          <button onClick={() => setBulkOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted">
-            <span className="font-display text-sm uppercase tracking-widest">Bulk paste</span>
-            <span className="text-xs text-muted-foreground">{bulkOpen ? "Hide ▲" : "Show ▼"}</span>
-          </button>
-          {bulkOpen && (
-            <div className="p-4 border-t border-border space-y-3">
-              <p className="text-xs text-muted-foreground">
-                One golfer per line. Format: <code className="font-mono">Name, Rank, Bucket</code> or <code className="font-mono">Name, Bucket</code>.
-              </p>
-              <textarea
-                value={bulkText} onChange={(e) => setBulkText(e.target.value)}
-                placeholder={"Scottie Scheffler, 1, 1\nRory McIlroy, 2, 1\nXander Schauffele, 3, 2"}
-                rows={8}
-                className="w-full px-3 py-2 border border-input bg-white text-sm font-mono"
-              />
-              <div className="flex items-center gap-2">
-                <button onClick={runBulkUpload} disabled={bulkBusy || !bulkText.trim()} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50" style={{ backgroundColor: "var(--forest-deep)" }}>
-                  {bulkBusy ? "Uploading…" : "Upload"}
-                </button>
-                <button onClick={() => { setBulkText(""); setBulkLog([]); }} disabled={bulkBusy} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">Clear</button>
-              </div>
-              {bulkLog.length > 0 && (
-                <div className="max-h-48 overflow-y-auto bg-muted/50 border border-border p-2 text-[11px] font-mono space-y-0.5">
-                  {bulkLog.map((l, i) => (
-                    <div key={i} className={l.startsWith("SKIP") || l.startsWith("ERROR") ? "text-destructive" : ""}>{l}</div>
-                  ))}
-                </div>
-              )}
+            <div className="flex gap-2">
+              <button onClick={addGolfer} className="flex-1 py-2 text-[10px] font-bold uppercase tracking-widest text-white" style={{ backgroundColor: "var(--forest-deep)" }}>Add</button>
+              <button onClick={autoAssignAll} disabled={golfers.length === 0} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">
+                Auto-assign by OWGR
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Field list */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-display text-lg uppercase">Field ({golfers.length})</h2>
-          <button onClick={autoAssignAll} disabled={golfers.length === 0} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border border-border hover:bg-muted disabled:opacity-50">
-            Auto-assign by OWGR
-          </button>
-        </div>
-        <div className="bg-card border border-border max-h-[600px] overflow-y-auto">
-          {golfers.length === 0 && <p className="p-4 text-sm text-muted-foreground">No golfers yet — add some above.</p>}
-          {golfers.map((g) => (
-            <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="truncate">{g.golfer_name}</div>
-                <div className="text-[10px] text-muted-foreground font-mono">OWGR {g.owgr_rank ?? "—"}</div>
-              </div>
-              <select
-                value={g.bucket_number}
-                onChange={(e) => setBucket(g.id, parseInt(e.target.value, 10))}
-                className="text-xs border border-input px-2 py-1 bg-white"
-              >
-                {BUCKETS.map((b) => <option key={b} value={b}>B{b}</option>)}
-              </select>
-              <button onClick={() => removeGolfer(g.id)} className="px-2 py-1 text-[10px] uppercase tracking-widest text-destructive hover:bg-destructive/10">
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
+      <AdvancedFieldPortal tournamentId={id} tournamentName={tournament?.name ?? ""} />
     </div>
   );
 }

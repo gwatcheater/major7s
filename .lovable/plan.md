@@ -1,68 +1,87 @@
 ## Goal
 
-Make Major7s render and behave correctly on phones (iOS/Android), tablets, and desktop, with a hamburger + slide-in drawer on mobile, mobile-friendly layouts across all user-facing routes, and a "use desktop" notice on admin routes below the `md` breakpoint.
+Replace the bulk-upload + field-list + (new) purge sections inside `src/routes/_authenticated/admin/tournament/$id/field` with a single, robust, typed `AdvancedFieldPortal` component. The existing Tournament Details, Submitted Picks, Bucket Sizes, and Add Golfer panels stay as-is — this work focuses on the four sub-systems the user spec'd.
 
-## Approach
+## Where it lives
 
-### 1. Responsive shell (root layout)
+- New component: `src/components/admin/advanced-field-portal.tsx`
+- Mounted inside `src/routes/_authenticated/admin.tournament.$id.field.tsx` (replaces the existing inline `bulkOpen` upload block and the bottom field list), wrapped by the existing `<AdminDesktopOnly>` gate.
+- Props: `{ tournamentId: string; tournamentName: string; }`
+- Uses existing shadcn components: `Button`, `Input`, `Textarea`, `Alert`, plus `sonner` `toast`. Lucide icons: `Upload`, `AlertTriangle`, `Trash2`, `Undo2`, `FileText`, `Users`, `CheckCircle2`, `XCircle`.
 
-- Convert `src/routes/__root.tsx` (or the `_authenticated` layout — wherever `AppSidebar` is currently mounted) into a responsive shell:
-  - **Desktop (≥ md):** current fixed sidebar (`w-72`) + content, unchanged.
-  - **Mobile (< md):** hide the sidebar; render a sticky top bar with the Major7s wordmark, a hamburger button, and the user avatar. Tapping the hamburger opens the existing sidebar inside a shadcn `Sheet` (slide-in from left), reusing `AppSidebar` content verbatim so team switcher, nav, admin link, and sign-out all work.
-- Add a `useIsMobile` check (already in `src/hooks/use-mobile.tsx`) to switch between the two shells.
-- Close the drawer on route change (listen to `useRouterState` location).
-- Ensure body/main uses `min-h-dvh` and safe-area padding (`pb-[env(safe-area-inset-bottom)]`) so iOS notch/home-indicator don't clip content.
+## 1. Bulk Upload Help Panel
 
-### 2. Global responsive primitives
+A documentation `Alert` at the top of the portal:
+- Header: "CSV Format" with `FileText` icon.
+- A monospace `<pre>` block showing the schema: `Name, OWGR Ranking, Bucket Number (1-7)`.
+- A second `<pre>` block showing a valid sample:
+  ```
+  Scottie Scheffler, 1, 1
+  Rory McIlroy, 2, 1
+  Ludvig Aberg, 5, 2
+  ```
+- Bullet rules (exactly 3 fields, name required, OWGR positive integer, bucket 1–7, no in-batch duplicates).
 
-- In `src/styles.css`: confirm `html { -webkit-text-size-adjust: 100%; }` and set base font-size that scales (`clamp(...)` for display headings). Add `@media (max-width: 768px)` adjustments where headings currently use very large desktop sizes.
-- Ensure all page wrappers use `px-4 md:px-8`, replace hard `w-[...px]` with `w-full max-w-...`, and audit horizontal overflow (`overflow-x-hidden` on `main`).
-- Make all tables responsive: wrap in `overflow-x-auto` containers; on key tables convert to stacked cards under `md` (see per-route notes).
+## 2. Parser + Per-Line Error Log
 
-### 3. Per-route updates
+Pure function `parseFieldCsv(text: string): { rows: ParsedRow[]; errors: LineError[] }` with strict rules:
 
-**`/home` (Live & Upcoming):** stack hero/cards single-column on mobile; tournament card grid → 1 col mobile, 2 col tablet, 3 col desktop.
+| Rule | Failure message |
+| --- | --- |
+| `split(",")` length ≠ 3 | "Expected 3 comma-separated fields, got N" |
+| Trimmed name empty | "Name is required" |
+| OWGR not `Number.isInteger` or `< 1` | "OWGR must be a positive integer" |
+| Bucket not integer in 1..7 | "Bucket must be an integer from 1 to 7" |
+| Name (case-insensitive) appears more than once in the same paste | "Duplicate name in batch" (flag every occurrence) |
 
-**`/tournament/$id`:** header (name, course, dates, countdown) stacks vertically; tabs/sub-nav become horizontally scrollable; field list → card view on mobile.
+UI:
+- `Textarea` (min-height ~240px, monospace) bound to `bulkText`.
+- Below it, a **Validation Log** panel:
+  - If no input → muted "Paste rows to validate."
+  - Render every line with its line number. Valid rows get a green left border + `CheckCircle2`. Invalid rows get a red left border + `XCircle` and the failure reason.
+  - Summary row: "X valid · Y errors · Z total".
+- **Upload button** disabled when any error exists or no valid rows. On click: single `supabase.from("golfers").insert(rows)` batch insert with `tournament_id` injected. On success: clear textarea, toast `${n} golfers added`, invalidate `["admin-field-golfers", tournamentId]`. On error: toast the Supabase message, keep textarea contents.
 
-**`/tournament/$id/lineup` (lineup builder):**
-- Tier rows: dropdowns currently sized equal-to-largest — on mobile they wrap to full-width per bucket.
-- "ENTER LINEUP" / submit CTA becomes a sticky bottom bar on mobile so it's reachable while scrolling.
-- Make sure tap targets are ≥ 44px (iOS HIG).
+## 3. Field Metrics + Active Field List
 
-**`/archive`, `/stats`, `/hall-of-fame`:** tables → mobile card layout (label/value pairs) under `md`.
+Side panel (lg:grid-cols-3 layout — upload spans 2, metrics spans 1; stacks on mobile):
+- **Total Registered** card: big number = `golfers.length`, `Users` icon.
+- **Per-bucket chips**: 7 small badges B1–B7 with count, color-coded by bucket (use existing tokens: forest, gold, alert, etc. — defined as a `BUCKET_COLORS` map).
+- **Scrollable list** (`max-h-[480px] overflow-y-auto`) of all golfers in the tournament:
+  - Row: `[BX badge] Name … OWGR #N` with a small `Trash2` delete button.
+  - Sorted by bucket then OWGR.
 
-**`/profile`:** tab buttons (Personal Info / Account Security) become a horizontal scroll strip on mobile; form fields stack full-width; Save button sticks to bottom on mobile.
+Reuses the existing `golfers` query (`["admin-field-golfers", id]`) — no new query needed; just lift it or pass via props.
 
-**`/login`, `/reset-password`:** centered card already; tighten padding, ensure inputs are `text-base` (prevents iOS zoom on focus when < 16px).
+## 4. Danger Zone — Atomic Purge with Undo
 
-### 4. Admin routes — desktop-only
+Distinct red-bordered container at the bottom (`border-destructive`, `AlertTriangle` icon, "Danger Zone" header).
 
-- In `src/routes/_authenticated/admin.*.tsx` (or a shared `admin` layout wrapper), render a full-screen notice when viewport width is `< md`:
-  - Friendly card: "Admin tools require a desktop screen. Please switch to a larger device to manage tournaments, users, and picks."
-  - Keep navigation back to `/home` available.
-- Use a CSS-only approach (`hidden md:block` for admin content, `md:hidden` for the notice) so SSR works without a JS flicker.
+State machine: `'idle' | 'arming' | 'counting' | 'purging'`.
 
-### 5. Touch & a11y polish
+Flow:
+1. **idle**: Shows warning copy + a "Begin purge" button.
+2. **arming**: Reveals a dynamically generated confirmation string `PURGE_${tournamentName.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}` shown in a `<code>` block, plus an `Input` the admin must type it into exactly. "Cancel" button reverts to idle. "Confirm" button enabled only when input matches verbatim.
+3. **counting**: Replaces the panel with a prominent countdown box: "Purging in Ns…" with a big `Undo2` "STOP / UNDO" button. `useEffect` runs a 1s `setInterval` decrementing from 5; on 0 → transition to purging. Cleanup clears the interval if the user hits Undo (→ back to idle, `toast("Purge cancelled")`) or unmounts.
+4. **purging**: Single `supabase.from("golfers").delete().eq("tournament_id", tournamentId)`. On success: toast "Field roster purged", invalidate queries, back to idle. On error: toast error, back to idle.
 
-- All buttons/links min-height 40–44px on mobile.
-- Inputs `text-base` minimum on mobile.
-- Sidebar drawer: focus trap (Sheet handles this), Esc to close, backdrop dismiss.
-- Add `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />` in root head (verify it's already there; add `viewport-fit=cover` for safe-area support).
+The countdown uses `useRef` for the interval handle so Undo immediately aborts before the DELETE fires — DELETE only executes inside the timer callback when the counter hits 0 and the state is still `counting`.
 
-### 6. Verification
+## Types
 
-- Use the preview at 375×812 (iPhone), 390×844, 414×896, 768×1024 (iPad), 1280×800, 1920×1080.
-- Walk: login → home → tournament → lineup → submit → profile → admin (mobile shows notice; desktop works).
-- Screenshot each viewport on key routes; fix any overflow, clipped CTA, or unreadable text.
+```ts
+type ParsedRow = { line: number; name: string; owgr: number; bucket: number };
+type LineError = { line: number; raw: string; reason: string };
+```
 
-## Technical details
+## Integration steps
 
-- New file: `src/components/mobile-shell.tsx` — sticky top bar + Sheet wrapping `AppSidebar`.
-- New file: `src/components/admin-desktop-only.tsx` — the "use desktop" notice card; wrap admin route components with it.
-- Edited: root/`_authenticated` layout to branch on `useIsMobile()`.
-- Edited: each route file listed above for responsive class adjustments — no business logic changes.
-- Edited: `src/styles.css` for type scale, safe-area utility, base mobile tweaks.
-- Edited: `src/components/app-sidebar.tsx` — make root element work both as fixed desktop aside and as Sheet content (drop `sticky top-0 h-screen` styling when rendered inside Sheet via a prop).
+1. Create `src/components/admin/advanced-field-portal.tsx` with the parser, the three subsections (Help, Upload+Log, Metrics+List), and the Danger Zone state machine.
+2. In `admin.tournament.$id.field.tsx`: delete the inline `bulkOpen`/`bulkText`/`bulkLog`/`runBulkUpload` block and the existing bottom field list grid; mount `<AdvancedFieldPortal tournamentId={id} tournamentName={tournament?.name ?? ""} />` in their place. Keep Details, Picks, Bucket Sizes, Add Golfer panels untouched.
+3. Verify build + visit `/admin/tournament/:id/field` in the preview.
 
-No DB, RLS, server function, or business logic changes.
+## Notes / non-goals
+
+- No schema changes; uses existing `golfers` table + RLS (admin write policy already in place).
+- Parser is pure and unit-test-friendly (could add a vitest later — not in scope unless asked).
+- Mobile: the whole admin page is already gated by `AdminDesktopOnly`, so we design desktop-first but keep the portal responsive (`grid-cols-1 lg:grid-cols-3`) for the desktop-tablet landscape range.
