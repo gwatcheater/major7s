@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  EyeOff,
   ShieldAlert,
   UserCheck,
   UserX,
@@ -28,6 +29,7 @@ import {
   Trophy,
   Upload,
 } from "lucide-react";
+import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 import {
