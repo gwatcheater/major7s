@@ -30,10 +30,7 @@ function AdminFieldPage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [sizeDraft, setSizeDraft] = useState<Record<number, string> | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkText, setBulkText] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkLog, setBulkLog] = useState<string[]>([]);
+  const [detailsOpen_unused] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
   const [detailsDraft, setDetailsDraft] = useState<{ name: string; location: string; start_date: string; end_date: string; submission_deadline: string } | null>(null);
