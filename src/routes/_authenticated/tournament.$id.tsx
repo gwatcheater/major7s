@@ -100,6 +100,7 @@ function TournamentHub() {
     if (ts > lastEdited) lastEdited = ts;
   }
   const hasPicks = picks.length > 0;
+  const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
   const teamHandle = profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
