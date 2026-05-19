@@ -667,7 +667,7 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = "UUID,Full Name,Email,Phone,Team Name (Leaderboard Display),Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const headers = "UUID,Full Name,Email,profile.team_nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
@@ -676,7 +676,6 @@ function SubmissionsTab() {
         r.teamId,
         `"${fullName}"`,
         p?.email ?? "",
-        `"${p?.phone ?? ""}"`,
         `"${r.teamName ?? "—"}"`,
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
       ];
