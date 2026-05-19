@@ -172,7 +172,7 @@ function TournamentHub() {
           </div>
           {hasPicks && (
             <div className="mt-1 text-xs text-muted-foreground">
-              Tweaks Made: {maxTweaks}
+              Tweaks: {maxTweaks}
             </div>
           )}
         </div>
