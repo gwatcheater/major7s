@@ -90,7 +90,7 @@ function ProfileSettingsView() {
       referral_name: referral.trim() || null,
       team_nickname: trimmedTeam,
       nickname: trimmedTeam,
-    }).eq("id", user!.id);
+    }).eq("id", effectiveId!);
     setSaving(false);
     if (error) { toast.error(`Update failed: ${error.message}`); return; }
     toast.success("Profile updated successfully");
