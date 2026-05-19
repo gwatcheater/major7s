@@ -77,7 +77,14 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
   }
 
   return (
-    <aside className="sticky top-0 h-screen w-72 shrink-0 flex flex-col text-white z-50" style={{ backgroundColor: "var(--forest-deep)" }}>
+    <aside
+      className={
+        isDrawer
+          ? "h-full w-full flex flex-col text-white"
+          : "sticky top-0 h-screen w-72 shrink-0 hidden md:flex flex-col text-white z-50"
+      }
+      style={{ backgroundColor: "var(--forest-deep)" }}
+    >
       {/* Logo */}
       <div className="p-6">
         <Link to="/home" className="font-display text-2xl tracking-tight uppercase">

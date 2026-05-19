@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MobileTopBar } from "@/components/mobile-shell";
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async ({ location }) => {
@@ -9,7 +10,6 @@ export const Route = createFileRoute("/_authenticated")({
     if (!data.session) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
-    // Enforce approval status
     const { data: profile } = await supabase
       .from("profiles")
       .select("status")
@@ -26,9 +26,10 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: "var(--ui-bg)" }}>
+    <div className="flex flex-col md:flex-row min-h-[100dvh]" style={{ backgroundColor: "var(--ui-bg)" }}>
+      <MobileTopBar />
       <AppSidebar />
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
