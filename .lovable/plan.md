@@ -1,75 +1,81 @@
 
-# Major7s — Audit & Gap Analysis
+## Scope
+File: `src/routes/_authenticated/admin.index.tsx` — only the `SubmissionsTab` (lines ~489–726). No schema or other-tab changes.
 
-This is an audit only. No files will be modified.
+## Two caveats up front
+1. The exact PostgREST embed in your message — `teams!inner( … profiles:profiles!owner_user_id (…) )` — will fail. There is **no FK from `teams.owner_user_id` to `public.profiles.id`** in this DB (the FK on auth users lives in `auth`). PostgREST needs a declared relationship to embed. I will instead embed `teams!inner(id, nickname, owner_user_id)` on `picks` (that FK does exist) and join to `profiles` in JS via a Map.
+2. `tweak_count` is per-row-per-bucket in this schema, so the per-team aggregate is `Math.max(...rows.map(r => r.tweak_count))`, as requested.
 
-## 1. Component & Function Location Audit
+## Changes inside `SubmissionsTab`
 
-| Feature | File | Key symbols |
-|---|---|---|
-| Tournament Detail view (leaderboard, stats, blog/recap rows) | `src/routes/_authenticated/tournament.$id.tsx` | `Route`, `tournament` query, `picks` query, `picksByBucket`, `maxTweaks`, rendered roster grid block ~lines 195–230 |
-| Picks card / roster grid | Same file: `tournament.$id.tsx` | `picksByBucket` map (line 110), grid renderer iterating `[1..7]` (~line 195) showing `Bucket {b}` label |
-| Edit Picks form (bucket dropdowns) | `src/routes/_authenticated/tournament.$id.lineup.tsx` | `selections` state, `byBucket` map, `existingByBucketMap`, `save()` handler, JSX `buckets.map(...)` ~line 205 |
-| Admin Tournament Field Manager (CSV bulk upload) | `src/routes/_authenticated/admin.tournament.$id.field.tsx` + `src/components/admin/advanced-field-portal.tsx` | `bulkText`, `uploading`, `parsed = parseFieldCsv(bulkText)`, `canUpload`, upload action button (~line 270) |
-| Save Lineup / tweaks_count handler | `tournament.$id.lineup.tsx` → `save()` (lines 96–150) | `existingByBucket`, `hadExisting`, `tweakIncrement` (accumulator loop lines 105–114), `currentTweaks`, `newTweaks`, upsert loop lines 122–144 |
-| Onboarding gate status filters | `src/routes/_authenticated/admin.users.tsx` | `Status` type (`"pending" \| "approved" \| "rejected"`), `STATUS_LABEL`, `statusFilter` state, `StatusPill`, edit modal `draft.status` |
-| Profile / Account settings | `src/routes/_authenticated/profile.tsx` | profile form (`team_nickname`, `nickname`, `first_name`, `last_name`, `phone`, `referral_name`), update mutation |
+### A. Replace the picks query with an embedded join
+Swap the current `picks` query for:
+```ts
+.from("picks")
+.select(`
+  id,
+  bucket,
+  tweak_count,
+  tournament_id,
+  golfers ( golfer_name ),
+  teams!inner ( id, nickname, owner_user_id )
+`)
+.eq("tournament_id", activeId!)
+```
+This removes the need for the separate `teams` query and the `golferById` lookup map (golfer name comes back inline). The standalone `teams` and `golfers` queries on this tab get deleted.
 
-## 2. Logic & Data Handling Breakdown
+### B. JavaScript pivot (one row per team)
+Group fetched rows by `teams.id`:
+```ts
+type Pivoted = {
+  teamId: string;
+  teamName: string;
+  ownerUserId: string;
+  buckets: Record<1|2|3|4|5|6|7, string | undefined>; // golfer_name
+  tweaks: number;
+};
+```
+- `buckets[row.bucket] = row.golfers?.golfer_name`
+- `tweaks = Math.max(tweaks, row.tweak_count)`
 
-**`tweaks_count` save logic (current state):**
-- Located in `tournament.$id.lineup.tsx`, function `save()`, lines 96–150.
-- It is **accumulative** — not capped, not Bucket-1-only. Each of the 7 buckets is tested independently with `if (existingByBucket.get(N)?.golfer_id !== selections[N]) tweakIncrement++;`. So changing 3 buckets in one save adds +3.
-- Baseline is `currentTweaks = max(existingPicks.tweak_count)`, then `newTweaks = currentTweaks + tweakIncrement` is written to every bucket row in the upsert loop.
-- Live preview (`liveTweaks`, line 160) mirrors the same accumulator: `maxTweaks + (hasSubmission ? changedCount : 0)`.
+### C. Tournament-scoped intersection (the real bug fix)
+```ts
+const activeApprovedUsers = approved; // already filtered status="approved" by the query
+const usersWithPicksForThisTournament = new Set(
+  pivotedRows.map(r => r.ownerUserId).filter(Boolean)
+);
+const usersWhoHaveNotEnteredYet = activeApprovedUsers.filter(
+  u => !usersWithPicksForThisTournament.has(u.id)
+);
+```
 
-**Bucket row labels (current state):**
-- Both screens render the clean form **`Bucket {n}`** with no `B1` / `B1 Bucket 1` prefix.
-  - Detail page: `tournament.$id.tsx` line 204 — `Bucket {b}`.
-  - Edit page: `tournament.$id.lineup.tsx` line 215 — `Bucket {b}`. (A `BUCKET_LABELS` constant at lines 16–22 also exists as `"Bucket 1"…"Bucket 7"`, but the JSX uses the inline template literal.)
+Why this fixes the reported bugs:
+- Today the "missing" list is derived from approved users joined to their **primary team only**. A user who submitted under a non-primary team is wrongly marked missing.
+- "Total Submissions Made" today = `rows.filter(hasSubmission).length`, which is also constrained to primary-team matches. After the fix it's strictly `usersWithPicksForThisTournament.size`, which counts every distinct owner who has saved picks for this tournament.
 
-## 3. New Features & Rebuild Checklist
+### D. KPI wiring
+- `Total Active Approved Users` → `activeApprovedUsers.length`
+- `Total Submissions Made` → `usersWithPicksForThisTournament.size`
+- `Missing Entries` → `usersWhoHaveNotEnteredYet.length`
 
-### A) Fully Existing — functional, no changes needed
-- Tournament Detail view shell (leaderboard area, picks roster grid, recap blog link rendering).
-- Picks card / roster grid component on the detail page.
-- Edit Picks form with 7 bucket dropdowns, save button, lock/deadline guard.
-- Admin Tournament Field Manager with CSV bulk upload (`advanced-field-portal.tsx`).
-- `tweaks_count` save handler — already implements the **accumulative** per-bucket counter per the latest spec.
-- Bucket labels — already standardized to `Bucket N` on both screens.
-- Onboarding status filter (`pending` / `approved` / `rejected`) on the admin users screen, including `StatusPill` and per-user edit modal with approve/reject controls.
-- Profile / Account settings form.
-- Post-save redirect from Edit Picks → `TournamentDetailView` (`navigate({ to: "/tournament/$id", params: { id } })`, line 149).
+### E. Warning panel + Copy emails
+The "X approved users have not submitted" alert and the `copyEmails()` handler both read from `usersWhoHaveNotEnteredYet` instead of the old `missing` array. Entries disappear the moment a user's picks save and the query invalidates.
 
-### B) Requires Patch / Partial Rebuild
-- **Rejected user UX**: today rejection is only a `StatusPill` + filter in the admin table; there is no enforcement on the signed-in user's side. A rejected user can still pass `_authenticated` and reach the app shell. Patch the `_authenticated.tsx` gate (or add a layout guard) to read `profiles.status` and render a block/redirect for `rejected`.
-- **Pending user UX**: similar — the gate doesn't differentiate `pending` vs `approved`. If the blueprint requires a "waiting for approval" screen, the gate needs a branch for `pending`.
-- **Single source of truth for bucket labels**: `BUCKET_LABELS` constant exists in `tournament.$id.lineup.tsx` but isn't used in the JSX (inline `Bucket {b}` is rendered). Minor cleanup, not a functional bug.
-- **OWGR formatting in dropdown labels**: confirm both screens render `Golfer Name (OWGR #Rank)` consistently — needs a quick spot-check pass; trivially patchable in one place each.
+### F. Spreadsheet grid + CSV
+Render one row per **submitted team** (from the pivoted array), columns:
+- User: `profile.first_name profile.last_name`, email, phone (lookup approved profile by `ownerUserId`; fall back to team nickname if no matching profile)
+- Team: `teamName`
+- B1–B7: `buckets[b] ?? "—"` (already the resolved `golfer_name`)
+- Tweaks: `tweaks`
 
-### C) Completely Missing / Brand New
-- **Admin Deletion Safeguard "Undo" timer** — no toast-with-undo / soft-delete buffer exists for any admin destructive action (users, tournaments, field rows). No code present.
-- **Conflict Ingestion Selector toggle** (CSV upload merge vs. replace / conflict resolution UI) — `advanced-field-portal.tsx` only supports a straight upload of `bulkText`; there is no per-row conflict picker or mode toggle.
-- **Roster Balance Diagnostics graph widget** — no chart/visualization component exists (no recharts/visx usage for roster distribution).
-- **Rejected full-screen block page** — no dedicated route or guarded screen for `status = 'rejected'` users (see B). This is effectively new UI even though the status field exists.
-- **Pending "awaiting approval" full-screen** — same situation, no dedicated screen.
+`exportCsv()` uses the same pivoted rows + the same name resolution so CSV cells are populated golfer names, not blanks.
 
-### Summary table
+### G. Query invalidation
+Add the new query key `["admin-picks-for-tournament", activeId]` to the invalidation list inside `ApprovalsTab.setStatus` is **not** needed (status changes don't affect picks), but the pick-save flow already invalidates picks queries elsewhere — no change required here.
 
-| Item | Bucket |
-|---|---|
-| Tournament Detail view | A |
-| Picks roster card | A |
-| Edit Picks form | A |
-| Admin Field Manager + CSV upload | A |
-| `tweaks_count` accumulator | A |
-| Bucket label cleanup (`Bucket N`) | A |
-| Admin user status filter UI | A |
-| Profile settings form | A |
-| Post-save redirect to detail view | A |
-| Rejected/Pending user gating (full-screen block) | C (gate code requires B-level patch in `_authenticated.tsx`) |
-| Admin Undo timer for deletions | C |
-| CSV Conflict Ingestion Selector | C |
-| Roster Balance Diagnostics graph | C |
+## Out of scope
+- Tabs 1–3 (Approvals, Bulk Import, Tournament) are untouched.
+- No DB migration, no FK additions, no RLS changes.
 
-No code edits performed. Ready to scope any of the B/C items into an implementation plan on request.
+## Risk
+Low. All changes are local to one component; queries already run under admin RLS (admin reads all profiles/teams/picks). The embedded select uses an existing FK (`picks.team_id → teams.id`).

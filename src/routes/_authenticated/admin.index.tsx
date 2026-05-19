@@ -513,105 +513,105 @@ function SubmissionsTab() {
     },
   });
 
-  const { data: teams = [] } = useQuery({
-    queryKey: ["admin-teams-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("teams")
-        .select("id, owner_user_id, nickname, is_primary");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const { data: picks = [] } = useQuery({
+  // Embedded join: picks → teams (FK exists) and picks → golfers (FK exists)
+  const { data: fetchedPicks = [] } = useQuery({
     enabled: !!activeId,
     queryKey: ["admin-picks-for-tournament", activeId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("team_id, bucket, golfer_id, tweak_count")
+        .select(`
+          id,
+          bucket,
+          tweak_count,
+          tournament_id,
+          golfers ( golfer_name ),
+          teams!inner ( id, nickname, owner_user_id )
+        `)
         .eq("tournament_id", activeId!);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as Array<{
+        id: string;
+        bucket: number;
+        tweak_count: number;
+        tournament_id: string;
+        golfers: { golfer_name: string } | null;
+        teams: { id: string; nickname: string; owner_user_id: string };
+      }>;
     },
   });
 
-  const { data: golfers = [] } = useQuery({
-    enabled: !!activeId,
-    queryKey: ["admin-golfers-for-tournament", activeId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("golfers")
-        .select("id, golfer_name, bucket_number")
-        .eq("tournament_id", activeId!);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const golferById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const g of golfers) m.set(g.id, g.golfer_name);
-    return m;
-  }, [golfers]);
-
-  // Group picks by team
-  const picksByTeam = useMemo(() => {
-    const m = new Map<string, { buckets: Record<number, string>; tweaks: number }>();
-    for (const p of picks) {
-      const entry = m.get(p.team_id) ?? { buckets: {}, tweaks: 0 };
-      entry.buckets[p.bucket] = p.golfer_id;
-      entry.tweaks = Math.max(entry.tweaks, p.tweak_count ?? 0);
-      m.set(p.team_id, entry);
-    }
-    return m;
-  }, [picks]);
-
-  // Build rows: approved users who own primary team, with picks if present
-  const rows = useMemo(() => {
-    const teamByOwner = new Map<string, { id: string; nickname: string }>();
-    for (const t of teams) {
-      if (t.is_primary) teamByOwner.set(t.owner_user_id, { id: t.id, nickname: t.nickname });
-    }
-    return approved.map((u) => {
-      const team = teamByOwner.get(u.id);
-      const entry = team ? picksByTeam.get(team.id) : undefined;
-      return {
-        userId: u.id,
-        fullName: [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname,
-        email: u.email ?? "",
-        phone: u.phone ?? "",
-        teamName: team?.nickname ?? u.team_nickname ?? "—",
-        buckets: entry?.buckets ?? {},
-        tweaks: entry?.tweaks ?? 0,
-        hasSubmission: !!entry,
+  // JS pivot: one row per team
+  type PivotRow = {
+    teamId: string;
+    teamName: string;
+    ownerUserId: string;
+    buckets: Record<number, string | undefined>;
+    tweaks: number;
+  };
+  const pivotedRows = useMemo<PivotRow[]>(() => {
+    const m = new Map<string, PivotRow>();
+    for (const p of fetchedPicks) {
+      const t = p.teams;
+      if (!t) continue;
+      const entry = m.get(t.id) ?? {
+        teamId: t.id,
+        teamName: t.nickname,
+        ownerUserId: t.owner_user_id,
+        buckets: {},
+        tweaks: 0,
       };
-    });
-  }, [approved, teams, picksByTeam]);
+      entry.buckets[p.bucket] = p.golfers?.golfer_name;
+      entry.tweaks = Math.max(entry.tweaks, p.tweak_count ?? 0);
+      m.set(t.id, entry);
+    }
+    return Array.from(m.values());
+  }, [fetchedPicks]);
 
-  const totalApproved = approved.length;
-  const totalSubmissions = rows.filter((r) => r.hasSubmission).length;
-  const missing = rows.filter((r) => !r.hasSubmission);
+  // Profile lookup by user id (for resolving names/email/phone on the grid)
+  const profileById = useMemo(() => {
+    const m = new Map<string, (typeof approved)[number]>();
+    for (const u of approved) m.set(u.id, u);
+    return m;
+  }, [approved]);
+
+  // Tournament-scoped intersection
+  const activeApprovedUsers = approved;
+  const usersWithPicksForThisTournament = useMemo(
+    () => new Set(pivotedRows.map((r) => r.ownerUserId).filter(Boolean)),
+    [pivotedRows],
+  );
+  const usersWhoHaveNotEnteredYet = useMemo(
+    () => activeApprovedUsers.filter((u) => !usersWithPicksForThisTournament.has(u.id)),
+    [activeApprovedUsers, usersWithPicksForThisTournament],
+  );
 
   function copyEmails() {
-    const list = missing.map((m) => m.email).filter(Boolean).join(", ");
+    const list = usersWhoHaveNotEnteredYet.map((u) => u.email).filter(Boolean).join(", ");
     navigator.clipboard.writeText(list).then(
-      () => toast.success(`Copied ${missing.length} email${missing.length === 1 ? "" : "s"}`),
+      () => toast.success(`Copied ${usersWhoHaveNotEnteredYet.length} email${usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"}`),
       () => toast.error("Clipboard copy failed"),
     );
+  }
+
+  function nameFor(row: PivotRow): { full: string; email: string; phone: string } {
+    const p = profileById.get(row.ownerUserId);
+    if (!p) return { full: row.teamName, email: "", phone: "" };
+    const full = [p.first_name, p.last_name].filter(Boolean).join(" ") || p.nickname;
+    return { full, email: p.email ?? "", phone: p.phone ?? "" };
   }
 
   function exportCsv() {
     const headers = ["Full Name", "Email", "Phone", "Team", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "Tweaks"];
     const lines = [headers.join(",")];
-    for (const r of rows) {
+    for (const r of pivotedRows) {
+      const n = nameFor(r);
       const cells = [
-        r.fullName,
-        r.email,
-        r.phone,
+        n.full,
+        n.email,
+        n.phone,
         r.teamName,
-        ...[1, 2, 3, 4, 5, 6, 7].map((b) => golferById.get(r.buckets[b]) ?? ""),
+        ...[1, 2, 3, 4, 5, 6, 7].map((b) => r.buckets[b] ?? ""),
         String(r.tweaks),
       ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
       lines.push(cells.join(","));
@@ -642,16 +642,16 @@ function SubmissionsTab() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Kpi label="Total Active Approved Users" value={totalApproved} />
-        <Kpi label="Total Submissions Made" value={totalSubmissions} />
-        <Kpi label="Missing Entries" value={missing.length} highlight={missing.length > 0} />
+        <Kpi label="Total Active Approved Users" value={activeApprovedUsers.length} />
+        <Kpi label="Total Submissions Made" value={usersWithPicksForThisTournament.size} />
+        <Kpi label="Missing Entries" value={usersWhoHaveNotEnteredYet.length} highlight={usersWhoHaveNotEnteredYet.length > 0} />
       </div>
 
-      {missing.length > 0 && (
+      {usersWhoHaveNotEnteredYet.length > 0 && (
         <Alert>
           <AlertTriangle className="size-4" />
           <AlertTitle className="flex items-center justify-between flex-wrap gap-2">
-            <span>{missing.length} approved user{missing.length === 1 ? "" : "s"} have not submitted</span>
+            <span>{usersWhoHaveNotEnteredYet.length} approved user{usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"} have not submitted</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="sm" variant="outline" onClick={copyEmails}>
@@ -665,13 +665,16 @@ function SubmissionsTab() {
             <div className="mt-2 max-h-48 overflow-y-auto text-xs">
               <table className="w-full">
                 <tbody>
-                  {missing.map((m) => (
-                    <tr key={m.userId} className="border-b last:border-0">
-                      <td className="py-1 pr-2">{m.fullName}</td>
-                      <td className="py-1 pr-2 text-muted-foreground">{m.teamName}</td>
-                      <td className="py-1 text-muted-foreground">{m.email}</td>
-                    </tr>
-                  ))}
+                  {usersWhoHaveNotEnteredYet.map((u) => {
+                    const full = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
+                    return (
+                      <tr key={u.id} className="border-b last:border-0">
+                        <td className="py-1 pr-2">{full}</td>
+                        <td className="py-1 pr-2 text-muted-foreground">{u.team_nickname ?? "—"}</td>
+                        <td className="py-1 text-muted-foreground">{u.email ?? ""}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -701,22 +704,33 @@ function SubmissionsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.userId}>
-                  <TableCell>
-                    <div className="font-medium">{r.fullName}</div>
-                    <div className="text-xs text-muted-foreground">{r.email}</div>
-                    <div className="text-xs text-muted-foreground">{r.phone}</div>
+              {pivotedRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
+                    No submissions yet for this tournament.
                   </TableCell>
-                  <TableCell className="text-sm">{r.teamName}</TableCell>
-                  {[1, 2, 3, 4, 5, 6, 7].map((b) => (
-                    <TableCell key={b} className="text-xs">
-                      {golferById.get(r.buckets[b]) ?? <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                  ))}
-                  <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                pivotedRows.map((r) => {
+                  const n = nameFor(r);
+                  return (
+                    <TableRow key={r.teamId}>
+                      <TableCell>
+                        <div className="font-medium">{n.full}</div>
+                        <div className="text-xs text-muted-foreground">{n.email}</div>
+                        <div className="text-xs text-muted-foreground">{n.phone}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{r.teamName}</TableCell>
+                      {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                        <TableCell key={b} className="text-xs">
+                          {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
