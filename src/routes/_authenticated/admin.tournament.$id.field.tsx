@@ -195,53 +195,9 @@ function AdminFieldPage() {
     qc.invalidateQueries({ queryKey: ["picks"] });
   }
 
-  async function runBulkUpload() {
-    const lines = bulkText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) { toast.error("Paste at least one row"); return; }
-    setBulkBusy(true);
-    const log: string[] = [];
-    const inserts: Array<{ tournament_id: string; golfer_name: string; owgr_rank: number | null; bucket_number: number }> = [];
-    let skipped = 0;
-
-    for (const line of lines) {
-      const parts = line.split(/[\t,]/).map((p) => p.trim()).filter(Boolean);
-      if (parts.length < 2) { log.push(`SKIP "${line}" — need name + bucket`); skipped++; continue; }
-      // Format: Name, Rank?, Bucket  — bucket is always the last numeric token
-      const bucket = parseInt(parts[parts.length - 1], 10);
-      if (!Number.isFinite(bucket) || bucket < 1 || bucket > 7) {
-        log.push(`SKIP "${line}" — bucket must be 1–7`); skipped++; continue;
-      }
-      let rank: number | null = null;
-      let nameParts = parts.slice(0, -1);
-      if (nameParts.length >= 2) {
-        const maybeRank = parseInt(nameParts[nameParts.length - 1], 10);
-        if (Number.isFinite(maybeRank)) {
-          rank = maybeRank;
-          nameParts = nameParts.slice(0, -1);
-        }
-      }
-      const name = nameParts.join(" ").trim();
-      if (!name) { log.push(`SKIP "${line}" — empty name`); skipped++; continue; }
-      inserts.push({ tournament_id: id, golfer_name: name, owgr_rank: rank, bucket_number: bucket });
-    }
-
-    let ok = 0;
-    if (inserts.length > 0) {
-      const { error, count } = await supabase.from("golfers").insert(inserts, { count: "exact" });
-      if (error) log.push(`ERROR insert: ${error.message}`);
-      else ok = count ?? inserts.length;
-    }
-
-    log.unshift(`Processed ${lines.length} · added ${ok} · skipped ${skipped}`);
-    setBulkLog(log);
-    setBulkBusy(false);
-    setBulkText("");
-    toast.success(`Bulk upload: ${ok} added, ${skipped} skipped`);
-    refetch(); qc.invalidateQueries({ queryKey: ["field", id] });
-  }
-
   const counts: Record<number, number> = {};
   for (const g of golfers) counts[g.bucket_number] = (counts[g.bucket_number] ?? 0) + 1;
+
 
   return (
     <div className="p-8 md:p-12 max-w-6xl">
