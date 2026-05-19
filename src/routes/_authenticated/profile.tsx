@@ -170,7 +170,7 @@ function ProfileSettingsView() {
               <Field label="Email Address">
                 <div className="relative">
                   <input
-                    value={user.email ?? ""}
+                    value={profile?.email ?? user.email ?? ""}
                     disabled
                     readOnly
                     className="w-full px-3 py-2.5 pr-9 border border-input bg-muted text-sm rounded-sm text-muted-foreground cursor-not-allowed"
