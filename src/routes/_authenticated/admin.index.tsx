@@ -272,6 +272,39 @@ function BulkImportTab() {
           </AlertDescription>
         </Alert>
 
+        <div className="rounded-md border p-3 space-y-2">
+          <Label className="text-xs uppercase tracking-widest">Conflict Ingestion Mode</Label>
+          <RadioGroup
+            value={conflictMode}
+            onValueChange={(v) => setConflictMode(v as "skip" | "overwrite" | "abort")}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+          >
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="skip" id="conflict-skip" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Skip Existing</div>
+                <div className="text-muted-foreground">Leave existing accounts untouched.</div>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="overwrite" id="conflict-overwrite" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Overwrite Data</div>
+                <div className="text-muted-foreground">Update profile fields & re-approve.</div>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="abort" id="conflict-abort" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Abort Batch</div>
+                <div className="text-muted-foreground">Halt on first duplicate email.</div>
+              </div>
+            </label>
+          </RadioGroup>
+        </div>
+
+
+
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
