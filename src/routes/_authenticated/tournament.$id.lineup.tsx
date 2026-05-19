@@ -114,7 +114,7 @@ function LineupPicker() {
   const hasSubmission = existingPicks.length > 0;
 
   return (
-    <div className="p-8 md:p-12 max-w-4xl">
+    <div className="p-4 md:p-12 max-w-4xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
 
       <header className="mt-4 mb-8 flex justify-between items-end flex-wrap gap-4">
@@ -164,7 +164,7 @@ function LineupPicker() {
                     disabled={isLocked || opts.length === 0}
                     value={selected ?? ""}
                     onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
-                    className="px-3 py-2 text-sm border border-input bg-white w-[300px] disabled:opacity-50"
+                    className="px-3 py-2 text-base md:text-sm border border-input bg-white w-full sm:w-[300px] disabled:opacity-50"
                   >
                     <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                     {opts.map((g) => (

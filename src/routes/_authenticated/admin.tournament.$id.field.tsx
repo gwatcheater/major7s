@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { AdminDesktopOnly } from "@/components/admin-desktop-only";
 
 export const Route = createFileRoute("/_authenticated/admin/tournament/$id/field")({
-  component: AdminFieldPage,
+  component: () => <AdminDesktopOnly><AdminFieldPage /></AdminDesktopOnly>,
 });
 
 const BUCKETS = [1, 2, 3, 4, 5, 6, 7] as const;

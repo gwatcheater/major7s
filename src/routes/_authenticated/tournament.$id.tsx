@@ -27,7 +27,7 @@ function TournamentHub() {
   const isOpen = t.status === "open" && new Date(t.lock_at).getTime() > Date.now();
 
   return (
-    <div className="p-8 md:p-12 max-w-5xl">
+    <div className="p-4 md:p-12 max-w-5xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
       <h1 className="font-display text-4xl md:text-5xl uppercase mt-4">{t.name}</h1>
       <p className="text-muted-foreground mt-1">{t.course}</p>

@@ -110,11 +110,20 @@
 
 @layer base {
   * { border-color: var(--color-border); }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     background-color: var(--color-ui-bg);
     color: var(--color-foreground);
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
   h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+
+  /* Prevent iOS zoom on input focus by ensuring >=16px on mobile */
+  @media (max-width: 767px) {
+    input, select, textarea { font-size: 16px; }
+    h1 { font-size: clamp(1.5rem, 6vw, 2.25rem); }
+    h2 { font-size: clamp(1.25rem, 5vw, 1.875rem); }
+  }
 }

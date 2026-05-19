@@ -15,7 +15,8 @@ const nav = [
   { label: "Hall of Fame", to: "/hall-of-fame", icon: Crown },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer" } = {}) {
+  const isDrawer = variant === "drawer";
   const { user, isAdmin } = useAuth();
   const { teams, activeTeam, setActiveTeamId, refetch } = useTeams();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -76,7 +77,14 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className="sticky top-0 h-screen w-72 shrink-0 flex flex-col text-white z-50" style={{ backgroundColor: "var(--forest-deep)" }}>
+    <aside
+      className={
+        isDrawer
+          ? "h-full w-full flex flex-col text-white"
+          : "sticky top-0 h-screen w-72 shrink-0 hidden md:flex flex-col text-white z-50"
+      }
+      style={{ backgroundColor: "var(--forest-deep)" }}
+    >
       {/* Logo */}
       <div className="p-6">
         <Link to="/home" className="font-display text-2xl tracking-tight uppercase">
