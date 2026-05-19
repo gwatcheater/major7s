@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { Countdown } from "@/components/countdown";
+import { Card } from "@/components/ui/card";
+import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/lineup")({
@@ -55,6 +57,17 @@ function LineupPicker() {
         .from("picks").select("*")
         .eq("team_id", activeTeam!.id).eq("tournament_id", id);
       if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "lineup"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("profiles")
+        .select("team_nickname, nickname").eq("id", user.id).maybeSingle();
       return data;
     },
   });
@@ -138,23 +151,24 @@ function LineupPicker() {
 
   const maxTweaks = Math.max(0, ...existingPicks.map((p: any) => p.tweak_count ?? 0));
   const hasSubmission = existingPicks.length > 0;
+  const existingByBucketMap = new Map<number, any>(existingPicks.map((p: any) => [p.bucket, p]));
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const hasChangesNow = buckets.some(
+    (b) => existingByBucketMap.get(b)?.golfer_id !== selections[b],
+  );
+  const liveTweaks = maxTweaks + (hasSubmission && hasChangesNow ? 1 : 0);
+  const teamHandle =
+    profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
     <div className="p-4 md:p-12 max-w-4xl">
-      <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
+      <Link to={`/tournament/${id}`} className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Tournament</Link>
 
       <header className="mt-4 mb-8 flex justify-between items-end flex-wrap gap-4">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup · {activeTeam.nickname}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Build Lineup</p>
           <h1 className="font-display text-4xl uppercase mt-1">{tournament.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">{tournament.location}</p>
-          {hasSubmission && (
-            <div className="mt-2 flex gap-2 flex-wrap">
-              <span className="font-display text-[10px] uppercase tracking-widest px-2 py-1" style={{ backgroundColor: "var(--muted)", color: "var(--muted-foreground)" }}>
-                Tweaks · {maxTweaks}
-              </span>
-            </div>
-          )}
         </div>
         {!isLocked && (
           <div className="text-right">
@@ -176,37 +190,55 @@ function LineupPicker() {
         </div>
       ) : (
         <>
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5, 6, 7].map((b) => {
-              const opts = byBucket[b] ?? [];
-              const selected = selections[b];
-              return (
-                <div key={b} className="bg-card border border-border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4" style={!selected ? { borderLeftWidth: 4, borderLeftColor: "var(--alert)" } : undefined}>
-                  <div className="font-bold text-sm text-foreground">{BUCKET_LABELS[b]}</div>
-                  <select
-                    disabled={isLocked || opts.length === 0}
-                    value={selected ?? ""}
-                    onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
-                    className="px-3 py-2 text-base md:text-sm border border-input bg-white w-full sm:w-[300px] disabled:opacity-50"
-                  >
-                    <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
-                    {opts.map((g) => (
-                      <option key={g.id} value={g.id}>{g.golfer_name}{g.owgr_rank ? ` (OWGR #${g.owgr_rank})` : ""}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-display uppercase text-base">{teamHandle}</span>
+              {hasSubmission && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Tweaks: {liveTweaks}
+            </div>
 
-          <button
-            onClick={save}
-            disabled={isLocked}
-            className="mt-6 w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
-            style={{ backgroundColor: "var(--forest-deep)" }}
-          >
-            Save Lineup
-          </button>
+            <div className="mt-4 divide-y divide-border border border-border">
+              {buckets.map((b) => {
+                const opts = byBucket[b] ?? [];
+                const selected = selections[b];
+                return (
+                  <div
+                    key={b}
+                    className="flex items-center justify-between px-4 py-3 gap-4"
+                    style={!selected ? { borderLeftWidth: 3, borderLeftColor: "var(--alert)" } : undefined}
+                  >
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Bucket {b}
+                    </span>
+                    <select
+                      disabled={isLocked || opts.length === 0}
+                      value={selected ?? ""}
+                      onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
+                      className="text-sm font-medium text-right bg-transparent border-0 focus:outline-none focus:ring-0 max-w-[65%] truncate disabled:opacity-50 cursor-pointer"
+                    >
+                      <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
+                      {opts.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.golfer_name}{g.owgr_rank ? ` (OWGR #${g.owgr_rank})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={save}
+              disabled={isLocked}
+              className="mt-5 w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
+              style={{ backgroundColor: "var(--forest-deep)" }}
+            >
+              Save Lineup
+            </button>
+          </Card>
         </>
       )}
     </div>
