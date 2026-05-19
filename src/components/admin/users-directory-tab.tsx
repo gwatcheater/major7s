@@ -258,7 +258,7 @@ function ManageAccountDialog({
                     <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Primary</Badge>
                   ) : (
                     <Badge variant="secondary" className="bg-slate-500 text-white hover:bg-slate-500">
-                      Secondary
+                      Additional
                     </Badge>
                   )}
                   <Button
