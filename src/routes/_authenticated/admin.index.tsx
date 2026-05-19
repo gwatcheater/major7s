@@ -602,17 +602,17 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = ["Full Name", "Email", "Phone", "Team", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "Tweaks"];
+    const headers = ["UUID","First Name","Last Name","Email","Team Name (Leaderboard Display)","Bucket 1","Bucket 2","Bucket 3","Bucket 4","Bucket 5","Bucket 6","Bucket 7"];
     const lines = [headers.join(",")];
     for (const r of pivotedRows) {
-      const n = nameFor(r);
+      const p = profileById.get(r.ownerUserId);
       const cells = [
-        n.full,
-        n.email,
-        n.phone,
+        r.ownerUserId,
+        p?.first_name ?? "",
+        p?.last_name ?? "",
+        p?.email ?? "",
         r.teamName,
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => r.buckets[b] ?? ""),
-        String(r.tweaks),
       ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
       lines.push(cells.join(","));
     }
@@ -695,8 +695,7 @@ function SubmissionsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Team</TableHead>
+                <TableHead>Team Name (Leaderboard Display)</TableHead>
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => (
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
@@ -706,30 +705,22 @@ function SubmissionsTab() {
             <TableBody>
               {pivotedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">
                     No submissions yet for this tournament.
                   </TableCell>
                 </TableRow>
               ) : (
-                pivotedRows.map((r) => {
-                  const n = nameFor(r);
-                  return (
-                    <TableRow key={r.teamId}>
-                      <TableCell>
-                        <div className="font-medium">{n.full}</div>
-                        <div className="text-xs text-muted-foreground">{n.email}</div>
-                        <div className="text-xs text-muted-foreground">{n.phone}</div>
+                pivotedRows.map((r) => (
+                  <TableRow key={r.teamId}>
+                    <TableCell className="text-sm">{r.teamName}</TableCell>
+                    {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                      <TableCell key={b} className="text-xs">
+                        {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="text-sm">{r.teamName}</TableCell>
-                      {[1, 2, 3, 4, 5, 6, 7].map((b) => (
-                        <TableCell key={b} className="text-xs">
-                          {r.buckets[b] ?? <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
-                    </TableRow>
-                  );
-                })
+                    ))}
+                    <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
