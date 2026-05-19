@@ -15,7 +15,8 @@ const nav = [
   { label: "Hall of Fame", to: "/hall-of-fame", icon: Crown },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer" } = {}) {
+  const isDrawer = variant === "drawer";
   const { user, isAdmin } = useAuth();
   const { teams, activeTeam, setActiveTeamId, refetch } = useTeams();
   const path = useRouterState({ select: (s) => s.location.pathname });
