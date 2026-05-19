@@ -200,14 +200,9 @@ function TournamentHub() {
                 const pick = picksByBucket.get(b);
                 return (
                   <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex items-center justify-center w-8 h-8 bg-muted text-xs font-bold">
-                        B{b}
-                      </span>
-                      <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Bucket {b}
-                      </span>
-                    </div>
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Bucket {b}
+                    </span>
                     <span className="text-sm font-medium text-right truncate">
                       {pick?.name ?? <span className="text-muted-foreground">—</span>}
                     </span>
