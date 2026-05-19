@@ -238,9 +238,15 @@ function BulkImportTab() {
     setBusy(true);
     setReport(null);
     try {
-      const res = await bulk({ data: { rows: parsed.rows } });
+      const res = await bulk({ data: { rows: parsed.rows, conflictMode } });
       setReport(res);
-      if (res.succeeded > 0) toast.success(`Created ${res.succeeded} approved user${res.succeeded === 1 ? "" : "s"}`);
+      const parts: string[] = [];
+      if (res.created) parts.push(`Created ${res.created}`);
+      if (res.overwritten) parts.push(`Overwritten ${res.overwritten}`);
+      if (res.skipped) parts.push(`Skipped ${res.skipped}`);
+      if (res.aborted) parts.push("aborted on duplicate");
+      if (res.succeeded > 0) toast.success(parts.join(" · ") || `Imported ${res.succeeded}`);
+      else if (res.aborted) toast.error(`Batch aborted: ${parts.join(" · ")}`);
       if (res.failed > 0) toast.error(`${res.failed} row${res.failed === 1 ? "" : "s"} failed`);
       qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
       qc.invalidateQueries({ queryKey: ["admin-approved-profiles"] });
