@@ -43,6 +43,8 @@ function statusMeta(status: string) {
 function TournamentHub() {
   const { id } = Route.useParams();
   const { user } = useAuth();
+  const { getEffectiveUserId } = useImpersonation();
+  const effectiveId = getEffectiveUserId(user?.id);
   const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [blogOpen, setBlogOpen] = useState(false);
