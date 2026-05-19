@@ -61,8 +61,20 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("bucket, golfer_id, last_edited_at, submitted_at, golfers(golfer_name)")
+        .select("bucket, golfer_id, last_edited_at, submitted_at, tweak_count")
         .eq("team_id", activeTeam!.id)
+        .eq("tournament_id", id);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: golfers = [] } = useQuery({
+    queryKey: ["golfers", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("golfers")
+        .select("id, golfer_name")
         .eq("tournament_id", id);
       if (error) throw error;
       return data ?? [];
