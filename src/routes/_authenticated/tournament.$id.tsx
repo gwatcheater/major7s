@@ -103,10 +103,14 @@ function TournamentHub() {
   const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
   const canSubmit = t.status === "open_for_picks" && !lockExpired;
 
+  const golferNameById = new Map<string, string>(
+    golfers.map((g: any) => [g.id, g.golfer_name]),
+  );
+
   const picksByBucket = new Map<number, { name: string }>();
   let lastEdited = 0;
   for (const p of picks) {
-    const name = (p as any).golfers?.golfer_name ?? "—";
+    const name = golferNameById.get((p as any).golfer_id) ?? "—";
     picksByBucket.set(p.bucket as number, { name });
     const ts = new Date(p.last_edited_at as string).getTime();
     if (ts > lastEdited) lastEdited = ts;
