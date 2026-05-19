@@ -10,13 +10,13 @@ export const Route = createFileRoute("/_authenticated/admin/users")({
   component: () => <AdminDesktopOnly><AdminUsersPage /></AdminDesktopOnly>,
 });
 
-type Status = "pending" | "approved" | "suspended";
+type Status = "pending" | "approved" | "rejected";
 type Role = "admin" | "user";
 
 const STATUS_LABEL: Record<Status, string> = {
   pending: "Pending Approval",
   approved: "Approved",
-  suspended: "Suspended",
+  suspended: "Rejected",
 };
 const ROLE_LABEL: Record<Role, string> = { admin: "Admin", user: "Player" };
 
@@ -120,7 +120,7 @@ function AdminUsersPage() {
             <option value="all">All</option>
             <option value="pending">Pending Approval</option>
             <option value="approved">Approved</option>
-            <option value="suspended">Suspended</option>
+            <option value="rejected">Rejected</option>
           </select>
         </div>
         <div>
@@ -180,7 +180,7 @@ function AdminUsersPage() {
 }
 
 function StatusPill({ status }: { status: Status }) {
-  const color = status === "approved" ? "var(--forest-deep)" : status === "suspended" ? "var(--alert)" : "var(--gold)";
+  const color = status === "approved" ? "var(--forest-deep)" : status === "rejected" ? "var(--alert)" : "var(--gold)";
   return (
     <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-2 py-1 text-white"
       style={{ backgroundColor: color }}>
@@ -312,7 +312,7 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
                 className="w-full px-3 py-2 border border-input bg-white text-sm">
                 <option value="pending">Pending Approval</option>
                 <option value="approved">Approved</option>
-                <option value="suspended">Suspended</option>
+                <option value="rejected">Rejected</option>
               </select>
             </Field>
           </div>

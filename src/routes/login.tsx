@@ -32,13 +32,13 @@ function LoginPage() {
       await supabase.auth.signOut();
       throw new Error("Could not verify account status. Please try again.");
     }
-    const status = (data?.status ?? "pending") as "pending" | "approved" | "suspended";
+    const status = (data?.status ?? "pending") as "pending" | "approved" | "rejected";
     if (status === "approved") {
       navigate({ to: "/home" });
       return;
     }
     await supabase.auth.signOut();
-    if (status === "suspended") {
+    if (status === "rejected") {
       setPendingMsg("Your account has been suspended. Please contact an administrator.");
     } else {
       setPendingMsg("Your account is awaiting administrator approval.");

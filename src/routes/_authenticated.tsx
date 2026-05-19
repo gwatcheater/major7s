@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated")({
       .select("status")
       .eq("id", data.session.user.id)
       .maybeSingle();
-    const status = (profile?.status ?? "pending") as "pending" | "approved" | "suspended";
+    const status = (profile?.status ?? "pending") as "pending" | "approved" | "rejected";
     if (status !== "approved") {
       await supabase.auth.signOut();
       throw redirect({ to: "/login", search: { redirect: location.href } });
