@@ -102,20 +102,21 @@ function LineupPicker() {
     const existingByBucket = new Map<number, any>(existingPicks.map((p: any) => [p.bucket, p]));
     const hadExisting = existingPicks.length > 0;
 
-    const hasChanges =
-      existingByBucket.get(1)?.golfer_id !== selections[1] ||
-      existingByBucket.get(2)?.golfer_id !== selections[2] ||
-      existingByBucket.get(3)?.golfer_id !== selections[3] ||
-      existingByBucket.get(4)?.golfer_id !== selections[4] ||
-      existingByBucket.get(5)?.golfer_id !== selections[5] ||
-      existingByBucket.get(6)?.golfer_id !== selections[6] ||
-      existingByBucket.get(7)?.golfer_id !== selections[7];
+    let tweakIncrement = 0;
+    if (hadExisting) {
+      if (existingByBucket.get(1)?.golfer_id !== selections[1]) tweakIncrement++;
+      if (existingByBucket.get(2)?.golfer_id !== selections[2]) tweakIncrement++;
+      if (existingByBucket.get(3)?.golfer_id !== selections[3]) tweakIncrement++;
+      if (existingByBucket.get(4)?.golfer_id !== selections[4]) tweakIncrement++;
+      if (existingByBucket.get(5)?.golfer_id !== selections[5]) tweakIncrement++;
+      if (existingByBucket.get(6)?.golfer_id !== selections[6]) tweakIncrement++;
+      if (existingByBucket.get(7)?.golfer_id !== selections[7]) tweakIncrement++;
+    }
 
     const currentTweaks = existingPicks.reduce(
       (m: number, p: any) => Math.max(m, p.tweak_count ?? 0),
       0,
     );
-    const tweakIncrement = hadExisting && hasChanges ? 1 : 0;
     const newTweaks = currentTweaks + tweakIncrement;
     const nowIso = new Date().toISOString();
 
