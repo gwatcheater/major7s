@@ -99,13 +99,16 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TeamsProvider>
-          <NowProvider>
-            <AuthBridge />
-            <Outlet />
-            <Toaster />
-          </NowProvider>
-        </TeamsProvider>
+        <ImpersonationProvider>
+          <TeamsProvider>
+            <NowProvider>
+              <AuthBridge />
+              <Outlet />
+              <ImpersonationBanner />
+              <Toaster />
+            </NowProvider>
+          </TeamsProvider>
+        </ImpersonationProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
