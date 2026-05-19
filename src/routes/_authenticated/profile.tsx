@@ -121,7 +121,7 @@ function ProfilePage() {
   }
 
   return (
-    <div className="p-8 md:p-12 max-w-5xl">
+    <div className="p-4 md:p-12 max-w-5xl">
       <Link to="/home" className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">← Feed</Link>
 
       <header className="mt-4 mb-8">

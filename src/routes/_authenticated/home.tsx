@@ -71,7 +71,7 @@ function HomePage() {
   });
 
   return (
-    <div className="p-8 md:p-12 max-w-6xl">
+    <div className="p-4 md:p-12 max-w-6xl">
       <header className="mb-10 flex justify-between items-end flex-wrap gap-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
