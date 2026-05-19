@@ -61,6 +61,17 @@ function LineupPicker() {
     },
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "lineup"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("profiles")
+        .select("team_nickname, nickname").eq("id", user.id).maybeSingle();
+      return data;
+    },
+  });
+
   const [selections, setSelections] = useState<Record<number, string>>({});
   useEffect(() => {
     const init: Record<number, string> = {};
