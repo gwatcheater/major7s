@@ -16,7 +16,7 @@ type Role = "admin" | "user";
 const STATUS_LABEL: Record<Status, string> = {
   pending: "Pending Approval",
   approved: "Approved",
-  suspended: "Rejected",
+  rejected: "Rejected",
 };
 const ROLE_LABEL: Record<Role, string> = { admin: "Admin", user: "Player" };
 
