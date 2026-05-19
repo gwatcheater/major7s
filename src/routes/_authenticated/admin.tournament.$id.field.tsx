@@ -221,13 +221,13 @@ function AdminFieldPage() {
 
   async function saveDetails() {
     if (!detailsDraft) return;
-    const { name, course, start_date, end_date, submission_deadline } = detailsDraft;
-    if (!name || !course || !start_date || !end_date || !submission_deadline) {
+    const { name, location, start_date, end_date, submission_deadline } = detailsDraft;
+    if (!name || !location || !start_date || !end_date || !submission_deadline) {
       toast.error("All fields required"); return;
     }
     const { error } = await supabase
       .from("tournaments")
-      .update({ name, course, start_date, end_date, submission_deadline: new Date(submission_deadline).toISOString() })
+      .update({ name, location, start_date, end_date, submission_deadline: new Date(submission_deadline).toISOString() })
       .eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Tournament updated");
