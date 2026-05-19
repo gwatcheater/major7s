@@ -181,11 +181,8 @@ function LineupPicker() {
               const opts = byBucket[b] ?? [];
               const selected = selections[b];
               return (
-                <div key={b} className="bg-card border border-border p-4 flex items-center justify-between gap-4 flex-wrap" style={!selected ? { borderLeftWidth: 4, borderLeftColor: "var(--alert)" } : undefined}>
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="font-display text-xs text-muted-foreground">B{b}</div>
-                    <div className="font-bold text-sm">{BUCKET_LABELS[b]}</div>
-                  </div>
+                <div key={b} className="bg-card border border-border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4" style={!selected ? { borderLeftWidth: 4, borderLeftColor: "var(--alert)" } : undefined}>
+                  <div className="font-bold text-sm text-foreground">{BUCKET_LABELS[b]}</div>
                   <select
                     disabled={isLocked || opts.length === 0}
                     value={selected ?? ""}
@@ -194,7 +191,7 @@ function LineupPicker() {
                   >
                     <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                     {opts.map((g) => (
-                      <option key={g.id} value={g.id}>{g.golfer_name} {g.owgr_rank ? `(#${g.owgr_rank})` : ""}</option>
+                      <option key={g.id} value={g.id}>{g.golfer_name}{g.owgr_rank ? ` (OWGR #${g.owgr_rank})` : ""}</option>
                     ))}
                   </select>
                 </div>
