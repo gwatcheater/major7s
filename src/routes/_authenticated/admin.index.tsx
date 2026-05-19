@@ -13,6 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertTriangle,
@@ -205,7 +206,8 @@ function ApprovalsTab() {
 function BulkImportTab() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState<null | { succeeded: number; failed: number; results: Array<{ email: string; ok: boolean; error?: string }> }>(null);
+  const [conflictMode, setConflictMode] = useState<"skip" | "overwrite" | "abort">("skip");
+  const [report, setReport] = useState<null | { succeeded: number; failed: number; created?: number; overwritten?: number; skipped?: number; aborted?: boolean; results: Array<{ email: string; ok: boolean; action?: string; error?: string }> }>(null);
   const bulk = useServerFn(bulkCreateApprovedUsers);
   const qc = useQueryClient();
 
@@ -236,9 +238,15 @@ function BulkImportTab() {
     setBusy(true);
     setReport(null);
     try {
-      const res = await bulk({ data: { rows: parsed.rows } });
+      const res = await bulk({ data: { rows: parsed.rows, conflictMode } });
       setReport(res);
-      if (res.succeeded > 0) toast.success(`Created ${res.succeeded} approved user${res.succeeded === 1 ? "" : "s"}`);
+      const parts: string[] = [];
+      if (res.created) parts.push(`Created ${res.created}`);
+      if (res.overwritten) parts.push(`Overwritten ${res.overwritten}`);
+      if (res.skipped) parts.push(`Skipped ${res.skipped}`);
+      if (res.aborted) parts.push("aborted on duplicate");
+      if (res.succeeded > 0) toast.success(parts.join(" · ") || `Imported ${res.succeeded}`);
+      else if (res.aborted) toast.error(`Batch aborted: ${parts.join(" · ")}`);
       if (res.failed > 0) toast.error(`${res.failed} row${res.failed === 1 ? "" : "s"} failed`);
       qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
       qc.invalidateQueries({ queryKey: ["admin-approved-profiles"] });
@@ -263,6 +271,39 @@ function BulkImportTab() {
             <p className="text-xs mt-1 text-muted-foreground">One user per line. Only Email is required. Accounts are auto-approved.</p>
           </AlertDescription>
         </Alert>
+
+        <div className="rounded-md border p-3 space-y-2">
+          <Label className="text-xs uppercase tracking-widest">Conflict Ingestion Mode</Label>
+          <RadioGroup
+            value={conflictMode}
+            onValueChange={(v) => setConflictMode(v as "skip" | "overwrite" | "abort")}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+          >
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="skip" id="conflict-skip" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Skip Existing</div>
+                <div className="text-muted-foreground">Leave existing accounts untouched.</div>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="overwrite" id="conflict-overwrite" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Overwrite Data</div>
+                <div className="text-muted-foreground">Update profile fields & re-approve.</div>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/40">
+              <RadioGroupItem value="abort" id="conflict-abort" className="mt-0.5" />
+              <div className="text-xs">
+                <div className="font-semibold">Abort Batch</div>
+                <div className="text-muted-foreground">Halt on first duplicate email.</div>
+              </div>
+            </label>
+          </RadioGroup>
+        </div>
+
+
 
         <Textarea
           value={text}
