@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -14,7 +15,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2 } from "lucide-react";
+import { Settings, Plus, Trash2, EyeOff } from "lucide-react";
+import { useImpersonation } from "@/context/impersonation-context";
 
 interface ProfileRow {
   id: string;
@@ -36,6 +38,8 @@ interface TeamRow {
 
 export function UsersDirectoryTab() {
   const [selected, setSelected] = useState<ProfileRow | null>(null);
+  const { startImpersonation } = useImpersonation();
+  const navigate = useNavigate();
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-profiles"],
@@ -86,9 +90,22 @@ export function UsersDirectoryTab() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
-                          <Settings className="size-3.5" /> ⚙️ Manage Account
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
+                            <Settings className="size-3.5" /> ⚙️ Manage Account
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              startImpersonation(u.id);
+                              toast.success(`Simulation initialized: Acting as ${full}`);
+                              navigate({ to: "/home" });
+                            }}
+                          >
+                            <EyeOff className="size-3.5" /> 🕵️ Simulate User
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
