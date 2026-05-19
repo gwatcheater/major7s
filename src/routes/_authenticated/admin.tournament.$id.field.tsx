@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { AdminDesktopOnly } from "@/components/admin-desktop-only";
+import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
 
 export const Route = createFileRoute("/_authenticated/admin/tournament/$id/field")({
   component: () => <AdminDesktopOnly><AdminFieldPage /></AdminDesktopOnly>,
