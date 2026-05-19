@@ -154,10 +154,11 @@ function LineupPicker() {
   const hasSubmission = existingPicks.length > 0;
   const existingByBucketMap = new Map<number, any>(existingPicks.map((p: any) => [p.bucket, p]));
   const buckets = [1, 2, 3, 4, 5, 6, 7];
-  const hasChangesNow = buckets.some(
-    (b) => existingByBucketMap.get(b)?.golfer_id !== selections[b],
+  const changedCount = buckets.reduce(
+    (n, b) => n + (existingByBucketMap.get(b)?.golfer_id !== selections[b] ? 1 : 0),
+    0,
   );
-  const liveTweaks = maxTweaks + (hasSubmission && hasChangesNow ? 1 : 0);
+  const liveTweaks = maxTweaks + (hasSubmission ? changedCount : 0);
   const teamHandle =
     profile?.team_nickname || activeTeam?.nickname || profile?.nickname || "Your Team";
 
