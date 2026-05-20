@@ -890,7 +890,7 @@ function SubmissionsTab() {
                     return (
                       <tr key={u.id} className="border-b last:border-0">
                         <td className="py-1 pr-2">{full}</td>
-                        <td className="py-1 pr-2 text-muted-foreground">{u.team_nickname ?? "—"}</td>
+                        <td className="py-1 pr-2 text-muted-foreground">{u.nickname}</td>
                         <td className="py-1 text-muted-foreground">{u.email ?? ""}</td>
                       </tr>
                     );
