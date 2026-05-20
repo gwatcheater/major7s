@@ -104,7 +104,6 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
               first_name: row.first_name || null,
               last_name: row.last_name || null,
               phone: row.phone || null,
-              team_nickname: row.team_nickname || null,
               referral_name: row.referral_name || null,
               status: "approved",
             })
