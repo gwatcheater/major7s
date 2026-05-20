@@ -822,7 +822,7 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = "UUID,Full Name,Email,profile.team_nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const headers = "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
