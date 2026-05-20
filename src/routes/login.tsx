@@ -157,8 +157,8 @@ function LoginPage() {
                     className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest font-bold">Team nickname</label>
-                  <input value={teamNickname} onChange={(e) => setTeamNickname(e.target.value)} maxLength={60}
+                  <label className="text-[10px] uppercase tracking-widest font-bold">Nickname</label>
+                  <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={60}
                     className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                 </div>
               </>
