@@ -151,9 +151,9 @@ function ProfileSettingsView() {
               </div>
 
               <Field
-                label="Team Name (Leaderboard Display)"
+                label="Nickname (Leaderboard Display)"
                 error={errors.teamName}
-                hint="This unique name will be visible to all players on the master leaderboard."
+                hint="This name will be visible to all players on the master leaderboard."
               >
                 <Input value={teamName} onChange={setTeamName} placeholder="The Eagles" />
               </Field>
