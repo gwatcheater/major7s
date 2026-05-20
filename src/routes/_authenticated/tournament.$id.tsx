@@ -120,7 +120,7 @@ function TournamentHub() {
   }
   const hasPicks = picks.length > 0;
   const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
-  const teamHandle = activeTeam?.nickname || profile?.team_nickname || profile?.nickname || "Your Team";
+  const teamHandle = activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
     <div className="p-4 md:p-12 max-w-5xl mx-auto">
