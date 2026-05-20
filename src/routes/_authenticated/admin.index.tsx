@@ -128,7 +128,7 @@ function ApprovalsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, phone, team_nickname, referral_name, created_at")
+        .select("id, nickname, email, first_name, last_name, phone, referral_name, created_at")
         .eq("status", "pending")
         .order("created_at", { ascending: true });
       if (error) throw error;
