@@ -230,7 +230,7 @@ function BulkImportTab() {
   const qc = useQueryClient();
 
   const parsed = useMemo(() => {
-    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; team_nickname: string; referral_name: string }> = [];
+    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; referral_name: string }> = [];
     const errors: Array<{ line: number; reason: string }> = [];
     text.split(/\r?\n/).forEach((raw, idx) => {
       const line = idx + 1;
@@ -241,12 +241,12 @@ function BulkImportTab() {
         errors.push({ line, reason: "Missing email" });
         return;
       }
-      const [email, first_name = "", last_name = "", phone = "", team_nickname = "", referral_name = ""] = parts;
+      const [email, first_name = "", last_name = "", phone = "", referral_name = ""] = parts;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push({ line, reason: `Invalid email: ${email}` });
         return;
       }
-      rows.push({ email, first_name, last_name, phone, team_nickname, referral_name });
+      rows.push({ email, first_name, last_name, phone, referral_name });
     });
     return { rows, errors };
   }, [text]);
