@@ -153,7 +153,7 @@ function AdminUsersPage() {
             >
               <div className="min-w-0">
                 <div className="truncate">{full}</div>
-                {p.team_nickname && <div className="text-[10px] text-muted-foreground truncate">{p.team_nickname}</div>}
+                <div className="text-[10px] text-muted-foreground truncate">{p.nickname}</div>
               </div>
               <div className="truncate text-muted-foreground">{p.email ?? "—"}</div>
               <div className="text-xs">{ROLE_LABEL[role]}</div>
