@@ -199,7 +199,7 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
     last_name: profile.last_name ?? "",
     phone: profile.phone ?? "",
     referral_name: profile.referral_name ?? "",
-    team_nickname: profile.team_nickname ?? "",
+    nickname: profile.nickname ?? "",
     status: profile.status as Status,
     role: role as Role,
   });
@@ -208,7 +208,7 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
 
   async function save() {
     setSaving(true);
-    const nickname = draft.team_nickname || [draft.first_name, draft.last_name].filter(Boolean).join(" ") || profile.nickname;
+    const nickname = draft.nickname.trim() || [draft.first_name, draft.last_name].filter(Boolean).join(" ") || profile.nickname;
     const { error: pErr } = await supabase
       .from("profiles")
       .update({
@@ -216,7 +216,6 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
         last_name: draft.last_name || null,
         phone: draft.phone || null,
         referral_name: draft.referral_name || null,
-        team_nickname: draft.team_nickname || null,
         status: draft.status,
         nickname,
       })
