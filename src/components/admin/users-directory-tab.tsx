@@ -70,7 +70,7 @@ export function UsersDirectoryTab() {
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Primary Team</TableHead>
+                  <TableHead>Nickname</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -82,7 +82,7 @@ export function UsersDirectoryTab() {
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{full}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
-                      <TableCell className="text-sm">{u.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{u.nickname}</TableCell>
                       <TableCell>
                         <Badge variant={u.status === "approved" ? "default" : "secondary"} className="capitalize">
                           {u.status}
