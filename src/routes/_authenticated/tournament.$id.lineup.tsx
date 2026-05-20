@@ -70,7 +70,7 @@ function LineupPicker() {
       const targetId = getEffectiveUserId(user?.id);
       if (!targetId) return null;
       const { data } = await supabase.from("profiles")
-        .select("team_nickname, nickname").eq("id", targetId).maybeSingle();
+        .select("nickname").eq("id", targetId).maybeSingle();
       return data;
     },
   });
