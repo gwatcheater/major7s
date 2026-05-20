@@ -45,7 +45,7 @@ function AdminUsersPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, status, first_name, last_name, phone, referral_name, team_nickname, created_at")
+        .select("id, nickname, email, status, first_name, last_name, phone, referral_name, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as ProfileRow[];
