@@ -76,7 +76,6 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
             first_name: row.first_name,
             last_name: row.last_name,
             phone: row.phone,
-            team_nickname: row.team_nickname,
             referral_name: row.referral_name,
           },
         });
