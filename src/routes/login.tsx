@@ -82,21 +82,6 @@ function LoginPage() {
     } finally { setLoading(false); }
   }
 
-  async function handleGoogle() {
-    setPendingMsg(null);
-    setLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (result.error) { toast.error("Google sign-in failed"); setLoading(false); return; }
-    if (result.redirected) return;
-    // Returned without redirect — verify approval
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      try { await checkApprovalAndProceed(data.user.id); }
-      catch (e) { toast.error(e instanceof Error ? e.message : "Sign-in failed"); }
-    }
-    setLoading(false);
-  }
-
   async function handleForgotPassword() {
     if (!email) { toast.error("Enter your email above first"); return; }
     setLoading(true);
