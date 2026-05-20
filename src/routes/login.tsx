@@ -17,7 +17,7 @@ function LoginPage() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [referralName, setReferralName] = useState("");
-  const [teamNickname, setTeamNickname] = useState("");
+  const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingMsg, setPendingMsg] = useState<string | null>(null);
 
