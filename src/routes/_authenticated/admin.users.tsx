@@ -32,9 +32,6 @@ interface ProfileRow {
   created_at: string;
 }
 
-// (team_nickname column on profiles is deprecated; nickname is the source of truth)
-type _PadProfileRow = never;
-
 function AdminUsersPage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
