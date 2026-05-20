@@ -45,7 +45,7 @@ export function UsersDirectoryTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, team_nickname, status, created_at")
+        .select("id, nickname, email, first_name, last_name, status, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as ProfileRow[];
