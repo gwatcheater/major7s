@@ -90,7 +90,7 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("team_nickname, nickname")
+        .select("nickname")
         .eq("id", effectiveId!)
         .single();
       if (error) throw error;
