@@ -78,7 +78,7 @@ function AdminUsersPage() {
       if (roleFilter !== "all" && role !== roleFilter) return false;
       if (!q) return true;
       const hay = [
-        p.nickname, p.email, p.first_name, p.last_name, p.team_nickname, p.phone, p.referral_name,
+        p.nickname, p.email, p.first_name, p.last_name, p.phone, p.referral_name,
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
     });
