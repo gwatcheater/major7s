@@ -1,7 +1,6 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
@@ -83,21 +82,6 @@ function LoginPage() {
     } finally { setLoading(false); }
   }
 
-  async function handleGoogle() {
-    setPendingMsg(null);
-    setLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (result.error) { toast.error("Google sign-in failed"); setLoading(false); return; }
-    if (result.redirected) return;
-    // Returned without redirect — verify approval
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      try { await checkApprovalAndProceed(data.user.id); }
-      catch (e) { toast.error(e instanceof Error ? e.message : "Sign-in failed"); }
-    }
-    setLoading(false);
-  }
-
   async function handleForgotPassword() {
     if (!email) { toast.error("Enter your email above first"); return; }
     setLoading(true);
@@ -147,19 +131,6 @@ function LoginPage() {
             </div>
           )}
 
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full mb-4 py-3 px-4 border border-input bg-white hover:bg-secondary text-sm font-semibold rounded-sm transition-colors disabled:opacity-50"
-          >
-            Continue with Google
-          </button>
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {mode === "signup" && (
