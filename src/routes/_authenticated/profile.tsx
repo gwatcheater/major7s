@@ -46,7 +46,7 @@ function ProfileSettingsView() {
     if (!profile) return;
     setFirstName(profile.first_name ?? "");
     setLastName(profile.last_name ?? "");
-    setTeamName(profile.team_nickname ?? profile.nickname ?? "");
+    setTeamName(profile.nickname ?? "");
     setPhone(profile.phone ?? "");
     setReferral(profile.referral_name ?? "");
   }, [profile]);
@@ -54,7 +54,7 @@ function ProfileSettingsView() {
   const initial = useMemo(() => ({
     firstName: profile?.first_name ?? "",
     lastName: profile?.last_name ?? "",
-    teamName: profile?.team_nickname ?? profile?.nickname ?? "",
+    teamName: profile?.nickname ?? "",
     phone: profile?.phone ?? "",
     referral: profile?.referral_name ?? "",
   }), [profile]);
@@ -70,7 +70,7 @@ function ProfileSettingsView() {
     const e: Record<string, string> = {};
     if (!firstName.trim()) e.firstName = "First name is required";
     if (!lastName.trim()) e.lastName = "Last name is required";
-    if (!teamName.trim()) e.teamName = "Team name is required";
+    if (!teamName.trim()) e.teamName = "Nickname is required";
     if (phone.trim() && !PHONE_RE.test(phone.trim())) e.phone = "Enter a valid phone number";
     return e;
   }, [firstName, lastName, teamName, phone]);
@@ -82,14 +82,13 @@ function ProfileSettingsView() {
   async function savePersonal() {
     if (!isValid || !isDirty) return;
     setSaving(true);
-    const trimmedTeam = teamName.trim();
+    const trimmedNickname = teamName.trim();
     const { error } = await supabase.from("profiles").update({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       phone: phone.trim() || null,
       referral_name: referral.trim() || null,
-      team_nickname: trimmedTeam,
-      nickname: trimmedTeam,
+      nickname: trimmedNickname,
     }).eq("id", effectiveId!);
     setSaving(false);
     if (error) { toast.error(`Update failed: ${error.message}`); return; }
