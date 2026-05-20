@@ -726,7 +726,7 @@ function SubmissionsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, phone, team_nickname")
+        .select("id, nickname, email, first_name, last_name, phone")
         .eq("status", "approved");
       if (error) throw error;
       return data ?? [];
