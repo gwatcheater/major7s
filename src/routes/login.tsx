@@ -131,19 +131,6 @@ function LoginPage() {
             </div>
           )}
 
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full mb-4 py-3 px-4 border border-input bg-white hover:bg-secondary text-sm font-semibold rounded-sm transition-colors disabled:opacity-50"
-          >
-            Continue with Google
-          </button>
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {mode === "signup" && (
