@@ -170,7 +170,7 @@ function ApprovalsTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
-                  <TableHead>Team</TableHead>
+                  <TableHead>Nickname</TableHead>
                   <TableHead>Referral</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -185,7 +185,7 @@ function ApprovalsTab() {
                         <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
                         <div className="text-xs text-muted-foreground">{p.phone ?? "—"}</div>
                       </TableCell>
-                      <TableCell className="text-sm">{p.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{p.nickname}</TableCell>
                       <TableCell className="text-sm">{p.referral_name ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex gap-2 justify-end">
