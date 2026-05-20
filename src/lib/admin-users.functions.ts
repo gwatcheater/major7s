@@ -8,7 +8,6 @@ const RowSchema = z.object({
   first_name: z.string().trim().max(100).optional().default(""),
   last_name: z.string().trim().max(100).optional().default(""),
   phone: z.string().trim().max(40).optional().default(""),
-  team_nickname: z.string().trim().max(100).optional().default(""),
   referral_name: z.string().trim().max(100).optional().default(""),
 });
 
