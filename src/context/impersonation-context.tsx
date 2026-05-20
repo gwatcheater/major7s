@@ -52,7 +52,7 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, first_name, last_name, nickname, team_nickname")
+        .select("id, first_name, last_name, nickname")
         .eq("id", impersonatingId!)
         .maybeSingle();
       if (error) throw error;
