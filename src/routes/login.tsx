@@ -59,8 +59,7 @@ function LoginPage() {
               last_name: lastName,
               phone,
               referral_name: referralName,
-              team_nickname: teamNickname,
-              nickname: teamNickname || `${firstName} ${lastName}`.trim() || undefined,
+              nickname: nickname || `${firstName} ${lastName}`.trim() || undefined,
             },
           },
         });
