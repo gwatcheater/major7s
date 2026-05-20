@@ -24,7 +24,6 @@ interface ProfileRow {
   email: string | null;
   first_name: string | null;
   last_name: string | null;
-  team_nickname: string | null;
   status: string;
 }
 
