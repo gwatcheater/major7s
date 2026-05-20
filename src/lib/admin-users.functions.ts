@@ -8,7 +8,6 @@ const RowSchema = z.object({
   first_name: z.string().trim().max(100).optional().default(""),
   last_name: z.string().trim().max(100).optional().default(""),
   phone: z.string().trim().max(40).optional().default(""),
-  team_nickname: z.string().trim().max(100).optional().default(""),
   referral_name: z.string().trim().max(100).optional().default(""),
 });
 
@@ -77,7 +76,6 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
             first_name: row.first_name,
             last_name: row.last_name,
             phone: row.phone,
-            team_nickname: row.team_nickname,
             referral_name: row.referral_name,
           },
         });
@@ -106,7 +104,6 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
               first_name: row.first_name || null,
               last_name: row.last_name || null,
               phone: row.phone || null,
-              team_nickname: row.team_nickname || null,
               referral_name: row.referral_name || null,
               status: "approved",
             })

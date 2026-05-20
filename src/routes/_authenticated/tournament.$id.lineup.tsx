@@ -70,7 +70,7 @@ function LineupPicker() {
       const targetId = getEffectiveUserId(user?.id);
       if (!targetId) return null;
       const { data } = await supabase.from("profiles")
-        .select("team_nickname, nickname").eq("id", targetId).maybeSingle();
+        .select("nickname").eq("id", targetId).maybeSingle();
       return data;
     },
   });
@@ -163,7 +163,7 @@ function LineupPicker() {
   );
   const liveTweaks = maxTweaks + (hasSubmission ? changedCount : 0);
   const teamHandle =
-    activeTeam?.nickname || profile?.team_nickname || profile?.nickname || "Your Team";
+    activeTeam?.nickname || profile?.nickname || "Your Team";
 
   return (
     <div className="p-4 md:p-12 max-w-4xl">

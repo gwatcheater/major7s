@@ -29,7 +29,6 @@ interface ProfileRow {
   last_name: string | null;
   phone: string | null;
   referral_name: string | null;
-  team_nickname: string | null;
   created_at: string;
 }
 
@@ -46,7 +45,7 @@ function AdminUsersPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, status, first_name, last_name, phone, referral_name, team_nickname, created_at")
+        .select("id, nickname, email, status, first_name, last_name, phone, referral_name, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as ProfileRow[];
@@ -79,7 +78,7 @@ function AdminUsersPage() {
       if (roleFilter !== "all" && role !== roleFilter) return false;
       if (!q) return true;
       const hay = [
-        p.nickname, p.email, p.first_name, p.last_name, p.team_nickname, p.phone, p.referral_name,
+        p.nickname, p.email, p.first_name, p.last_name, p.phone, p.referral_name,
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
     });
@@ -154,7 +153,7 @@ function AdminUsersPage() {
             >
               <div className="min-w-0">
                 <div className="truncate">{full}</div>
-                {p.team_nickname && <div className="text-[10px] text-muted-foreground truncate">{p.team_nickname}</div>}
+                <div className="text-[10px] text-muted-foreground truncate">{p.nickname}</div>
               </div>
               <div className="truncate text-muted-foreground">{p.email ?? "—"}</div>
               <div className="text-xs">{ROLE_LABEL[role]}</div>
@@ -200,7 +199,7 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
     last_name: profile.last_name ?? "",
     phone: profile.phone ?? "",
     referral_name: profile.referral_name ?? "",
-    team_nickname: profile.team_nickname ?? "",
+    nickname: profile.nickname ?? "",
     status: profile.status as Status,
     role: role as Role,
   });
@@ -209,7 +208,7 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
 
   async function save() {
     setSaving(true);
-    const nickname = draft.team_nickname || [draft.first_name, draft.last_name].filter(Boolean).join(" ") || profile.nickname;
+    const nickname = draft.nickname.trim() || [draft.first_name, draft.last_name].filter(Boolean).join(" ") || profile.nickname;
     const { error: pErr } = await supabase
       .from("profiles")
       .update({
@@ -217,7 +216,6 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
         last_name: draft.last_name || null,
         phone: draft.phone || null,
         referral_name: draft.referral_name || null,
-        team_nickname: draft.team_nickname || null,
         status: draft.status,
         nickname,
       })
@@ -295,8 +293,8 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
             <input value={draft.referral_name} onChange={(e) => setDraft({ ...draft, referral_name: e.target.value })}
               className="w-full px-3 py-2 border border-input bg-white text-sm" />
           </Field>
-          <Field label="Team nickname">
-            <input value={draft.team_nickname} onChange={(e) => setDraft({ ...draft, team_nickname: e.target.value })}
+          <Field label="Nickname">
+            <input value={draft.nickname} onChange={(e) => setDraft({ ...draft, nickname: e.target.value })}
               className="w-full px-3 py-2 border border-input bg-white text-sm" />
           </Field>
           <div className="grid grid-cols-2 gap-3">

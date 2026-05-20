@@ -128,7 +128,7 @@ function ApprovalsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, phone, team_nickname, referral_name, created_at")
+        .select("id, nickname, email, first_name, last_name, phone, referral_name, created_at")
         .eq("status", "pending")
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -170,7 +170,7 @@ function ApprovalsTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
-                  <TableHead>Team</TableHead>
+                  <TableHead>Nickname</TableHead>
                   <TableHead>Referral</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -185,7 +185,7 @@ function ApprovalsTab() {
                         <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
                         <div className="text-xs text-muted-foreground">{p.phone ?? "—"}</div>
                       </TableCell>
-                      <TableCell className="text-sm">{p.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{p.nickname}</TableCell>
                       <TableCell className="text-sm">{p.referral_name ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex gap-2 justify-end">
@@ -230,7 +230,7 @@ function BulkImportTab() {
   const qc = useQueryClient();
 
   const parsed = useMemo(() => {
-    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; team_nickname: string; referral_name: string }> = [];
+    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; referral_name: string }> = [];
     const errors: Array<{ line: number; reason: string }> = [];
     text.split(/\r?\n/).forEach((raw, idx) => {
       const line = idx + 1;
@@ -241,12 +241,12 @@ function BulkImportTab() {
         errors.push({ line, reason: "Missing email" });
         return;
       }
-      const [email, first_name = "", last_name = "", phone = "", team_nickname = "", referral_name = ""] = parts;
+      const [email, first_name = "", last_name = "", phone = "", referral_name = ""] = parts;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push({ line, reason: `Invalid email: ${email}` });
         return;
       }
-      rows.push({ email, first_name, last_name, phone, team_nickname, referral_name });
+      rows.push({ email, first_name, last_name, phone, referral_name });
     });
     return { rows, errors };
   }, [text]);
@@ -726,7 +726,7 @@ function SubmissionsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, phone, team_nickname")
+        .select("id, nickname, email, first_name, last_name, phone")
         .eq("status", "approved");
       if (error) throw error;
       return data ?? [];
@@ -822,7 +822,7 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = "UUID,Full Name,Email,profile.team_nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const headers = "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
@@ -890,7 +890,7 @@ function SubmissionsTab() {
                     return (
                       <tr key={u.id} className="border-b last:border-0">
                         <td className="py-1 pr-2">{full}</td>
-                        <td className="py-1 pr-2 text-muted-foreground">{u.team_nickname ?? "—"}</td>
+                        <td className="py-1 pr-2 text-muted-foreground">{u.nickname}</td>
                         <td className="py-1 text-muted-foreground">{u.email ?? ""}</td>
                       </tr>
                     );

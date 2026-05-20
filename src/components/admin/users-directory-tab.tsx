@@ -24,7 +24,6 @@ interface ProfileRow {
   email: string | null;
   first_name: string | null;
   last_name: string | null;
-  team_nickname: string | null;
   status: string;
 }
 
@@ -46,7 +45,7 @@ export function UsersDirectoryTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, nickname, email, first_name, last_name, team_nickname, status, created_at")
+        .select("id, nickname, email, first_name, last_name, status, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as ProfileRow[];
@@ -71,7 +70,7 @@ export function UsersDirectoryTab() {
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Primary Team</TableHead>
+                  <TableHead>Nickname</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -83,7 +82,7 @@ export function UsersDirectoryTab() {
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{full}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
-                      <TableCell className="text-sm">{u.team_nickname ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{u.nickname}</TableCell>
                       <TableCell>
                         <Badge variant={u.status === "approved" ? "default" : "secondary"} className="capitalize">
                           {u.status}
