@@ -293,8 +293,8 @@ function UserDrawer({ profile, role, onClose, onSaved }: {
             <input value={draft.referral_name} onChange={(e) => setDraft({ ...draft, referral_name: e.target.value })}
               className="w-full px-3 py-2 border border-input bg-white text-sm" />
           </Field>
-          <Field label="Team nickname">
-            <input value={draft.team_nickname} onChange={(e) => setDraft({ ...draft, team_nickname: e.target.value })}
+          <Field label="Nickname">
+            <input value={draft.nickname} onChange={(e) => setDraft({ ...draft, nickname: e.target.value })}
               className="w-full px-3 py-2 border border-input bg-white text-sm" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
