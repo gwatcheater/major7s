@@ -60,14 +60,19 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
   }
 
   async function handleAddTeam() {
-    if (!user || !activeTeam) return;
-    const baseName = teams.find((t) => t.is_primary)?.nickname ?? "Team";
+    if (!user) return;
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("nickname")
+      .eq("id", user.id)
+      .maybeSingle();
+    const baseName = prof?.nickname?.trim() || teams.find((t) => t.is_primary)?.nickname || "Team";
     const next = teams.length + 1;
-    const nickname = next === 2 ? `${baseName} 2` : `${baseName} ${next}`;
+    const nickname = next === 1 ? baseName : `${baseName} ${next}`;
     const { error } = await supabase.from("teams").insert({
       owner_user_id: user.id,
       nickname,
-      is_primary: false,
+      is_primary: teams.length === 0,
     });
     if (error) toast.error(error.message);
     else {
