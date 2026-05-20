@@ -29,9 +29,11 @@ interface ProfileRow {
   last_name: string | null;
   phone: string | null;
   referral_name: string | null;
-  team_nickname: string | null;
   created_at: string;
 }
+
+// (team_nickname column on profiles is deprecated; nickname is the source of truth)
+type _PadProfileRow = never;
 
 function AdminUsersPage() {
   const { isAdmin } = useAuth();
