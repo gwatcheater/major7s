@@ -4,7 +4,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +22,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, EyeOff } from "lucide-react";
+import { Settings, Plus, Trash2, EyeOff, ShieldCheck } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useImpersonation } from "@/context/impersonation-context";
 
 interface ProfileRow {
@@ -81,10 +96,15 @@ export function UsersDirectoryTab() {
                   return (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{full}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {u.email ?? "—"}
+                      </TableCell>
                       <TableCell className="text-sm">{u.nickname}</TableCell>
                       <TableCell>
-                        <Badge variant={u.status === "approved" ? "default" : "secondary"} className="capitalize">
+                        <Badge
+                          variant={u.status === "approved" ? "default" : "secondary"}
+                          className="capitalize"
+                        >
                           {u.status}
                         </Badge>
                       </TableCell>
@@ -137,8 +157,28 @@ function ManageAccountDialog({
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newTeamName, setNewTeamName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
 
-  const { data: teams = [], isLoading, refetch } = useQuery({
+  const { data: currentRole = "user", refetch: refetchRole } = useQuery({
+    queryKey: ["admin-user-role", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user!.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (error) throw error;
+      return data ? ("admin" as const) : ("user" as const);
+    },
+  });
+
+  const {
+    data: teams = [],
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ["admin-user-teams", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
@@ -156,7 +196,8 @@ function ManageAccountDialog({
   useEffect(() => {
     setEdits({});
     setNewTeamName("");
-  }, [user?.id]);
+    setSelectedRole(currentRole);
+  }, [user?.id, currentRole]);
 
   const fullName = useMemo(() => {
     if (!user) return "";
@@ -166,7 +207,12 @@ function ManageAccountDialog({
   async function handleDelete(team: TeamRow) {
     if (team.is_primary) return;
     if (!window.confirm(`Delete team "${team.nickname}"? This cannot be undone.`)) return;
-    if (!window.confirm(`Are you absolutely sure? This will permanently remove team "${team.nickname}".`)) return;
+    if (
+      !window.confirm(
+        `Are you absolutely sure? This will permanently remove team "${team.nickname}".`,
+      )
+    )
+      return;
     setBusy(true);
     const { error } = await supabase.from("teams").delete().eq("id", team.id);
     setBusy(false);
@@ -204,6 +250,37 @@ function ManageAccountDialog({
     setNewTeamName("");
     refetch();
     qc.invalidateQueries({ queryKey: ["teams"] });
+  }
+
+  async function handleRoleChange(newRole: "admin" | "user") {
+    if (!user || newRole === currentRole) return;
+    setBusy(true);
+    if (newRole === "admin") {
+      const { error } = await supabase
+        .from("user_roles")
+        .upsert({ user_id: user.id, role: "admin" }, { onConflict: "user_id,role" });
+      if (error) {
+        toast.error(`Role: ${error.message}`);
+        setBusy(false);
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("role", "admin");
+      if (error) {
+        toast.error(`Role: ${error.message}`);
+        setBusy(false);
+        return;
+      }
+    }
+    setBusy(false);
+    toast.success(`Role updated to ${newRole === "admin" ? "Admin" : "Player"}`);
+    setSelectedRole(newRole);
+    refetchRole();
+    qc.invalidateQueries({ queryKey: ["admin-users-roles"] });
   }
 
   async function handleSave() {
@@ -249,7 +326,38 @@ function ManageAccountDialog({
 
         <section className="mt-4 rounded-lg border bg-card/50 p-4">
           <header className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider">Registered Team Entries</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider">User Role</h3>
+          </header>
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="size-4 text-muted-foreground" />
+            <div className="flex-1">
+              <Label
+                htmlFor="role-select"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
+                Role
+              </Label>
+              <Select
+                value={selectedRole}
+                onValueChange={(v) => handleRoleChange(v as "admin" | "user")}
+              >
+                <SelectTrigger id="role-select" className="h-9 mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Player</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-lg border bg-card/50 p-4">
+          <header className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wider">
+              Registered Team Entries
+            </h3>
             <span className="text-xs font-mono text-muted-foreground">{teams.length} total</span>
           </header>
 
@@ -271,9 +379,14 @@ function ManageAccountDialog({
                     placeholder="Team nickname"
                   />
                   {team.is_primary ? (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Primary</Badge>
+                    <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
+                      Primary
+                    </Badge>
                   ) : (
-                    <Badge variant="secondary" className="bg-slate-500 text-white hover:bg-slate-500">
+                    <Badge
+                      variant="secondary"
+                      className="bg-slate-500 text-white hover:bg-slate-500"
+                    >
                       Additional
                     </Badge>
                   )}
