@@ -71,6 +71,19 @@ function HomePage() {
     },
   });
 
+  const { data: completedTournaments = [] } = useQuery({
+    queryKey: ["tournaments-completed"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("*")
+        .eq("status", "completed")
+        .order("end_date", { ascending: false });
+      if (error) throw error;
+      return data as Tournament[];
+    },
+  });
+
   return (
     <div className="p-4 md:p-12 max-w-6xl">
       <header className="mb-10 flex justify-between items-end flex-wrap gap-4">
