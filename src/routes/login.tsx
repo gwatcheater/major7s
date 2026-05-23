@@ -100,14 +100,14 @@ function LoginPage() {
         </div>
         <div>
           <p className="text-[11px] uppercase tracking-widest font-bold mb-3" style={{ color: "var(--gold)" }}>
-            The Golf Picks Championship
+            Major7s Picks Game
           </p>
           <h1 className="font-display text-5xl leading-[0.95] uppercase">
-            Pick your seven.<br />
-            Chase the Grand Slam.
+            Pick. Tweak.<br />
+            Suffer. Repeat.
           </h1>
           <p className="mt-6 text-white/60 max-w-md leading-relaxed">
-            One game engine. Four majors. Two teams per player. A season-long climb tracked in cold, hard numbers.
+            Welcome to the ultimate test of golfing intuition and emotional endurance. Major7s is a brutal, fast-paced picks game built for the four golf majors. You select seven players. You obsessively tweak your lineup. Then, you watch the leaderboard mercilessly tear your dreams apart.
           </p>
         </div>
         <div className="text-[10px] uppercase tracking-widest text-white/30">
