@@ -189,6 +189,12 @@ function HomePage() {
                   ) : (
                     <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
                       View tournament hub →
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
