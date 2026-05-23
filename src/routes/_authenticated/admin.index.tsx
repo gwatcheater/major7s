@@ -380,7 +380,7 @@ function TournamentTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name, location, status, start_date, end_date, submission_deadline, logo_url")
+        .select("id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes")
         .order("start_date", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -422,6 +422,11 @@ function TournamentTab() {
               <EditTournamentDetailsForm
                 key={`edit-${selected.id}`}
                 tournament={selected}
+              />
+              <BucketSizesEditor
+                key={`buckets-${selected.id}`}
+                tournamentId={selected.id}
+                rawSizes={(selected as any).bucket_sizes}
               />
               <AdvancedFieldPortal tournamentId={selected.id} tournamentName={selected.name} />
             </div>
@@ -701,7 +706,82 @@ function EditTournamentDetailsForm({
   );
 }
 
+const BUCKETS = [1, 2, 3, 4, 5, 6, 7] as const;
+const DEFAULT_BUCKET_SIZES: Record<number, number> = { 1: 10, 2: 10, 3: 10, 4: 10, 5: 0, 6: 0, 7: 0 };
 
+function normalizeBucketSizes(raw: unknown): Record<number, number> {
+  const out: Record<number, number> = { ...DEFAULT_BUCKET_SIZES };
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const b of BUCKETS) {
+      const v = Number((raw as Record<string, unknown>)[b] ?? (raw as Record<string, unknown>)[String(b)]);
+      if (Number.isFinite(v) && v >= 0) out[b] = Math.floor(v);
+    }
+  }
+  return out;
+}
+
+function BucketSizesEditor({ tournamentId, rawSizes }: { tournamentId: string; rawSizes: unknown }) {
+  const qc = useQueryClient();
+  const sizes = useMemo(() => normalizeBucketSizes(rawSizes), [rawSizes]);
+  const [draft, setDraft] = useState<Record<number, string> | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!draft) return;
+    const next: Record<number, number> = {};
+    for (const b of BUCKETS) {
+      const v = parseInt(draft[b] ?? "0", 10);
+      next[b] = Number.isFinite(v) && v >= 0 ? v : 0;
+    }
+    setSaving(true);
+    const { error } = await supabase.from("tournaments").update({ bucket_sizes: next as any }).eq("id", tournamentId);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Bucket sizes saved");
+    setDraft(null);
+    qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
+          <span>Bucket Sizes</span>
+          {draft ? (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDraft(null)} disabled={saving}>Cancel</Button>
+              <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save Sizes"}</Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setDraft(Object.fromEntries(BUCKETS.map((b) => [b, String(sizes[b] ?? 0)])) as Record<number, string>)}>
+              Edit Sizes
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-7 gap-2">
+          {BUCKETS.map((b) => (
+            <div key={b} className="border border-border rounded-md p-3 text-center bg-muted/30">
+              <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">B{b}</div>
+              {draft ? (
+                <Input
+                  type="number"
+                  min={0}
+                  value={draft[b]}
+                  onChange={(e) => setDraft({ ...draft, [b]: e.target.value })}
+                  className="mt-2 text-center h-8 text-sm"
+                />
+              ) : (
+                <div className="font-semibold text-xl mt-1">{sizes[b]}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 /* ============================================================
    TAB 4 — SUBMISSIONS LEADERBOARD
