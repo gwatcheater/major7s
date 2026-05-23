@@ -1,12 +1,136 @@
-import { createFileRoute } from "@tanstack/react-router";
-function Placeholder({ title, body }: { title: string; body: string }) {
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { tournamentDateRange } from "@/lib/format";
+import { tournamentCardLink } from "@/lib/tournament-link";
+
+export const Route = createFileRoute("/_authenticated/archive")({
+  component: ArchivePage,
+});
+
+interface Tournament {
+  id: string;
+  name: string;
+  location: string;
+  start_date: string;
+  end_date: string;
+  submission_deadline: string;
+  status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
+  logo_url?: string;
+}
+
+function StatusBadge({ status }: { status: Tournament["status"] }) {
+  const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
+    upcoming: { label: "Upcoming · Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
+    open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
+    picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
+    live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
+    completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
+  };
+  const m = map[status];
   return (
-    <div className="p-4 md:p-12 max-w-4xl">
-      <h1 className="font-display text-4xl uppercase mb-3">{title}</h1>
-      <p className="text-sm text-muted-foreground">{body}</p>
+    <span
+      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm"
+      style={{ backgroundColor: m.bg, color: m.color }}
+    >
+      {m.label}
+    </span>
+  );
+}
+
+function ArchivePage() {
+  const { data: completedTournaments = [], isLoading } = useQuery({
+    queryKey: ["tournaments-completed"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("*")
+        .eq("status", "completed")
+        .order("end_date", { ascending: false });
+      if (error) throw error;
+      return data as Tournament[];
+    },
+  });
+
+  return (
+    <div className="p-4 md:p-12 max-w-6xl">
+      <header className="mb-10">
+        <p
+          className="text-[10px] font-bold uppercase tracking-widest"
+          style={{ color: "var(--gold)" }}
+        >
+          The Season
+        </p>
+        <h1
+          className="font-display text-4xl md:text-5xl uppercase mt-1"
+          style={{ color: "var(--forest-deep)" }}
+        >
+          Event <span style={{ color: "var(--gold)" }}>Archive</span>
+        </h1>
+      </header>
+
+      {isLoading ? (
+        <div className="text-center py-20 text-muted-foreground text-sm">Loading archive...</div>
+      ) : completedTournaments.length === 0 ? (
+        <div className="border-2 border-dashed border-border p-16 text-center">
+          <p className="text-sm text-muted-foreground">
+            No completed tournaments yet — finished events will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          {completedTournaments.map((t, i) => {
+            const link = tournamentCardLink(t);
+            return (
+              <div
+                key={t.id}
+                className="relative bg-card border border-border overflow-hidden flex flex-col md:flex-row hover:border-primary/30 transition-colors animate-reveal"
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
+                <Link
+                  to={link.to}
+                  params={link.params}
+                  aria-label={`Open ${t.name}`}
+                  className="absolute inset-0 z-10"
+                />
+                <div
+                  className="absolute top-0 left-0 w-1 h-full pointer-events-none"
+                  style={{ backgroundColor: "var(--forest)" }}
+                />
+                <div className="flex-1 p-6 md:p-8 relative pointer-events-none">
+                  <div className="flex justify-between items-start mb-6 gap-4">
+                    <div className="flex items-start gap-4 min-w-0">
+                      {t.logo_url && (
+                        <img
+                          src={t.logo_url}
+                          alt={`${t.name} logo`}
+                          className="h-12 w-12 object-contain rounded-lg border bg-card shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p
+                          className="text-[11px] font-bold uppercase tracking-[0.2em]"
+                          style={{ color: "var(--gold)" }}
+                        >
+                          {tournamentDateRange(t.start_date, t.end_date)}
+                        </p>
+                        <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">
+                          {t.name}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
+                      </div>
+                    </div>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
+                    View results →
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
-export const Route = createFileRoute("/_authenticated/archive")({
-  component: () => <Placeholder title="Event Archive" body="Completed tournaments and historical analytics will appear here as the season progresses." />,
-});
