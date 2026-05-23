@@ -193,13 +193,13 @@ function LoginPage() {
             </button>
           )}
 
-          <p className="mt-6 text-xs text-center text-muted-foreground">
+          <p className="mt-6 text-sm text-center text-muted-foreground">
             {mode === "signin" ? "New to Major7s? " : "Already have an account? "}
             <button onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setPendingMsg(null); }} className="font-bold underline">
               {mode === "signin" ? "Create one" : "Sign in"}
             </button>
           </p>
-          <p className="mt-4 text-[10px] text-center text-muted-foreground">
+          <p className="mt-4 text-xs text-center text-muted-foreground">
             New accounts require admin approval before sign-in.
           </p>
         </div>
