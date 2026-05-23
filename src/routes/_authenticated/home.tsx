@@ -189,8 +189,103 @@ function HomePage() {
                   ) : (
                     <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
                       View tournament hub →
+        </div>
+      )}
+
+      {completedTournaments.length > 0 && (
+        <>
+          <header className="mb-10 mt-16">
+            <h2 className="font-display text-3xl md:text-4xl uppercase" style={{ color: "var(--forest-deep)" }}>
+              Event <span style={{ color: "var(--gold)" }}>Archive</span>
+            </h2>
+          </header>
+          <div className="grid gap-6">
+            {completedTournaments.map((t, i) => {
+              const picks = pickCounts[t.id] ?? 0;
+              const complete = picks >= 7;
+              const isOpen = t.status === "open_for_picks";
+              const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
+              const link = tournamentCardLink(t);
+              const showLineupCta = isOpen && !lockExpired;
+              return (
+                <div
+                  key={t.id}
+                  className="relative bg-card border border-border overflow-hidden flex flex-col md:flex-row hover:border-primary/30 transition-colors animate-reveal"
+                  style={{ animationDelay: `${i * 80}ms` }}
+                >
+                  {/* Full-card click target navigates to the hub */}
+                  <Link
+                    to={link.to}
+                    params={link.params}
+                    aria-label={`Open ${t.name}`}
+                    className="absolute inset-0 z-10"
+                  />
+                  <div className="absolute top-0 left-0 w-1 h-full pointer-events-none" style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }} />
+                  <div className="flex-1 p-6 md:p-8 relative pointer-events-none">
+                    <div className="flex justify-between items-start mb-6 gap-4">
+                      <div className="flex items-start gap-4 min-w-0">
+                        {t.logo_url && (
+                          <img
+                            src={t.logo_url}
+                            alt={`${t.name} logo`}
+                            className="h-12 w-12 object-contain rounded-lg border bg-card shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--gold)" }}>
+                            {tournamentDateRange(t.start_date, t.end_date)}
+                          </p>
+                          <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">{t.name}</h3>
+                          <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <StatusBadge status={t.status} />
+                        {activeTeam && (
+                          <span
+                            className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1"
+                            style={{
+                              backgroundColor: complete ? "var(--success)" : "var(--alert)",
+                              color: "white",
+                            }}
+                          >
+                            {complete ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+                            {complete ? "Picks Selected" : "Picks Not Selected"}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  )}
+
+                    {showLineupCta ? (
+                      <div className="flex items-end justify-between border-t border-border pt-4 mt-4 flex-wrap gap-4">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                            Registration Closes In
+                          </span>
+                          <Countdown targetIso={t.submission_deadline} />
+                        </div>
+                        <Link
+                          to="/tournament/$id/lineup"
+                          params={{ id: t.id }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative z-20 pointer-events-auto px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white"
+                          style={{ backgroundColor: "var(--forest-deep)" }}
+                        >
+                          {complete ? "Edit Lineup →" : "Enter Lineup →"}
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
+                        View tournament hub →
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
                 </div>
               </div>
             );
