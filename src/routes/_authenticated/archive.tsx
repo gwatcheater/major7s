@@ -32,7 +32,7 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
   const m = map[status];
   return (
     <span
-      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm"
+      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full"
       style={{ backgroundColor: m.bg, color: m.color }}
     >
       {m.label}
@@ -146,11 +146,11 @@ function ArchivePage() {
                         <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex flex-row items-start gap-2 shrink-0">
                       <StatusBadge status={t.status} />
                       {activeTeam && (
                         <span
-                          className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1"
+                          className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-full flex items-center gap-1"
                           style={{
                             backgroundColor: entered ? "var(--success)" : "var(--muted)",
                             color: entered ? "white" : "var(--muted-foreground)",
