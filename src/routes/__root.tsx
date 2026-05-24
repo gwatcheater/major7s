@@ -103,6 +103,7 @@ function AuthBridge() {
 }
 
 function RootComponent() {
+  // Force rebuild trigger
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
