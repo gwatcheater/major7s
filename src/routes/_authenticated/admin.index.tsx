@@ -6,7 +6,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -65,7 +72,9 @@ function AdminConsole() {
           <AlertTitle>Restricted</AlertTitle>
           <AlertDescription>You don't have admin access.</AlertDescription>
         </Alert>
-        <Link to="/home" className="mt-6 inline-block text-xs uppercase underline">← Home</Link>
+        <Link to="/home" className="mt-6 inline-block text-xs uppercase underline">
+          ← Home
+        </Link>
       </div>
     );
   }
@@ -74,26 +83,56 @@ function AdminConsole() {
     <TooltipProvider>
       <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto">
         <header className="mb-6">
-          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
+          <p
+            className="text-[10px] font-bold uppercase tracking-widest"
+            style={{ color: "var(--gold)" }}
+          >
             Governance
           </p>
-          <h1 className="font-display text-3xl md:text-4xl uppercase mt-1">Admin Management Center</h1>
+          <h1 className="font-display text-3xl md:text-4xl uppercase mt-1">
+            Admin Management Center
+          </h1>
         </header>
 
         <Tabs defaultValue="approvals" className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
-            <TabsTrigger value="approvals" className="text-xs gap-1.5"><UserCheck className="size-3.5" />Approvals</TabsTrigger>
-            <TabsTrigger value="bulk" className="text-xs gap-1.5"><Users className="size-3.5" />Bulk Import</TabsTrigger>
-            <TabsTrigger value="tournament" className="text-xs gap-1.5"><Trophy className="size-3.5" />Tournament</TabsTrigger>
-            <TabsTrigger value="picks" className="text-xs gap-1.5"><ClipboardList className="size-3.5" />Submissions</TabsTrigger>
-            <TabsTrigger value="users" className="text-xs gap-1.5"><Users className="size-3.5" />Users</TabsTrigger>
+            <TabsTrigger value="approvals" className="text-xs gap-1.5">
+              <UserCheck className="size-3.5" />
+              Approvals
+            </TabsTrigger>
+            <TabsTrigger value="bulk" className="text-xs gap-1.5">
+              <Users className="size-3.5" />
+              Bulk Import
+            </TabsTrigger>
+            <TabsTrigger value="tournament" className="text-xs gap-1.5">
+              <Trophy className="size-3.5" />
+              Tournament
+            </TabsTrigger>
+            <TabsTrigger value="picks" className="text-xs gap-1.5">
+              <ClipboardList className="size-3.5" />
+              Submissions
+            </TabsTrigger>
+            <TabsTrigger value="users" className="text-xs gap-1.5">
+              <Users className="size-3.5" />
+              Users
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="approvals" className="mt-6"><ApprovalsTab /></TabsContent>
-          <TabsContent value="bulk" className="mt-6"><BulkImportTab /></TabsContent>
-          <TabsContent value="tournament" className="mt-6"><TournamentTab /></TabsContent>
-          <TabsContent value="picks" className="mt-6"><SubmissionsTab /></TabsContent>
-          <TabsContent value="users" className="mt-6"><UsersDirectoryTab /></TabsContent>
+          <TabsContent value="approvals" className="mt-6">
+            <ApprovalsTab />
+          </TabsContent>
+          <TabsContent value="bulk" className="mt-6">
+            <BulkImportTab />
+          </TabsContent>
+          <TabsContent value="tournament" className="mt-6">
+            <TournamentTab />
+          </TabsContent>
+          <TabsContent value="picks" className="mt-6">
+            <SubmissionsTab />
+          </TabsContent>
+          <TabsContent value="users" className="mt-6">
+            <UsersDirectoryTab />
+          </TabsContent>
         </Tabs>
       </div>
     </TooltipProvider>
@@ -225,12 +264,26 @@ function BulkImportTab() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [conflictMode, setConflictMode] = useState<"skip" | "overwrite" | "abort">("skip");
-  const [report, setReport] = useState<null | { succeeded: number; failed: number; created?: number; overwritten?: number; skipped?: number; aborted?: boolean; results: Array<{ email: string; ok: boolean; action?: string; error?: string }> }>(null);
+  const [report, setReport] = useState<null | {
+    succeeded: number;
+    failed: number;
+    created?: number;
+    overwritten?: number;
+    skipped?: number;
+    aborted?: boolean;
+    results: Array<{ email: string; ok: boolean; action?: string; error?: string }>;
+  }>(null);
   const bulk = useServerFn(bulkCreateApprovedUsers);
   const qc = useQueryClient();
 
   const parsed = useMemo(() => {
-    const rows: Array<{ email: string; first_name: string; last_name: string; phone: string; referral_name: string }> = [];
+    const rows: Array<{
+      email: string;
+      first_name: string;
+      last_name: string;
+      phone: string;
+      referral_name: string;
+    }> = [];
     const errors: Array<{ line: number; reason: string }> = [];
     text.split(/\r?\n/).forEach((raw, idx) => {
       const line = idx + 1;
@@ -285,8 +338,12 @@ function BulkImportTab() {
           <Upload className="size-4" />
           <AlertTitle>Expected Format</AlertTitle>
           <AlertDescription>
-            <code className="text-xs font-mono">Email, FirstName, LastName, Phone, TeamName, ReferralName</code>
-            <p className="text-xs mt-1 text-muted-foreground">One user per line. Only Email is required. Accounts are auto-approved.</p>
+            <code className="text-xs font-mono">
+              Email, FirstName, LastName, Phone, TeamName, ReferralName
+            </code>
+            <p className="text-xs mt-1 text-muted-foreground">
+              One user per line. Only Email is required. Accounts are auto-approved.
+            </p>
           </AlertDescription>
         </Alert>
 
@@ -321,17 +378,20 @@ function BulkImportTab() {
           </RadioGroup>
         </div>
 
-
-
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={"jane@example.com, Jane, Doe, 555-1212, Birdie Brigade, Mike\njohn@example.com, John, Smith"}
+          placeholder={
+            "jane@example.com, Jane, Doe, 555-1212, Birdie Brigade, Mike\njohn@example.com, John, Smith"
+          }
           className="min-h-[220px] font-mono text-sm"
         />
 
         <div className="flex items-center gap-3 flex-wrap">
-          <Button onClick={execute} disabled={busy || parsed.rows.length === 0 || parsed.errors.length > 0}>
+          <Button
+            onClick={execute}
+            disabled={busy || parsed.rows.length === 0 || parsed.errors.length > 0}
+          >
             {busy ? "Importing…" : `Execute Bulk Import (${parsed.rows.length})`}
           </Button>
           <div className="text-xs font-mono text-muted-foreground">
@@ -348,7 +408,9 @@ function BulkImportTab() {
             <AlertDescription>
               <ul className="text-xs mt-1 list-disc pl-5">
                 {parsed.errors.map((e) => (
-                  <li key={e.line}>Line {e.line}: {e.reason}</li>
+                  <li key={e.line}>
+                    Line {e.line}: {e.reason}
+                  </li>
                 ))}
               </ul>
             </AlertDescription>
@@ -357,10 +419,13 @@ function BulkImportTab() {
 
         {report && (
           <div className="border rounded-md p-3 text-xs space-y-1 max-h-64 overflow-y-auto">
-            <div className="font-bold">Result: {report.succeeded} succeeded, {report.failed} failed</div>
+            <div className="font-bold">
+              Result: {report.succeeded} succeeded, {report.failed} failed
+            </div>
             {report.results.map((r, i) => (
               <div key={i} className={r.ok ? "text-emerald-600" : "text-destructive"}>
-                {r.ok ? "✓" : "✗"} {r.email}{r.error ? ` — ${r.error}` : ""}
+                {r.ok ? "✓" : "✗"} {r.email}
+                {r.error ? ` — ${r.error}` : ""}
               </div>
             ))}
           </div>
@@ -380,7 +445,9 @@ function TournamentTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes")
+        .select(
+          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes",
+        )
         .order("start_date", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -392,7 +459,12 @@ function TournamentTab() {
 
   return (
     <div className="space-y-6">
-      <CreateTournamentForm onCreated={(id) => { qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] }); setSelectedId(id); }} />
+      <CreateTournamentForm
+        onCreated={(id) => {
+          qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
+          setSelectedId(id);
+        }}
+      />
 
       <Card>
         <CardHeader>
@@ -404,7 +476,9 @@ function TournamentTab() {
               className="text-xs px-2 py-1 border border-input rounded-md bg-background"
             >
               {tournaments.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
               ))}
             </select>
           </CardTitle>
@@ -419,16 +493,17 @@ function TournamentTab() {
                 tournamentId={selected.id}
                 currentStatus={selected.status as TournamentStatus}
               />
-              <EditTournamentDetailsForm
-                key={`edit-${selected.id}`}
-                tournament={selected}
-              />
+              <EditTournamentDetailsForm key={`edit-${selected.id}`} tournament={selected} />
               <BucketSizesEditor
                 key={`buckets-${selected.id}`}
                 tournamentId={selected.id}
                 rawSizes={(selected as any).bucket_sizes}
               />
-              <AdvancedFieldPortal tournamentId={selected.id} tournamentName={selected.name} />
+              <AdvancedFieldPortal
+                tournamentId={selected.id}
+                tournamentName={selected.name}
+                bucketSizes={normalizeBucketSizes((selected as any).bucket_sizes)}
+              />
             </div>
           )}
         </CardContent>
@@ -451,38 +526,103 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.location || !form.start_date || !form.end_date || !form.submission_deadline) {
+    if (
+      !form.name ||
+      !form.location ||
+      !form.start_date ||
+      !form.end_date ||
+      !form.submission_deadline
+    ) {
       toast.error("Fill in all required fields");
       return;
     }
     setSaving(true);
-    const { data, error } = await supabase.from("tournaments").insert({
-      name: form.name,
-      location: form.location,
-      logo_url: form.logo_url || null,
-      start_date: form.start_date,
-      end_date: form.end_date,
-      submission_deadline: new Date(form.submission_deadline).toISOString(),
-      status: form.status,
-    }).select("id").single();
+    const { data, error } = await supabase
+      .from("tournaments")
+      .insert({
+        name: form.name,
+        location: form.location,
+        logo_url: form.logo_url || null,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        submission_deadline: new Date(form.submission_deadline).toISOString(),
+        status: form.status,
+      })
+      .select("id")
+      .single();
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Tournament created");
-    setForm({ name: "", location: "", logo_url: "", start_date: "", end_date: "", submission_deadline: "", status: "upcoming" });
+    setForm({
+      name: "",
+      location: "",
+      logo_url: "",
+      start_date: "",
+      end_date: "",
+      submission_deadline: "",
+      status: "upcoming",
+    });
     onCreated(data.id);
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle>Create New Tournament</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Create New Tournament</CardTitle>
+      </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={120} /></div>
-          <div><Label>Location *</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} maxLength={120} /></div>
-          <div className="md:col-span-2"><Label>Logo URL</Label><Input value={form.logo_url} onChange={(e) => setForm({ ...form, logo_url: e.target.value })} placeholder="https://…" /></div>
-          <div><Label>Start Date *</Label><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
-          <div><Label>End Date *</Label><Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
-          <div><Label>Submission Deadline *</Label><Input type="datetime-local" value={form.submission_deadline} onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })} /></div>
+          <div>
+            <Label>Name *</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              maxLength={120}
+            />
+          </div>
+          <div>
+            <Label>Location *</Label>
+            <Input
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+              maxLength={120}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Logo URL</Label>
+            <Input
+              value={form.logo_url}
+              onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+              placeholder="https://…"
+            />
+          </div>
+          <div>
+            <Label>Start Date *</Label>
+            <Input
+              type="date"
+              value={form.start_date}
+              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>End Date *</Label>
+            <Input
+              type="date"
+              value={form.end_date}
+              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Submission Deadline *</Label>
+            <Input
+              type="datetime-local"
+              value={form.submission_deadline}
+              onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })}
+            />
+          </div>
           <div>
             <Label>Status</Label>
             <select
@@ -491,12 +631,16 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
               className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
             >
               {(Object.keys(TSTATUS_LABEL) as TournamentStatus[]).map((s) => (
-                <option key={s} value={s}>{TSTATUS_LABEL[s]}</option>
+                <option key={s} value={s}>
+                  {TSTATUS_LABEL[s]}
+                </option>
               ))}
             </select>
           </div>
           <div className="md:col-span-2">
-            <Button type="submit" disabled={saving}>{saving ? "Creating…" : "Create Tournament"}</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Creating…" : "Create Tournament"}
+            </Button>
           </div>
         </form>
       </CardContent>
@@ -534,7 +678,13 @@ function TournamentStatusControl({
     qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
   }
 
-  const states: TournamentStatus[] = ["upcoming", "open_for_picks", "picks_closed", "live", "completed"];
+  const states: TournamentStatus[] = [
+    "upcoming",
+    "open_for_picks",
+    "picks_closed",
+    "live",
+    "completed",
+  ];
 
   return (
     <Card className="border-2" style={{ borderColor: "var(--gold)" }}>
@@ -562,8 +712,14 @@ function TournamentStatusControl({
                     : "bg-background border-input hover:bg-accent"
                 }`}
               >
-                <RadioGroupItem id={`tstat-${s}`} value={s} className={active ? "border-primary-foreground" : ""} />
-                <span className="text-xs font-semibold uppercase tracking-wide">{TSTATUS_LABEL[s]}</span>
+                <RadioGroupItem
+                  id={`tstat-${s}`}
+                  value={s}
+                  className={active ? "border-primary-foreground" : ""}
+                />
+                <span className="text-xs font-semibold uppercase tracking-wide">
+                  {TSTATUS_LABEL[s]}
+                </span>
               </Label>
             );
           })}
@@ -607,7 +763,13 @@ function EditTournamentDetailsForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.location || !form.start_date || !form.end_date || !form.submission_deadline) {
+    if (
+      !form.name ||
+      !form.location ||
+      !form.start_date ||
+      !form.end_date ||
+      !form.submission_deadline
+    ) {
       toast.error("Fill in all required fields");
       return;
     }
@@ -624,19 +786,28 @@ function EditTournamentDetailsForm({
       })
       .eq("id", tournament.id);
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Tournament details updated");
     qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Edit Tournament Details</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">Edit Tournament Details</CardTitle>
+      </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
             <Label>Tournament Name</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={120} />
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              maxLength={120}
+            />
           </div>
           <div className="md:col-span-2">
             <Label>Location / Venue</Label>
@@ -707,20 +878,36 @@ function EditTournamentDetailsForm({
 }
 
 const BUCKETS = [1, 2, 3, 4, 5, 6, 7] as const;
-const DEFAULT_BUCKET_SIZES: Record<number, number> = { 1: 10, 2: 10, 3: 10, 4: 10, 5: 0, 6: 0, 7: 0 };
+const DEFAULT_BUCKET_SIZES: Record<number, number> = {
+  1: 10,
+  2: 10,
+  3: 10,
+  4: 10,
+  5: 0,
+  6: 0,
+  7: 0,
+};
 
 function normalizeBucketSizes(raw: unknown): Record<number, number> {
   const out: Record<number, number> = { ...DEFAULT_BUCKET_SIZES };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     for (const b of BUCKETS) {
-      const v = Number((raw as Record<string, unknown>)[b] ?? (raw as Record<string, unknown>)[String(b)]);
+      const v = Number(
+        (raw as Record<string, unknown>)[b] ?? (raw as Record<string, unknown>)[String(b)],
+      );
       if (Number.isFinite(v) && v >= 0) out[b] = Math.floor(v);
     }
   }
   return out;
 }
 
-function BucketSizesEditor({ tournamentId, rawSizes }: { tournamentId: string; rawSizes: unknown }) {
+function BucketSizesEditor({
+  tournamentId,
+  rawSizes,
+}: {
+  tournamentId: string;
+  rawSizes: unknown;
+}) {
   const qc = useQueryClient();
   const sizes = useMemo(() => normalizeBucketSizes(rawSizes), [rawSizes]);
   const [draft, setDraft] = useState<Record<number, string> | null>(null);
@@ -734,9 +921,15 @@ function BucketSizesEditor({ tournamentId, rawSizes }: { tournamentId: string; r
       next[b] = Number.isFinite(v) && v >= 0 ? v : 0;
     }
     setSaving(true);
-    const { error } = await supabase.from("tournaments").update({ bucket_sizes: next as any }).eq("id", tournamentId);
+    const { error } = await supabase
+      .from("tournaments")
+      .update({ bucket_sizes: next as any })
+      .eq("id", tournamentId);
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Bucket sizes saved");
     setDraft(null);
     qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
@@ -749,11 +942,26 @@ function BucketSizesEditor({ tournamentId, rawSizes }: { tournamentId: string; r
           <span>Bucket Sizes</span>
           {draft ? (
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setDraft(null)} disabled={saving}>Cancel</Button>
-              <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save Sizes"}</Button>
+              <Button variant="outline" size="sm" onClick={() => setDraft(null)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={save} disabled={saving}>
+                {saving ? "Saving…" : "Save Sizes"}
+              </Button>
             </div>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setDraft(Object.fromEntries(BUCKETS.map((b) => [b, String(sizes[b] ?? 0)])) as Record<number, string>)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setDraft(
+                  Object.fromEntries(BUCKETS.map((b) => [b, String(sizes[b] ?? 0)])) as Record<
+                    number,
+                    string
+                  >,
+                )
+              }
+            >
               Edit Sizes
             </Button>
           )}
@@ -763,7 +971,9 @@ function BucketSizesEditor({ tournamentId, rawSizes }: { tournamentId: string; r
         <div className="grid grid-cols-7 gap-2">
           {BUCKETS.map((b) => (
             <div key={b} className="border border-border rounded-md p-3 text-center bg-muted/30">
-              <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">B{b}</div>
+              <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                B{b}
+              </div>
               {draft ? (
                 <Input
                   type="number"
@@ -820,14 +1030,16 @@ function SubmissionsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select(`
+        .select(
+          `
           id,
           bucket,
           tweak_count,
           tournament_id,
           golfers ( golfer_name ),
           teams!inner ( id, nickname, owner_user_id )
-        `)
+        `,
+        )
         .eq("tournament_id", activeId!);
       if (error) throw error;
       return (data ?? []) as unknown as Array<{
@@ -887,9 +1099,15 @@ function SubmissionsTab() {
   );
 
   function copyEmails() {
-    const list = usersWhoHaveNotEnteredYet.map((u) => u.email).filter(Boolean).join(", ");
+    const list = usersWhoHaveNotEnteredYet
+      .map((u) => u.email)
+      .filter(Boolean)
+      .join(", ");
     navigator.clipboard.writeText(list).then(
-      () => toast.success(`Copied ${usersWhoHaveNotEnteredYet.length} email${usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"}`),
+      () =>
+        toast.success(
+          `Copied ${usersWhoHaveNotEnteredYet.length} email${usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"}`,
+        ),
       () => toast.error("Clipboard copy failed"),
     );
   }
@@ -902,7 +1120,8 @@ function SubmissionsTab() {
   }
 
   function exportCsv() {
-    const headers = "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+    const headers =
+      "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
@@ -936,7 +1155,9 @@ function SubmissionsTab() {
           className="text-sm px-3 py-1.5 border border-input rounded-md bg-background"
         >
           {tournaments.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
           ))}
         </select>
       </div>
@@ -944,14 +1165,21 @@ function SubmissionsTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Kpi label="Total Active Approved Users" value={activeApprovedUsers.length} />
         <Kpi label="Total Submissions Made" value={usersWithPicksForThisTournament.size} />
-        <Kpi label="Missing Entries" value={usersWhoHaveNotEnteredYet.length} highlight={usersWhoHaveNotEnteredYet.length > 0} />
+        <Kpi
+          label="Missing Entries"
+          value={usersWhoHaveNotEnteredYet.length}
+          highlight={usersWhoHaveNotEnteredYet.length > 0}
+        />
       </div>
 
       {usersWhoHaveNotEnteredYet.length > 0 && (
         <Alert>
           <AlertTriangle className="size-4" />
           <AlertTitle className="flex items-center justify-between flex-wrap gap-2">
-            <span>{usersWhoHaveNotEnteredYet.length} approved user{usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"} have not submitted</span>
+            <span>
+              {usersWhoHaveNotEnteredYet.length} approved user
+              {usersWhoHaveNotEnteredYet.length === 1 ? "" : "s"} have not submitted
+            </span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="sm" variant="outline" onClick={copyEmails}>
@@ -966,7 +1194,8 @@ function SubmissionsTab() {
               <table className="w-full">
                 <tbody>
                   {usersWhoHaveNotEnteredYet.map((u) => {
-                    const full = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
+                    const full =
+                      [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
                     return (
                       <tr key={u.id} className="border-b last:border-0">
                         <td className="py-1 pr-2">{full}</td>
@@ -1034,8 +1263,12 @@ function Kpi({ label, value, highlight }: { label: string; value: number; highli
   return (
     <Card className={highlight ? "border-destructive" : ""}>
       <CardContent className="p-5">
-        <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">{label}</div>
-        <div className={`font-display text-4xl mt-1 ${highlight ? "text-destructive" : ""}`}>{value}</div>
+        <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
+          {label}
+        </div>
+        <div className={`font-display text-4xl mt-1 ${highlight ? "text-destructive" : ""}`}>
+          {value}
+        </div>
       </CardContent>
     </Card>
   );
