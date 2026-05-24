@@ -27,7 +27,7 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
     open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
     picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
     live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
-    completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
+    completed: { label: "Completed", bg: "var(--muted)", color: "var(--muted-foreground)" },
   };
   const m = map[status];
   return (
@@ -152,7 +152,7 @@ function ArchivePage() {
                         <span
                           className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-full flex items-center gap-1"
                           style={{
-                            backgroundColor: entered ? "var(--success)" : "var(--muted)",
+                            backgroundColor: entered ? "var(--forest-deep)" : "var(--muted)",
                             color: entered ? "white" : "var(--muted-foreground)",
                           }}
                         >
