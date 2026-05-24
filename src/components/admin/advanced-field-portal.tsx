@@ -17,9 +17,9 @@ import {
   XCircle,
 } from "lucide-react";
 
-type Props = { tournamentId: string; tournamentName: string };
+type Props = { tournamentId: string; tournamentName: string; bucketSizes?: Record<number, number> };
 
-type ParsedRow = { line: number; raw: string; name: string; owgr: number; bucket: number };
+type ParsedRow = { line: number; raw: string; name: string; owgr: number };
 type LineError = { line: number; raw: string; reason: string };
 type ParseResult = { rows: ParsedRow[]; errors: LineError[] };
 
@@ -63,14 +63,14 @@ export function parseFieldCsv(text: string): ParseResult {
     }
     const { line, raw, parts } = item;
 
-    if (parts.length !== 3) {
+    if (parts.length !== 2) {
       provisional.push({
         row: null,
-        error: { line, raw, reason: `Expected 3 comma-separated fields, got ${parts.length}` },
+        error: { line, raw, reason: `Expected 2 comma-separated fields, got ${parts.length}` },
       });
       continue;
     }
-    const [name, owgrStr, bucketStr] = parts;
+    const [name, owgrStr] = parts;
     if (!name) {
       provisional.push({ row: null, error: { line, raw, reason: "Name is required" } });
       continue;
@@ -83,21 +83,13 @@ export function parseFieldCsv(text: string): ParseResult {
       });
       continue;
     }
-    const bucket = Number(bucketStr);
-    if (!Number.isInteger(bucket) || bucket < 1 || bucket > 7) {
-      provisional.push({
-        row: null,
-        error: { line, raw, reason: "Bucket must be an integer from 1 to 7" },
-      });
-      continue;
-    }
 
     const key = name.toLowerCase();
     const arr = nameOccurrences.get(key) ?? [];
     arr.push(line);
     nameOccurrences.set(key, arr);
 
-    provisional.push({ row: { line, raw, name, owgr, bucket }, error: null });
+    provisional.push({ row: { line, raw, name, owgr }, error: null });
   }
 
   // Second pass: convert duplicates into errors.
@@ -123,11 +115,51 @@ export function parseFieldCsv(text: string): ParseResult {
 }
 
 function purgeToken(name: string): string {
-  const slug = (name || "TOURNAMENT").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const slug = (name || "TOURNAMENT")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
   return `PURGE_${slug || "TOURNAMENT"}`;
 }
 
-export function AdvancedFieldPortal({ tournamentId, tournamentName }: Props) {
+const DEFAULT_BUCKET_SIZES: Record<number, number> = {
+  1: 10,
+  2: 10,
+  3: 10,
+  4: 10,
+  5: 0,
+  6: 0,
+  7: 0,
+};
+
+function assignBuckets(
+  newRows: ParsedRow[],
+  existingCounts: Record<number, number>,
+  bucketSizes: Record<number, number>,
+): Array<ParsedRow & { bucket: number }> {
+  const sorted = [...newRows].sort((a, b) => a.owgr - b.owgr);
+  const capacity: Record<number, number> = {};
+  for (const b of BUCKETS) {
+    capacity[b] = Math.max(0, (bucketSizes[b] ?? 0) - (existingCounts[b] ?? 0));
+  }
+  return sorted.map((row) => {
+    let bucket = 7;
+    for (const b of BUCKETS) {
+      if (capacity[b] > 0) {
+        bucket = b;
+        capacity[b]--;
+        break;
+      }
+    }
+    return { ...row, bucket };
+  });
+}
+
+export function AdvancedFieldPortal({
+  tournamentId,
+  tournamentName,
+  bucketSizes: bucketSizesProp,
+}: Props) {
   const qc = useQueryClient();
   const [bulkText, setBulkText] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -146,6 +178,27 @@ export function AdvancedFieldPortal({ tournamentId, tournamentName }: Props) {
     },
   });
 
+  const sizes = useMemo(() => {
+    const out: Record<number, number> = { ...DEFAULT_BUCKET_SIZES };
+    if (bucketSizesProp && typeof bucketSizesProp === "object") {
+      for (const b of BUCKETS) {
+        const v = Number(bucketSizesProp[b] ?? 0);
+        if (Number.isFinite(v) && v >= 0) out[b] = Math.floor(v);
+      }
+    }
+    return out;
+  }, [bucketSizesProp]);
+
+  const existingCounts = useMemo(() => {
+    const c: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
+    for (const g of golfers) c[g.bucket_number] = (c[g.bucket_number] ?? 0) + 1;
+    return c;
+  }, [golfers]);
+
+  const totalCapacity = useMemo(() => BUCKETS.reduce((sum, b) => sum + sizes[b], 0), [sizes]);
+  const totalExisting = golfers.length;
+  const remainingCapacity = Math.max(0, totalCapacity - totalExisting);
+
   const parsed = useMemo(() => parseFieldCsv(bulkText), [bulkText]);
   const errorLineSet = useMemo(() => new Set(parsed.errors.map((e) => e.line)), [parsed]);
   const validLineSet = useMemo(() => new Set(parsed.rows.map((r) => r.line)), [parsed]);
@@ -156,7 +209,8 @@ export function AdvancedFieldPortal({ tournamentId, tournamentName }: Props) {
   async function handleUpload() {
     if (!canUpload) return;
     setUploading(true);
-    const payload = parsed.rows.map((r) => ({
+    const assigned = assignBuckets(parsed.rows, existingCounts, sizes);
+    const payload = assigned.map((r) => ({
       tournament_id: tournamentId,
       golfer_name: r.name,
       owgr_rank: r.owgr,
@@ -199,11 +253,7 @@ export function AdvancedFieldPortal({ tournamentId, tournamentName }: Props) {
     return m;
   }, [parsed]);
 
-  const counts = useMemo(() => {
-    const c: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
-    for (const g of golfers) c[g.bucket_number] = (c[g.bucket_number] ?? 0) + 1;
-    return c;
-  }, [golfers]);
+  const counts = existingCounts;
 
   return (
     <div className="space-y-6">
@@ -229,22 +279,26 @@ export function AdvancedFieldPortal({ tournamentId, tournamentName }: Props) {
         <AlertDescription>
           <div className="space-y-3 mt-2">
             <p className="text-xs">
-              One golfer per line. Three comma-separated fields, in this exact order:
+              One golfer per line. Two comma-separated fields, in this exact order:
             </p>
             <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto">
-              Name, OWGR Ranking, Bucket Number (1-7)
+              Name, OWGR Ranking
             </pre>
+            <p className="text-xs">
+              Buckets are assigned automatically by OWGR ranking (lowest fills Bucket 1 first, then
+              B2, B3, etc.) using the configured bucket sizes.
+            </p>
             <p className="text-xs">Valid sample:</p>
             <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto">
-{`Scottie Scheffler, 1, 1
-Rory McIlroy, 2, 1
-Ludvig Aberg, 5, 2`}
+              {`Scottie Scheffler, 1
+Rory McIlroy, 2
+Ludvig Aberg, 5`}
             </pre>
             <ul className="text-xs list-disc pl-5 space-y-1 text-muted-foreground">
-              <li>Exactly 3 fields per row — extra commas in the name will break the row.</li>
+              <li>Exactly 2 fields per row — extra commas in the name will break the row.</li>
               <li>Name is required and cannot be blank.</li>
               <li>OWGR must be a positive integer.</li>
-              <li>Bucket must be an integer from 1 to 7.</li>
+              <li>Bucket assignment is automatic based on OWGR and configured bucket sizes.</li>
               <li>Duplicate names within the same paste are flagged before insert.</li>
             </ul>
           </div>
@@ -269,9 +323,16 @@ Ludvig Aberg, 5, 2`}
             <Textarea
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"Scottie Scheffler, 1, 1\nRory McIlroy, 2, 1\nXander Schauffele, 3, 2"}
+              placeholder={"Scottie Scheffler, 1\nRory McIlroy, 2\nXander Schauffele, 3"}
               className="min-h-[240px] font-mono text-sm"
             />
+            {parsed.rows.length > 0 && parsed.rows.length > remainingCapacity && (
+              <p className="text-xs text-amber-600">
+                {remainingCapacity === 0
+                  ? "All buckets are full. Overflow golfers will be placed in B7."
+                  : `Only ${remainingCapacity} bucket slot${remainingCapacity === 1 ? "" : "s"} remaining. ${parsed.rows.length - remainingCapacity} golfer${parsed.rows.length - remainingCapacity === 1 ? "" : "s"} will overflow to B7.`}
+              </p>
+            )}
             <div className="flex gap-2 flex-wrap">
               <Button onClick={handleUpload} disabled={!canUpload}>
                 <Upload className="size-4" />
@@ -279,7 +340,11 @@ Ludvig Aberg, 5, 2`}
                   ? "Uploading…"
                   : `Upload ${parsed.rows.length || ""} golfer${parsed.rows.length === 1 ? "" : "s"}`}
               </Button>
-              <Button variant="outline" onClick={() => setBulkText("")} disabled={uploading || !bulkText}>
+              <Button
+                variant="outline"
+                onClick={() => setBulkText("")}
+                disabled={uploading || !bulkText}
+              >
                 Clear
               </Button>
             </div>
@@ -326,9 +391,7 @@ Ludvig Aberg, 5, 2`}
                         <div className="min-w-0 flex-1">
                           <div className="font-mono truncate">{raw}</div>
                           {isErr && (
-                            <div className="text-destructive mt-0.5">
-                              {errorByLine.get(line)}
-                            </div>
+                            <div className="text-destructive mt-0.5">{errorByLine.get(line)}</div>
                           )}
                         </div>
                       </li>
@@ -491,9 +554,9 @@ function DangerZone({ tournamentId, tournamentName }: Props) {
         {phase === "idle" && (
           <div className="space-y-3">
             <p className="text-sm">
-              Wipe the entire player roster for <strong>{tournamentName || "this tournament"}</strong>.
-              This deletes every golfer registered to this tournament and cannot be undone after the
-              5-second window.
+              Wipe the entire player roster for{" "}
+              <strong>{tournamentName || "this tournament"}</strong>. This deletes every golfer
+              registered to this tournament and cannot be undone after the 5-second window.
             </p>
             <Button variant="destructive" onClick={beginArm}>
               <Trash2 className="size-4" />
@@ -533,9 +596,7 @@ function DangerZone({ tournamentId, tournamentName }: Props) {
         {phase === "counting" && (
           <div className="space-y-3 text-center py-4">
             <AlertTriangle className="size-10 text-destructive mx-auto" />
-            <div className="font-display text-4xl text-destructive">
-              Purging in {remaining}s
-            </div>
+            <div className="font-display text-4xl text-destructive">Purging in {remaining}s</div>
             <p className="text-sm text-muted-foreground">
               Tap undo to abort. Once the timer hits zero the delete is final.
             </p>
