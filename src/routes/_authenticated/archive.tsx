@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTeams } from "@/hooks/use-teams";
 import { tournamentDateRange } from "@/lib/format";
 import { tournamentCardLink } from "@/lib/tournament-link";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/archive")({
   component: ArchivePage,
@@ -25,12 +27,12 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
     open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
     picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
     live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
-    completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
+    completed: { label: "Completed", bg: "var(--muted)", color: "var(--muted-foreground)" },
   };
   const m = map[status];
   return (
     <span
-      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm"
+      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full"
       style={{ backgroundColor: m.bg, color: m.color }}
     >
       {m.label}
@@ -39,6 +41,8 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
 }
 
 function ArchivePage() {
+  const { activeTeam } = useTeams();
+
   const { data: completedTournaments = [], isLoading } = useQuery({
     queryKey: ["tournaments-completed"],
     queryFn: async () => {
@@ -49,6 +53,27 @@ function ArchivePage() {
         .order("end_date", { ascending: false });
       if (error) throw error;
       return data as Tournament[];
+    },
+  });
+
+  const { data: pickCounts = {} } = useQuery({
+    queryKey: [
+      "archive-entry-status",
+      activeTeam?.id,
+      completedTournaments.map((t) => t.id).join(","),
+    ],
+    enabled: !!activeTeam && completedTournaments.length > 0,
+    queryFn: async () => {
+      const out: Record<string, number> = {};
+      for (const t of completedTournaments) {
+        const { count } = await supabase
+          .from("picks")
+          .select("*", { count: "exact", head: true })
+          .eq("team_id", activeTeam!.id)
+          .eq("tournament_id", t.id);
+        out[t.id] = count ?? 0;
+      }
+      return out;
     },
   });
 
@@ -81,6 +106,7 @@ function ArchivePage() {
         <div className="grid gap-6">
           {completedTournaments.map((t, i) => {
             const link = tournamentCardLink(t);
+            const entered = (pickCounts[t.id] ?? 0) > 0;
             return (
               <div
                 key={t.id}
@@ -120,7 +146,25 @@ function ArchivePage() {
                         <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
                       </div>
                     </div>
-                    <StatusBadge status={t.status} />
+                    <div className="flex flex-row items-start gap-2 shrink-0">
+                      <StatusBadge status={t.status} />
+                      {activeTeam && (
+                        <span
+                          className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-full flex items-center gap-1"
+                          style={{
+                            backgroundColor: entered ? "var(--forest-deep)" : "var(--muted)",
+                            color: entered ? "white" : "var(--muted-foreground)",
+                          }}
+                        >
+                          {entered ? (
+                            <CheckCircle2 className="size-3" />
+                          ) : (
+                            <AlertCircle className="size-3" />
+                          )}
+                          {entered ? "Entered" : "Did Not Enter"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
                     View results →
