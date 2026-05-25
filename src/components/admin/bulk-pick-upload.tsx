@@ -94,6 +94,16 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
               .select("id, owner_user_id, is_primary")
               .in("owner_user_id", userIds);
       if (tErr) throw tErr;
+      const teamIds = (teams ?? []).map((t) => t.id);
+      const { data: existingPicks, error: pickErr } =
+        teamIds.length === 0 || !tournamentId
+          ? { data: [], error: null }
+          : await supabase
+              .from("picks")
+              .select("team_id")
+              .eq("tournament_id", tournamentId)
+              .in("team_id", teamIds);
+      if (pickErr) throw pickErr;
       const profileByEmail = new Map<string, { id: string; status: string }>();
       for (const p of profiles ?? []) {
         if (p.email) profileByEmail.set(p.email.toLowerCase(), { id: p.id, status: p.status });
@@ -103,7 +113,10 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
         if (!teamByUser.has(t.owner_user_id) || t.is_primary)
           teamByUser.set(t.owner_user_id, t.id);
       }
-      return { profileByEmail, teamByUser };
+      const teamsWithPicks = new Set<string>(
+        (existingPicks ?? []).map((p) => p.team_id),
+      );
+      return { profileByEmail, teamByUser, teamsWithPicks };
     },
   });
 
@@ -132,7 +145,12 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
         else {
           const t = lookup.teamByUser.get(prof.id);
           if (!t) errors.push(`No team found for '${raw.user_email}'`);
-          else teamId = t;
+          else {
+            teamId = t;
+            if (lookup.teamsWithPicks.has(t)) {
+              errors.push("User has already submitted picks for this tournament.");
+            }
+          }
         }
       }
 
