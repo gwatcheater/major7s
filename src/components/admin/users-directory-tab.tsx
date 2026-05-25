@@ -11,9 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, EyeOff, ShieldCheck, Search, Star } from "lucide-react";
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import { Settings, Plus, Trash2, EyeOff, ShieldCheck, Search, Star, Trophy, History } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -68,7 +68,6 @@ export function UsersDirectoryTab() {
     },
   });
 
-  // Reset to first page whenever the filters change.
   useEffect(() => { setPage(0); }, [search, statusFilter]);
 
   const counts = useMemo(() => {
@@ -105,7 +104,6 @@ export function UsersDirectoryTab() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Summary counts */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
           <SummaryPill label="Total" value={counts.total} />
           <SummaryPill label="Pending" value={counts.pending} />
@@ -114,7 +112,6 @@ export function UsersDirectoryTab() {
           <SummaryPill label="Rejected" value={counts.rejected} />
         </div>
 
-        {/* Search + status filter */}
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <div className="relative flex-1">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -126,9 +123,7 @@ export function UsersDirectoryTab() {
             />
           </div>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
@@ -164,7 +159,11 @@ export function UsersDirectoryTab() {
                   ) : pageRows.map((u) => {
                     const full = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
                     return (
-                      <TableRow key={u.id}>
+                      <TableRow
+                        key={u.id}
+                        className="cursor-pointer"
+                        onClick={() => setSelected(u)}
+                      >
                         <TableCell className="font-medium">{full}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
                         <TableCell className="text-sm">{u.nickname}</TableCell>
@@ -174,9 +173,9 @@ export function UsersDirectoryTab() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
-                              <Settings className="size-3.5" /> Manage Account
+                              <Settings className="size-3.5" /> Manage
                             </Button>
                             <Button
                               size="sm"
@@ -198,7 +197,6 @@ export function UsersDirectoryTab() {
               </Table>
             </div>
 
-            {/* Pagination */}
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
               <span>
                 {filtered.length === 0 ? "0" : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)}`} of {filtered.length}
@@ -217,7 +215,7 @@ export function UsersDirectoryTab() {
         )}
       </CardContent>
 
-      <ManageAccountDialog
+      <UserDrawer
         user={selected}
         open={!!selected}
         onOpenChange={(open) => !open && setSelected(null)}
@@ -235,7 +233,7 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ManageAccountDialog({
+function UserDrawer({
   user, open, onOpenChange,
 }: {
   user: ProfileRow | null;
@@ -243,11 +241,13 @@ function ManageAccountDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const { assertWritable } = useImpersonation();
+  const { startImpersonation } = useImpersonation();
+  const navigate = useNavigate();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newTeamName, setNewTeamName] = useState("");
   const [busy, setBusy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
+  const [status, setStatus] = useState<string>("pending");
 
   const { data: currentRole = "user", refetch: refetchRole } = useQuery({
     queryKey: ["admin-user-role", user?.id],
@@ -261,7 +261,7 @@ function ManageAccountDialog({
     },
   });
 
-  const { data: teams = [], isLoading, refetch } = useQuery({
+  const { data: teams = [], isLoading: teamsLoading, refetch: refetchTeams } = useQuery({
     queryKey: ["admin-user-teams", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
@@ -276,16 +276,73 @@ function ManageAccountDialog({
     },
   });
 
+  // Competition entries: tournaments this user's teams have entered, with pick counts.
+  const { data: entries = [], isLoading: entriesLoading } = useQuery({
+    queryKey: ["admin-user-entries", user?.id, teams.map((t) => t.id).join(",")],
+    enabled: !!user?.id && teams.length > 0,
+    queryFn: async () => {
+      const teamIds = teams.map((t) => t.id);
+      const { data, error } = await supabase
+        .from("picks")
+        .select("team_id, bucket, tournaments(id, name, status)")
+        .in("team_id", teamIds);
+      if (error) throw error;
+      // Aggregate: one row per tournament, count picks (out of 7).
+      const byTournament = new Map<string, { name: string; status: string; picks: number }>();
+      for (const row of (data ?? []) as any[]) {
+        const t = row.tournaments;
+        if (!t) continue;
+        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, picks: 0 };
+        e.picks += 1;
+        byTournament.set(t.id, e);
+      }
+      return Array.from(byTournament.values());
+    },
+  });
+
+  // Account activity: admin actions taken on this account (from admin_audit).
+  const { data: activity = [], isLoading: activityLoading } = useQuery({
+    queryKey: ["admin-user-activity", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("admin_audit")
+        .select("action, detail, created_at")
+        .eq("target_user", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return (data ?? []) as Array<{ action: string; detail: any; created_at: string }>;
+    },
+  });
+
   useEffect(() => {
     setEdits({});
     setNewTeamName("");
     setSelectedRole(currentRole);
   }, [user?.id, currentRole]);
 
+  useEffect(() => {
+    if (user) setStatus(user.status);
+  }, [user]);
+
   const fullName = useMemo(() => {
     if (!user) return "";
     return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.nickname;
   }, [user]);
+
+  async function handleStatusChange(next: string) {
+    if (!user || next === status) return;
+    setBusy(true);
+    const { error } = await supabase.from("profiles").update({ status: next }).eq("id", user.id);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Status set to ${next}`);
+    setStatus(next);
+    qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+    qc.invalidateQueries({ queryKey: ["admin-pending-profiles"] });
+    qc.invalidateQueries({ queryKey: ["admin-pending-count"] });
+  }
 
   async function handleDelete(team: TeamRow) {
     if (team.is_primary) return;
@@ -296,7 +353,7 @@ function ManageAccountDialog({
     if (error) { toast.error(error.message); return; }
     toast.success(`Team "${team.nickname}" deleted`);
     setEdits((e) => { const next = { ...e }; delete next[team.id]; return next; });
-    refetch();
+    refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
   }
 
@@ -311,7 +368,7 @@ function ManageAccountDialog({
     if (error) { toast.error(error.message); return; }
     toast.success(`Team "${name}" added`);
     setNewTeamName("");
-    refetch();
+    refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
   }
 
@@ -322,7 +379,7 @@ function ManageAccountDialog({
     setBusy(false);
     if (error) { toast.error(`Make primary: ${error.message}`); return; }
     toast.success(`"${team.nickname}" is now the primary team`);
-    refetch();
+    refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
     qc.invalidateQueries({ queryKey: ["primary-team"] });
   }
@@ -347,14 +404,12 @@ function ManageAccountDialog({
     qc.invalidateQueries({ queryKey: ["admin-users-roles"] });
   }
 
-  async function handleSave() {
+  async function handleSaveNicknames() {
     if (!user) return;
     const changed = teams
       .map((t) => ({ team: t, next: (edits[t.id] ?? t.nickname).trim() }))
       .filter(({ team, next }) => next.length > 0 && next !== team.nickname);
-
     if (changed.length === 0) { toast.message("No team nickname changes to save"); return; }
-
     setBusy(true);
     let failed = 0;
     for (const { team, next } of changed) {
@@ -362,115 +417,176 @@ function ManageAccountDialog({
       if (error) failed++;
     }
     setBusy(false);
-
     if (failed > 0) toast.error(`${failed} team(s) failed to update`);
-    else toast.success("User team configuration updated successfully");
+    else toast.success("Team nicknames updated");
     setEdits({});
-    refetch();
+    refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Account Configuration Panel</DialogTitle>
-          {user && (
-            <p className="text-sm text-muted-foreground">
-              {fullName} <span className="font-mono">· {user.email ?? "—"}</span>
-            </p>
-          )}
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        {user && (
+          <>
+            <SheetHeader>
+              <SheetTitle>{fullName}</SheetTitle>
+              <p className="text-sm text-muted-foreground font-mono">{user.email ?? "—"}</p>
+            </SheetHeader>
 
-        <section className="mt-4 rounded-lg border bg-card/50 p-4">
-          <header className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider">User Role</h3>
-          </header>
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="size-4 text-muted-foreground" />
-            <div className="flex-1">
-              <Label htmlFor="role-select" className="text-xs uppercase tracking-wider text-muted-foreground">
-                Role
-              </Label>
-              <Select value={selectedRole} onValueChange={(v) => handleRoleChange(v as "admin" | "user")}>
-                <SelectTrigger id="role-select" className="h-9 mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">Player</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-lg border bg-card/50 p-4">
-          <header className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider">Registered Team Entries</h3>
-            <span className="text-xs font-mono text-muted-foreground">{teams.length} total</span>
-          </header>
-
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground py-4">Loading teams…</p>
-          ) : teams.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">No teams registered.</p>
-          ) : (
-            <div className="space-y-2">
-              {teams.map((team) => (
-                <div key={team.id} className="flex items-center gap-3 rounded-md border bg-background p-2.5">
-                  <Input
-                    value={edits[team.id] ?? team.nickname}
-                    onChange={(e) => setEdits((s) => ({ ...s, [team.id]: e.target.value }))}
-                    className="h-9 flex-1"
-                    placeholder="Team nickname"
-                  />
-                  {team.is_primary ? (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Primary</Badge>
-                  ) : (
-                    <Button
-                      size="sm" variant="outline"
-                      disabled={busy}
-                      onClick={() => handleMakePrimary(team)}
-                      title="Make this the primary team"
-                    >
-                      <Star className="size-3.5" /> Make Primary
-                    </Button>
-                  )}
-                  <Button
-                    size="sm" variant="destructive"
-                    disabled={team.is_primary || busy}
-                    onClick={() => handleDelete(team)}
-                    title={team.is_primary ? "Cannot delete primary team" : "Delete team"}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-4 pt-4 border-t">
-            <label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
-              Register New Team Entry
-            </label>
-            <div className="mt-2 flex gap-2">
-              <Input
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
-                placeholder="New team nickname"
-                className="h-9 flex-1"
-              />
-              <Button size="sm" onClick={handleAdd} disabled={busy || !newTeamName.trim()}>
-                <Plus className="size-3.5" /> Add Team
+            <div className="mt-4 flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  startImpersonation(user.id);
+                  toast.success(`Simulation initialized: Acting as ${fullName}`);
+                  navigate({ to: "/home" });
+                }}
+              >
+                <EyeOff className="size-3.5" /> Simulate User
               </Button>
             </div>
-          </div>
-        </section>
 
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button onClick={handleSave} disabled={busy}>Save Configuration Changes</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {/* Role + Status */}
+            <section className="mt-4 rounded-lg border bg-card/50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3">Account Configuration</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <ShieldCheck className="size-3.5" /> Role
+                  </Label>
+                  <Select value={selectedRole} onValueChange={(v) => handleRoleChange(v as "admin" | "user")}>
+                    <SelectTrigger className="h-9 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Player</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Status</Label>
+                  <Select value={status} onValueChange={handleStatusChange}>
+                    <SelectTrigger className="h-9 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="suspended">Suspended</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            {/* Teams */}
+            <section className="mt-4 rounded-lg border bg-card/50 p-4">
+              <header className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider">Registered Teams</h3>
+                <span className="text-xs font-mono text-muted-foreground">{teams.length} total</span>
+              </header>
+
+              {teamsLoading ? (
+                <p className="text-sm text-muted-foreground py-2">Loading teams…</p>
+              ) : teams.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No teams registered.</p>
+              ) : (
+                <div className="space-y-2">
+                  {teams.map((team) => (
+                    <div key={team.id} className="flex items-center gap-2 rounded-md border bg-background p-2">
+                      <Input
+                        value={edits[team.id] ?? team.nickname}
+                        onChange={(e) => setEdits((s) => ({ ...s, [team.id]: e.target.value }))}
+                        className="h-9 flex-1"
+                        placeholder="Team nickname"
+                      />
+                      {team.is_primary ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Primary</Badge>
+                      ) : (
+                        <Button size="sm" variant="outline" disabled={busy} onClick={() => handleMakePrimary(team)} title="Make primary">
+                          <Star className="size-3.5" />
+                        </Button>
+                      )}
+                      <Button
+                        size="sm" variant="destructive"
+                        disabled={team.is_primary || busy}
+                        onClick={() => handleDelete(team)}
+                        title={team.is_primary ? "Cannot delete primary team" : "Delete team"}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 pt-3 border-t flex gap-2">
+                <Input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="New team nickname"
+                  className="h-9 flex-1"
+                />
+                <Button size="sm" onClick={handleAdd} disabled={busy || !newTeamName.trim()}>
+                  <Plus className="size-3.5" /> Add
+                </Button>
+              </div>
+              {Object.keys(edits).length > 0 && (
+                <Button size="sm" className="mt-2 w-full" onClick={handleSaveNicknames} disabled={busy}>
+                  Save nickname changes
+                </Button>
+              )}
+            </section>
+
+            {/* Competition entries */}
+            <section className="mt-4 rounded-lg border bg-card/50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Trophy className="size-3.5" /> Competition Entries
+              </h3>
+              {entriesLoading ? (
+                <p className="text-sm text-muted-foreground py-2">Loading…</p>
+              ) : entries.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No tournament entries.</p>
+              ) : (
+                <div className="space-y-1.5 text-sm">
+                  {entries.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span>{e.name}</span>
+                      <span className={e.picks >= 7 ? "text-emerald-600 text-xs" : "text-amber-600 text-xs"}>
+                        {e.picks >= 7 ? "Submitted" : `${e.picks}/7 picks`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Account activity (admin actions) */}
+            <section className="mt-4 rounded-lg border bg-card/50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <History className="size-3.5" /> Account Activity
+              </h3>
+              <p className="text-[11px] text-muted-foreground mb-2">Admin actions taken on this account.</p>
+              {activityLoading ? (
+                <p className="text-sm text-muted-foreground py-2">Loading…</p>
+              ) : activity.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No recorded activity.</p>
+              ) : (
+                <div className="space-y-1.5 text-xs">
+                  {activity.map((a, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className="font-mono">{a.action}</span>
+                      <span className="text-muted-foreground">
+                        {new Date(a.created_at).toLocaleDateString("en-GB")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
