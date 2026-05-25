@@ -289,42 +289,43 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
                   </tr>
                 </thead>
                 <tbody>
-                  {rowResults.map((r) => {
+                  {rowResults.flatMap((r) => {
                     const bad = r.errors.length > 0;
-                    return (
-                      <Fragment key={r.line}>
-                        <tr
-                          key={r.line}
-                          className={
-                            bad
-                              ? "bg-destructive/5 border-t border-destructive/20"
-                              : "bg-emerald-500/5 border-t border-emerald-500/20"
-                          }
-                        >
-                          <td className="p-2 font-mono text-muted-foreground">{r.line}</td>
-                          <td className="p-2">{r.raw.user_email || "—"}</td>
-                          {r.picks.map((p) => (
-                            <td key={p.bucket} className="p-2">
-                              {p.name || <span className="text-destructive">—</span>}
-                            </td>
-                          ))}
-                          <td className="p-2">
-                            {bad ? (
-                              <XCircle className="size-4 text-destructive" />
-                            ) : (
-                              <CheckCircle2 className="size-4 text-emerald-600" />
-                            )}
+                    const rows = [
+                      <tr
+                        key={`row-${r.line}`}
+                        className={
+                          bad
+                            ? "bg-destructive/5 border-t border-destructive/20"
+                            : "bg-emerald-500/5 border-t border-emerald-500/20"
+                        }
+                      >
+                        <td className="p-2 font-mono text-muted-foreground">{r.line}</td>
+                        <td className="p-2">{r.raw.user_email || "—"}</td>
+                        {r.picks.map((p) => (
+                          <td key={p.bucket} className="p-2">
+                            {p.name || <span className="text-destructive">—</span>}
                           </td>
-                        </tr>
-                        {bad && (
-                          <tr className="bg-destructive/5">
-                            <td colSpan={10} className="px-2 pb-2 text-destructive">
-                              {r.errors.join(" · ")}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
+                        ))}
+                        <td className="p-2">
+                          {bad ? (
+                            <XCircle className="size-4 text-destructive" />
+                          ) : (
+                            <CheckCircle2 className="size-4 text-emerald-600" />
+                          )}
+                        </td>
+                      </tr>,
+                    ];
+                    if (bad) {
+                      rows.push(
+                        <tr key={`err-${r.line}`} className="bg-destructive/5">
+                          <td colSpan={10} className="px-2 pb-2 text-destructive">
+                            {r.errors.join(" · ")}
+                          </td>
+                        </tr>,
+                      );
+                    }
+                    return rows;
                   })}
                 </tbody>
               </table>
