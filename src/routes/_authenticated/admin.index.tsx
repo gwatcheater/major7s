@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
+import { BulkPickUpload } from "@/components/admin/bulk-pick-upload";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 
@@ -475,11 +476,15 @@ function TournamentTab() {
               onChange={(e) => setSelectedId(e.target.value)}
               className="text-xs px-2 py-1 border border-input rounded-md bg-background"
             >
-              {tournaments.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {tournaments.map((t) => {
+                const year = t.start_date ? String(t.start_date).slice(0, 4) : "";
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {year ? ` ${year}` : ""}
+                  </option>
+                );
+              })}
             </select>
           </CardTitle>
         </CardHeader>
@@ -494,6 +499,7 @@ function TournamentTab() {
                 currentStatus={selected.status as TournamentStatus}
               />
               <EditTournamentDetailsForm key={`edit-${selected.id}`} tournament={selected} />
+              <BulkPickUpload key={`bulk-picks-${selected.id}`} tournamentId={selected.id} />
               <BucketSizesEditor
                 key={`buckets-${selected.id}`}
                 tournamentId={selected.id}
