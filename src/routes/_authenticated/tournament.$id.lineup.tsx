@@ -26,7 +26,7 @@ const BUCKET_LABELS: Record<number, string> = {
 function LineupPicker() {
   const { id } = Route.useParams();
   const { activeTeam } = useTeams();
-  const { getEffectiveUserId, impersonatingId } = useImpersonation();
+  const { getEffectiveUserId, impersonatingId, assertWritable, readOnly } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -97,6 +97,7 @@ function LineupPicker() {
   Object.values(byBucket).forEach((arr) => arr.sort((a, b) => (a.owgr_rank ?? 999) - (b.owgr_rank ?? 999)));
 
   async function save() {
+    if (!assertWritable()) return;
     if (isLocked) { toast.error("Picks are locked"); return; }
     const buckets = [1, 2, 3, 4, 5, 6, 7];
     const missing = buckets.filter((b) => !selections[b]);
@@ -237,7 +238,7 @@ function LineupPicker() {
 
             <button
               onClick={save}
-              disabled={isLocked}
+              disabled={isLocked || readOnly}
               className="mt-5 w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
               style={{ backgroundColor: "var(--forest-deep)" }}
             >
