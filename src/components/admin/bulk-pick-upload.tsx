@@ -292,7 +292,7 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
                   {rowResults.map((r) => {
                     const bad = r.errors.length > 0;
                     return (
-                      <>
+                      <Fragment key={r.line}>
                         <tr
                           key={r.line}
                           className={
