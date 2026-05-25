@@ -323,7 +323,7 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
