@@ -30,6 +30,22 @@ function ProfileSettingsView() {
     },
   });
 
+  // Primary team — its nickname is the canonical leaderboard display name.
+  const { data: primaryTeam, refetch: refetchTeam } = useQuery({
+    queryKey: ["primary-team", effectiveId],
+    enabled: !!effectiveId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, nickname, is_primary")
+        .eq("owner_user_id", effectiveId!)
+        .eq("is_primary", true)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; nickname: string; is_primary: boolean } | null;
+    },
+  });
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -46,18 +62,22 @@ function ProfileSettingsView() {
     if (!profile) return;
     setFirstName(profile.first_name ?? "");
     setLastName(profile.last_name ?? "");
-    setTeamName(profile.nickname ?? "");
     setPhone(profile.phone ?? "");
     setReferral(profile.referral_name ?? "");
   }, [profile]);
 
+  // Leaderboard name comes from the primary team, falling back to profile nickname.
+  useEffect(() => {
+    setTeamName(primaryTeam?.nickname ?? profile?.nickname ?? "");
+  }, [primaryTeam, profile]);
+
   const initial = useMemo(() => ({
     firstName: profile?.first_name ?? "",
     lastName: profile?.last_name ?? "",
-    teamName: profile?.nickname ?? "",
+    teamName: primaryTeam?.nickname ?? profile?.nickname ?? "",
     phone: profile?.phone ?? "",
     referral: profile?.referral_name ?? "",
-  }), [profile]);
+  }), [profile, primaryTeam]);
 
   const isDirty =
     firstName !== initial.firstName ||
@@ -83,19 +103,42 @@ function ProfileSettingsView() {
     if (!assertWritable()) return;
     if (!isValid || !isDirty) return;
     setSaving(true);
+
     const trimmedNickname = teamName.trim();
-    const { error } = await supabase.from("profiles").update({
+
+    // Personal details -> profiles (nickname is NOT user-edited here; it stays as an
+    // internal fallback. The leaderboard display name lives on the primary team.)
+    const { error: pErr } = await supabase.from("profiles").update({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       phone: phone.trim() || null,
       referral_name: referral.trim() || null,
-      nickname: trimmedNickname,
     }).eq("id", effectiveId!);
+    if (pErr) { setSaving(false); toast.error(`Update failed: ${pErr.message}`); return; }
+
+    // Leaderboard display name -> primary team nickname (canonical).
+    if (primaryTeam && trimmedNickname && trimmedNickname !== primaryTeam.nickname) {
+      const { error: tErr } = await supabase
+        .from("teams")
+        .update({ nickname: trimmedNickname })
+        .eq("id", primaryTeam.id);
+      if (tErr) {
+        setSaving(false);
+        const msg = tErr.message?.toLowerCase().includes("unique")
+          ? "That nickname is already taken — choose another."
+          : `Nickname update failed: ${tErr.message}`;
+        toast.error(msg);
+        return;
+      }
+    }
+
     setSaving(false);
-    if (error) { toast.error(`Update failed: ${error.message}`); return; }
     toast.success("Profile updated successfully");
     refetch();
+    refetchTeam();
     qc.invalidateQueries({ queryKey: ["profile"] });
+    qc.invalidateQueries({ queryKey: ["teams"] });
+    qc.invalidateQueries({ queryKey: ["primary-team"] });
   }
 
   async function changePassword() {
@@ -154,7 +197,7 @@ function ProfileSettingsView() {
               <Field
                 label="Nickname (Leaderboard Display)"
                 error={errors.teamName}
-                hint="This name will be visible to all players on the master leaderboard."
+                hint="Your primary team's name, shown to all players on the leaderboard."
               >
                 <Input value={teamName} onChange={setTeamName} placeholder="The Eagles" />
               </Field>
