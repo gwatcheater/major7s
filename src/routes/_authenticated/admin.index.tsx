@@ -109,20 +109,14 @@ function AdminConsole() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="approvals" className="mt-6">
-            <ApprovalsTab />
-          </TabsContent>
-          <TabsContent value="bulk" className="mt-6">
-            <BulkImportTab />
+          <TabsContent value="users" className="mt-6">
+            <UsersTab />
           </TabsContent>
           <TabsContent value="tournament" className="mt-6">
             <TournamentTab />
           </TabsContent>
           <TabsContent value="picks" className="mt-6">
             <SubmissionsTab />
-          </TabsContent>
-          <TabsContent value="users" className="mt-6">
-            <UsersDirectoryTab />
           </TabsContent>
         </Tabs>
       </div>
