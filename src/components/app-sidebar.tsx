@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle, Plus, Pencil } from "lucide-react";
+import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-teams";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 const nav = [
   { label: "Live & Upcoming", to: "/home", icon: Trophy },
@@ -18,7 +17,7 @@ const nav = [
 export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer" } = {}) {
   const isDrawer = variant === "drawer";
   const { user, isAdmin } = useAuth();
-  const { teams, activeTeam, setActiveTeamId, refetch } = useTeams();
+  const { teams, activeTeam, setActiveTeamId } = useTeams();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -59,28 +58,6 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
     navigate({ to: "/login" });
   }
 
-  async function handleAddTeam() {
-    if (!user) return;
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("nickname")
-      .eq("id", user.id)
-      .maybeSingle();
-    const baseName = prof?.nickname?.trim() || teams.find((t) => t.is_primary)?.nickname || "Team";
-    const next = teams.length + 1;
-    const nickname = next === 1 ? baseName : `${baseName} ${next}`;
-    const { error } = await supabase.from("teams").insert({
-      owner_user_id: user.id,
-      nickname,
-      is_primary: teams.length === 0,
-    });
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`Created ${nickname}`);
-      refetch();
-    }
-  }
-
   return (
     <aside
       className={
@@ -104,13 +81,6 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
             <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
               Active Profile
             </label>
-            <button
-              onClick={handleAddTeam}
-              title="Add secondary team"
-              className="text-white/40 hover:text-white transition-colors"
-            >
-              <Plus className="size-3.5" />
-            </button>
           </div>
           <button
             onClick={() => setOpen((o) => !o)}
