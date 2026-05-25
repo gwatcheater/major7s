@@ -527,19 +527,41 @@ function DangerZone({ tournamentId, tournamentName }: Props) {
     toast("Purge cancelled — no data was touched.");
   }
 
-  async function executePurge() {
-    setPhase("purging");
-    const { error } = await supabase.from("golfers").delete().eq("tournament_id", tournamentId);
-    if (error) {
-      toast.error(`Purge failed: ${error.message}`);
-    } else {
-      toast.success("Field roster purged.");
-      qc.invalidateQueries({ queryKey: ["admin-field-golfers", tournamentId] });
-      qc.invalidateQueries({ queryKey: ["field", tournamentId] });
-    }
+async function executePurge() {
+  setPhase("purging");
+
+  // Step 1: delete picks first (FK: picks_golfer_id_fkey)
+  const { error: picksError } = await supabase
+    .from("picks")
+    .delete()
+    .eq("tournament_id", tournamentId);
+
+  if (picksError) {
+    toast.error(`Purge failed (picks): ${picksError.message}`);
     setConfirmText("");
     setPhase("idle");
+    return;
   }
+
+  // Step 2: now safe to delete golfers
+  const { error: golfersError } = await supabase
+    .from("golfers")
+    .delete()
+    .eq("tournament_id", tournamentId);
+
+  if (golfersError) {
+    toast.error(`Purge failed (golfers): ${golfersError.message}`);
+  } else {
+    toast.success("Field roster and all picks purged.");
+    qc.invalidateQueries({ queryKey: ["admin-field-golfers", tournamentId] });
+    qc.invalidateQueries({ queryKey: ["field", tournamentId] });
+    qc.invalidateQueries({ queryKey: ["admin-picks-for-tournament", tournamentId] });
+  }
+
+  setConfirmText("");
+  setPhase("idle");
+}
+
 
   return (
     <div className="border-2 border-destructive/60 rounded-md bg-destructive/5">
