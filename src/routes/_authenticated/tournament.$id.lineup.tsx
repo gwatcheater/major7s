@@ -26,7 +26,7 @@ const BUCKET_LABELS: Record<number, string> = {
 function LineupPicker() {
   const { id } = Route.useParams();
   const { activeTeam } = useTeams();
-  const { getEffectiveUserId, impersonatingId, assertWritable, readOnly } = useImpersonation();
+  const { getEffectiveUserId, impersonatingId, impersonatedProfile } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -97,8 +97,10 @@ function LineupPicker() {
   Object.values(byBucket).forEach((arr) => arr.sort((a, b) => (a.owgr_rank ?? 999) - (b.owgr_rank ?? 999)));
 
   async function save() {
-    if (!assertWritable()) return;
-    if (isLocked) { toast.error("Picks are locked"); return; }
+    // Admins simulating a user may save on the user's behalf, including after lock
+    // (admins bypass the pick-lock trigger). Block the locked case ONLY for a
+    // normal (non-shadow) user.
+    if (!impersonatingId && isLocked) { toast.error("Picks are locked"); return; }
     const buckets = [1, 2, 3, 4, 5, 6, 7];
     const missing = buckets.filter((b) => !selections[b]);
     if (missing.length) { toast.error(`Select a golfer for tier ${missing.join(", ")}`); return; }
@@ -147,7 +149,17 @@ function LineupPicker() {
         if (error) { toast.error(error.message); return; }
       }
     }
-    toast.success("Lineup saved");
+    if (impersonatingId) {
+      // Record the admin override in the audit log (fire-and-forget).
+      void supabase.rpc("audit_admin_pick_edit", {
+        _target: impersonatingId,
+        _tournament: id,
+        _after_lock: isLocked,
+      });
+      toast.success("Lineup saved on user's behalf (logged)");
+    } else {
+      toast.success("Lineup saved");
+    }
     qc.invalidateQueries({ queryKey: ["picks"] });
     qc.invalidateQueries({ queryKey: ["roster-status"] });
     qc.invalidateQueries({ queryKey: ["missing-picks"] });
@@ -219,7 +231,7 @@ function LineupPicker() {
                       Bucket {b}
                     </span>
                     <select
-                      disabled={isLocked || opts.length === 0}
+                      disabled={(!impersonatingId && isLocked) || opts.length === 0}
                       value={selected ?? ""}
                       onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
                       className="text-sm font-medium text-right bg-transparent border-0 focus:outline-none focus:ring-0 max-w-[65%] truncate disabled:opacity-50 cursor-pointer"
@@ -236,10 +248,15 @@ function LineupPicker() {
               })}
             </div>
 
+            {impersonatingId && (
+              <p className="mt-4 text-xs text-amber-700 font-semibold">
+                Saving as {impersonatedProfile?.nickname ?? "user"} — admin override{isLocked ? " (after lock)" : ""}, logged.
+              </p>
+            )}
             <button
               onClick={save}
-              disabled={isLocked || readOnly}
-              className="mt-5 w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
+              disabled={!impersonatingId && isLocked}
+              className="mt-2 w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
               style={{ backgroundColor: "var(--forest-deep)" }}
             >
               Save Lineup
