@@ -212,18 +212,23 @@ function ApprovalsTab() {
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>Pending Approval Queue</span>
-          <span className="text-xs font-mono text-muted-foreground">{pending.length} waiting</span>
+          {pending.length > 0 ? (
+            <span className="text-xs font-bold rounded-full bg-rose-600 text-white px-2 py-0.5">
+              {pending.length} waiting
+            </span>
+          ) : (
+            <span className="text-xs font-mono text-muted-foreground">0 waiting</span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <p className="text-sm text-muted-foreground p-4">Loading…</p>
         ) : pending.length === 0 ? (
-          <Alert>
-            <CheckCircle2 className="size-4" />
-            <AlertTitle>All clear</AlertTitle>
-            <AlertDescription>No users are awaiting approval.</AlertDescription>
-          </Alert>
+          <p className="text-sm text-muted-foreground flex items-center gap-2 py-1">
+            <CheckCircle2 className="size-4 text-emerald-600" />
+            No users awaiting approval.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -303,6 +308,7 @@ function BulkImportTab() {
       first_name: string;
       last_name: string;
       phone: string;
+      team_name: string;
       referral_name: string;
     }> = [];
     const errors: Array<{ line: number; reason: string }> = [];
@@ -315,12 +321,12 @@ function BulkImportTab() {
         errors.push({ line, reason: "Missing email" });
         return;
       }
-      const [email, first_name = "", last_name = "", phone = "", referral_name = ""] = parts;
+      const [email, first_name = "", last_name = "", phone = "", team_name = "", referral_name = ""] = parts;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push({ line, reason: `Invalid email: ${email}` });
         return;
       }
-      rows.push({ email, first_name, last_name, phone, referral_name });
+      rows.push({ email, first_name, last_name, phone, team_name, referral_name });
     });
     return { rows, errors };
   }, [text]);
