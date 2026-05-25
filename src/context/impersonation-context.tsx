@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -16,18 +17,28 @@ interface ImpersonationState {
   impersonatingId: string | null;
   isAdminSession: boolean;
   impersonatedProfile: ImpersonatedProfile | null;
+  /** True while a shadow session is active — the UI should be treated as read-only. */
+  readOnly: boolean;
   startImpersonation: (userId: string) => void;
   stopImpersonation: () => void;
   getEffectiveUserId: (sessionUserId: string | undefined | null) => string | undefined;
+  /**
+   * Call at the top of any mutation handler that writes to the effective user's
+   * data (picks, teams, profile). Throws and toasts while impersonating so that
+   * shadow mode cannot accidentally write as the admin. Returns true when writable.
+   */
+  assertWritable: () => boolean;
 }
 
 const ImpersonationContext = createContext<ImpersonationState>({
   impersonatingId: null,
   isAdminSession: false,
   impersonatedProfile: null,
+  readOnly: false,
   startImpersonation: () => {},
   stopImpersonation: () => {},
   getEffectiveUserId: (id) => id ?? undefined,
+  assertWritable: () => true,
 });
 
 export function ImpersonationProvider({ children }: { children: ReactNode }) {
@@ -80,20 +91,36 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
       }
       setImpersonatingId(userId);
       invalidateScopedQueries();
+      // Fire-and-forget audit log; never block the action on a logging failure.
+      void supabase.rpc("log_impersonation", { _target: userId, _event: "impersonation.start" });
     },
     [isAdmin, invalidateScopedQueries],
   );
 
   const stopImpersonation = useCallback(() => {
+    const wasImpersonating = impersonatingId;
     if (typeof window !== "undefined") window.sessionStorage.removeItem(STORAGE_KEY);
     setImpersonatingId(null);
     invalidateScopedQueries();
-  }, [invalidateScopedQueries]);
+    if (wasImpersonating) {
+      void supabase.rpc("log_impersonation", { _target: wasImpersonating, _event: "impersonation.stop" });
+    }
+  }, [impersonatingId, invalidateScopedQueries]);
 
   const getEffectiveUserId = useCallback(
     (sessionUserId: string | undefined | null) => impersonatingId ?? sessionUserId ?? undefined,
     [impersonatingId],
   );
+
+  const readOnly = !!impersonatingId;
+
+  const assertWritable = useCallback(() => {
+    if (impersonatingId) {
+      toast.error("Shadow mode is read-only — stop simulation to make changes.");
+      return false;
+    }
+    return true;
+  }, [impersonatingId]);
 
   return (
     <ImpersonationContext.Provider
@@ -101,9 +128,11 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
         impersonatingId,
         isAdminSession: isAdmin,
         impersonatedProfile,
+        readOnly,
         startImpersonation,
         stopImpersonation,
         getEffectiveUserId,
+        assertWritable,
       }}
     >
       {children}
