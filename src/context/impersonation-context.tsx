@@ -16,18 +16,22 @@ interface ImpersonationState {
   impersonatingId: string | null;
   isAdminSession: boolean;
   impersonatedProfile: ImpersonatedProfile | null;
+  readOnly: boolean;
   startImpersonation: (userId: string) => void;
   stopImpersonation: () => void;
   getEffectiveUserId: (sessionUserId: string | undefined | null) => string | undefined;
+  assertWritable: () => boolean;
 }
 
 const ImpersonationContext = createContext<ImpersonationState>({
   impersonatingId: null,
   isAdminSession: false,
   impersonatedProfile: null,
+  readOnly: false,
   startImpersonation: () => {},
   stopImpersonation: () => {},
   getEffectiveUserId: (id) => id ?? undefined,
+  assertWritable: () => true,
 });
 
 export function ImpersonationProvider({ children }: { children: ReactNode }) {
@@ -95,15 +99,21 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
     [impersonatingId],
   );
 
+  const readOnly = false;
+
+  const assertWritable = useCallback(() => true, []);
+
   return (
     <ImpersonationContext.Provider
       value={{
         impersonatingId,
         isAdminSession: isAdmin,
         impersonatedProfile,
+        readOnly,
         startImpersonation,
         stopImpersonation,
         getEffectiveUserId,
+        assertWritable,
       }}
     >
       {children}
