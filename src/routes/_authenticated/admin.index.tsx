@@ -94,7 +94,8 @@ function AdminConsole() {
           </h1>
         </header>
 
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+        <Tabs defaultValue="users" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="users" className="text-xs gap-1.5">
               <Users className="size-3.5" />
               Users
@@ -121,6 +122,41 @@ function AdminConsole() {
         </Tabs>
       </div>
     </TooltipProvider>
+  );
+}
+
+/* ============================================================
+   USERS — stacked: Approvals (top) · Directory (middle) · Bulk Import (bottom)
+   ============================================================ */
+function UsersTab() {
+  const [importOpen, setImportOpen] = useState(false);
+  return (
+    <div className="space-y-6">
+      <ApprovalsTab />
+      <UsersDirectoryTab />
+      <Card>
+        <CardHeader>
+          <button
+            type="button"
+            onClick={() => setImportOpen((o) => !o)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="size-4" />
+              Bulk Import Users
+            </CardTitle>
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">
+              {importOpen ? "Hide ▲" : "Show ▼"}
+            </span>
+          </button>
+        </CardHeader>
+        {importOpen && (
+          <CardContent>
+            <BulkImportTab />
+          </CardContent>
+        )}
+      </Card>
+    </div>
   );
 }
 
