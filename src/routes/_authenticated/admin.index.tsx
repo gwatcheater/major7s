@@ -305,7 +305,7 @@ function BulkImportTab() {
     });
     return { rows, errors };
   }, [text]);
-
+  
   async function execute() {
     if (parsed.rows.length === 0 || parsed.errors.length > 0) return;
     setBusy(true);
