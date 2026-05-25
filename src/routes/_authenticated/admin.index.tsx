@@ -283,6 +283,7 @@ function BulkImportTab() {
       first_name: string;
       last_name: string;
       phone: string;
+      team_name: string;
       referral_name: string;
     }> = [];
     const errors: Array<{ line: number; reason: string }> = [];
@@ -295,12 +296,12 @@ function BulkImportTab() {
         errors.push({ line, reason: "Missing email" });
         return;
       }
-      const [email, first_name = "", last_name = "", phone = "", referral_name = ""] = parts;
+      const [email, first_name = "", last_name = "", phone = "", team_name = "", referral_name = ""] = parts;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push({ line, reason: `Invalid email: ${email}` });
         return;
       }
-      rows.push({ email, first_name, last_name, phone, referral_name });
+      rows.push({ email, first_name, last_name, phone, team_name, referral_name });
     });
     return { rows, errors };
   }, [text]);
