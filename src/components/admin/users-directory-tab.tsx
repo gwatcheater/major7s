@@ -430,44 +430,46 @@ function UserDrawer({
         {user && (
           <>
             <SheetHeader>
-              <SheetTitle>{fullName}</SheetTitle>
-              <p className="text-sm text-muted-foreground font-mono">{user.email ?? "—"}</p>
+              <div className="flex items-start justify-between gap-3 pr-6">
+                <div className="min-w-0">
+                  <SheetTitle className="truncate">{fullName}</SheetTitle>
+                  <p className="text-sm text-muted-foreground font-mono truncate">{user.email ?? "—"}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => {
+                    startImpersonation(user.id);
+                    toast.success(`Simulation initialized: Acting as ${fullName}`);
+                    navigate({ to: "/home" });
+                  }}
+                >
+                  <EyeOff className="size-3.5" /> Simulate
+                </Button>
+              </div>
             </SheetHeader>
-
-            <div className="mt-4 flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  startImpersonation(user.id);
-                  toast.success(`Simulation initialized: Acting as ${fullName}`);
-                  navigate({ to: "/home" });
-                }}
-              >
-                <EyeOff className="size-3.5" /> Simulate User
-              </Button>
-            </div>
 
             {/* Role + Status */}
             <section className="mt-4 rounded-lg border bg-card/50 p-4">
               <h3 className="text-sm font-semibold uppercase tracking-wider mb-3">Account Configuration</h3>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <div className="flex flex-col">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1 h-4">
                     <ShieldCheck className="size-3.5" /> Role
                   </Label>
                   <Select value={selectedRole} onValueChange={(v) => handleRoleChange(v as "admin" | "user")}>
-                    <SelectTrigger className="h-9 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 mt-1.5"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="user">Player</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Status</Label>
+                <div className="flex flex-col">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground h-4">Status</Label>
                   <Select value={status} onValueChange={handleStatusChange}>
-                    <SelectTrigger className="h-9 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 mt-1.5"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="pending">Pending</SelectItem>
                       <SelectItem value="approved">Approved</SelectItem>
