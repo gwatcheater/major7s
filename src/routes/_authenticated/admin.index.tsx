@@ -94,15 +94,10 @@ function AdminConsole() {
           </h1>
         </header>
 
-        <Tabs defaultValue="approvals" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
-            <TabsTrigger value="approvals" className="text-xs gap-1.5">
-              <UserCheck className="size-3.5" />
-              Approvals
-            </TabsTrigger>
-            <TabsTrigger value="bulk" className="text-xs gap-1.5">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+            <TabsTrigger value="users" className="text-xs gap-1.5">
               <Users className="size-3.5" />
-              Bulk Import
+              Users
             </TabsTrigger>
             <TabsTrigger value="tournament" className="text-xs gap-1.5">
               <Trophy className="size-3.5" />
@@ -111,10 +106,6 @@ function AdminConsole() {
             <TabsTrigger value="picks" className="text-xs gap-1.5">
               <ClipboardList className="size-3.5" />
               Submissions
-            </TabsTrigger>
-            <TabsTrigger value="users" className="text-xs gap-1.5">
-              <Users className="size-3.5" />
-              Users
             </TabsTrigger>
           </TabsList>
 
