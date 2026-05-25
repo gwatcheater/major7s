@@ -145,7 +145,12 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
         else {
           const t = lookup.teamByUser.get(prof.id);
           if (!t) errors.push(`No team found for '${raw.user_email}'`);
-          else teamId = t;
+          else {
+            teamId = t;
+            if (lookup.teamsWithPicks.has(t)) {
+              errors.push("User has already submitted picks for this tournament.");
+            }
+          }
         }
       }
 
