@@ -15,7 +15,7 @@ const PHONE_RE = /^[+]?[\d\s().-]{7,20}$/;
 
 function ProfileSettingsView() {
   const { user } = useAuth();
-  const { impersonatingId, getEffectiveUserId } = useImpersonation();
+  const { impersonatingId, getEffectiveUserId, assertWritable } = useImpersonation();
   const effectiveId = getEffectiveUserId(user?.id);
   const qc = useQueryClient();
 
@@ -80,6 +80,7 @@ function ProfileSettingsView() {
   if (!user) return <div className="p-12">Sign in to manage your profile.</div>;
 
   async function savePersonal() {
+    if (!assertWritable()) return;
     if (!isValid || !isDirty) return;
     setSaving(true);
     const trimmedNickname = teamName.trim();
