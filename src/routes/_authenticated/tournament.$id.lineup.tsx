@@ -212,17 +212,17 @@ function LineupPicker() {
                 return (
                   <div
                     key={b}
-                    className="flex items-center justify-between px-4 py-3 gap-4"
+                    className="flex items-center px-4 py-3 gap-4"
                     style={!selected ? { borderLeftWidth: 3, borderLeftColor: "var(--alert)" } : undefined}
                   >
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground shrink-0 w-20">
                       Bucket {b}
                     </span>
                     <select
                       disabled={isLocked || opts.length === 0}
                       value={selected ?? ""}
                       onChange={(e) => setSelections((s) => ({ ...s, [b]: e.target.value }))}
-                      className="text-sm font-medium text-right bg-transparent border-0 focus:outline-none focus:ring-0 max-w-[65%] truncate disabled:opacity-50 cursor-pointer"
+                      className="text-sm font-medium text-right bg-transparent border-0 focus:outline-none focus:ring-0 flex-1 min-w-0 truncate disabled:opacity-50 cursor-pointer"
                     >
                       <option value="">{opts.length === 0 ? "No golfers in tier" : "— Select —"}</option>
                       {opts.map((g) => (
