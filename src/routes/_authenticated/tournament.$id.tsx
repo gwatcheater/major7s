@@ -100,7 +100,10 @@ function TournamentHub() {
 
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
-  if (pathname.endsWith(`/tournament/${id}/lineup`)) return <Outlet />;
+if (
+    pathname.endsWith(`/tournament/${id}/lineup`) ||
+    pathname.includes(`/tournament/${id}/blog`)
+  ) return <Outlet />;
 
   const meta = statusMeta(t.status);
   const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
