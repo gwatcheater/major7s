@@ -23,6 +23,7 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
 import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_authenticated/tournament.$id.lineup'
+import { Route as AuthenticatedTournamentIdBlogNewRouteImport } from './routes/_authenticated/tournament.$id.blog.new'
 import { Route as AuthenticatedAdminTournamentIdFieldRouteImport } from './routes/_authenticated/admin.tournament.$id.field'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -96,6 +97,12 @@ const AuthenticatedTournamentIdLineupRoute =
     path: '/lineup',
     getParentRoute: () => AuthenticatedTournamentIdRoute,
   } as any)
+const AuthenticatedTournamentIdBlogNewRoute =
+  AuthenticatedTournamentIdBlogNewRouteImport.update({
+    id: '/blog/new',
+    path: '/blog/new',
+    getParentRoute: () => AuthenticatedTournamentIdRoute,
+  } as any)
 const AuthenticatedAdminTournamentIdFieldRoute =
   AuthenticatedAdminTournamentIdFieldRouteImport.update({
     id: '/tournament/$id/field',
@@ -118,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
+  '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -133,6 +141,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
+  '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -151,6 +160,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
+  '/_authenticated/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/tournament/$id/lineup'
     | '/admin/tournament/$id/field'
+    | '/tournament/$id/blog/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/tournament/$id/lineup'
     | '/admin/tournament/$id/field'
+    | '/tournament/$id/blog/new'
   id:
     | '__root__'
     | '/'
@@ -201,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/'
     | '/_authenticated/tournament/$id/lineup'
     | '/_authenticated/admin/tournament/$id/field'
+    | '/_authenticated/tournament/$id/blog/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -310,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTournamentIdLineupRouteImport
       parentRoute: typeof AuthenticatedTournamentIdRoute
     }
+    '/_authenticated/tournament/$id/blog/new': {
+      id: '/_authenticated/tournament/$id/blog/new'
+      path: '/blog/new'
+      fullPath: '/tournament/$id/blog/new'
+      preLoaderRoute: typeof AuthenticatedTournamentIdBlogNewRouteImport
+      parentRoute: typeof AuthenticatedTournamentIdRoute
+    }
     '/_authenticated/admin/tournament/$id/field': {
       id: '/_authenticated/admin/tournament/$id/field'
       path: '/tournament/$id/field'
@@ -338,11 +358,14 @@ const AuthenticatedAdminRouteWithChildren =
 
 interface AuthenticatedTournamentIdRouteChildren {
   AuthenticatedTournamentIdLineupRoute: typeof AuthenticatedTournamentIdLineupRoute
+  AuthenticatedTournamentIdBlogNewRoute: typeof AuthenticatedTournamentIdBlogNewRoute
 }
 
 const AuthenticatedTournamentIdRouteChildren: AuthenticatedTournamentIdRouteChildren =
   {
     AuthenticatedTournamentIdLineupRoute: AuthenticatedTournamentIdLineupRoute,
+    AuthenticatedTournamentIdBlogNewRoute:
+      AuthenticatedTournamentIdBlogNewRoute,
   }
 
 const AuthenticatedTournamentIdRouteWithChildren =

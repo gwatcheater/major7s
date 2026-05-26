@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          detail: Json
+          id: string
+          target_user: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json
+          id?: string
+          target_user?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json
+          id?: string
+          target_user?: string | null
+        }
+        Relationships: []
+      }
+      blog_posts: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          image_url: string | null
+          title: string
+          tournament_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          title: string
+          tournament_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          title?: string
+          tournament_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blog_posts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       golfers: {
         Row: {
           bucket_number: number
@@ -247,6 +315,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      audit_admin_pick_edit: {
+        Args: { _after_lock: boolean; _target: string; _tournament: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -254,10 +326,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      log_impersonation: {
+        Args: { _event: string; _target: string }
+        Returns: undefined
+      }
+      set_primary_team: { Args: { _team_id: string }; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"
-      profile_status: "pending" | "approved" | "rejected"
+      profile_status: "pending" | "approved" | "rejected" | "suspended"
       tournament_status:
         | "upcoming"
         | "open_for_picks"
@@ -392,7 +469,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
-      profile_status: ["pending", "approved", "rejected"],
+      profile_status: ["pending", "approved", "rejected", "suspended"],
       tournament_status: [
         "upcoming",
         "open_for_picks",
