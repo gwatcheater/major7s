@@ -104,6 +104,30 @@ function TournamentHub() {
     },
   });
 
+  const { data: blogPosts = [] } = useQuery({
+    queryKey: ["blog_posts", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("id, author_id, title, body, image_url, created_at, updated_at")
+        .eq("tournament_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  async function deletePost(postId: string) {
+    if (!confirm("Delete this blog post? This cannot be undone.")) return;
+    const { error } = await supabase.from("blog_posts").delete().eq("id", postId);
+    if (error) {
+      toast.error(`Could not delete: ${error.message}`);
+      return;
+    }
+    toast.success("Blog post deleted");
+    queryClient.invalidateQueries({ queryKey: ["blog_posts", id] });
+  }
+
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
 if (
