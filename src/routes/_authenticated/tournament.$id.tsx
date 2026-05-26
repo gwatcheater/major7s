@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   MapPin,
@@ -10,6 +10,9 @@ import {
   BarChart3,
   FileText,
   ChevronRight,
+  Plus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
@@ -23,6 +26,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { tournamentDateRange } from "@/lib/format";
+import { linkify } from "@/lib/linkify";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id")({
   component: TournamentHub,
