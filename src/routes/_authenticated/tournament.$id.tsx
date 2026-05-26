@@ -301,14 +301,81 @@ if (
             <FileText className="h-5 w-5 text-primary" />
             <div className="flex-1 text-left">
               <div className="font-display text-sm uppercase">Blog</div>
-              <div className="text-xs text-muted-foreground">Tournament recap & notes</div>
+              <div className="text-xs text-muted-foreground">
+                {blogPosts.length > 0
+                  ? `${blogPosts.length} post${blogPosts.length === 1 ? "" : "s"}`
+                  : "Tournament recap & notes"}
+              </div>
             </div>
             <ChevronRight
               className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
             />
           </CollapsibleTrigger>
-          <CollapsibleContent className="border border-t-0 border-border bg-card p-5 text-sm text-muted-foreground whitespace-pre-wrap">
-            {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
+          <CollapsibleContent className="border border-t-0 border-border bg-card p-5 space-y-5">
+            {isAdmin && (
+              <Link
+                to="/tournament/$id/blog/new"
+                params={{ id }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest px-3 py-2 border border-border bg-background hover:bg-accent transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" /> New Post
+              </Link>
+            )}
+
+            {blogPosts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t.recap_blog ?? "No posts yet. Check back soon."}
+              </p>
+            ) : (
+              <ul className="space-y-6">
+                {blogPosts.map((post) => (
+                  <li key={post.id} className="border border-border bg-background p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="min-w-0">
+                        <h3 className="font-display text-lg uppercase leading-tight">
+                          {post.title}
+                        </h3>
+                        <time className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                          {new Date(post.created_at).toLocaleString()}
+                        </time>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Link
+                            to="/tournament/$id/blog/$postId/edit"
+                            params={{ id, postId: post.id }}
+                            className="p-1.5 hover:bg-accent rounded-sm"
+                            title="Edit post"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => deletePost(post.id)}
+                            className="p-1.5 hover:bg-destructive/10 text-destructive rounded-sm"
+                            title="Delete post"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {post.image_url && (
+                      <img
+                        src={post.image_url}
+                        alt=""
+                        className="my-3 max-h-96 w-auto rounded-sm border border-border"
+                      />
+                    )}
+                    {post.body && (
+                      <div className="text-sm whitespace-pre-wrap break-words">
+                        {linkify(post.body)}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </CollapsibleContent>
         </Collapsible>
       </div>
