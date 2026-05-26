@@ -101,7 +101,12 @@ function EditBlogPost() {
       image_url = null;
     }
 
-    const update: Record<string, unknown> = {
+    const update: {
+      title: string;
+      body: string;
+      updated_at: string;
+      image_url?: string | null;
+    } = {
       title: title.trim(),
       body: body.trim(),
       updated_at: new Date().toISOString(),
