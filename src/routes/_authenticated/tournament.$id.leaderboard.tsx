@@ -158,7 +158,7 @@ function LeaderboardView() {
       </div>
 
       {view === "major7s" ? (
-        <MajorSevenPlaceholder />
+        <MajorSevensTable tournamentId={id} myTeamId={activeTeam?.id ?? null} />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground p-4">Loading…</p>
       ) : rows.length === 0 ? (
@@ -172,13 +172,72 @@ function LeaderboardView() {
   );
 }
 
-function MajorSevenPlaceholder() {
+interface ScoreRow {
+  id: string;
+  team_id: string;
+  total_points: number;
+  thru_cut: number;
+  position_display: string;
+  position_numeric: number;
+  teams: { nickname: string; owner_user_id: string } | null;
+}
+
+function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["tournament-scores", tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_scores")
+        .select("id, team_id, total_points, thru_cut, position_display, position_numeric, teams(nickname, owner_user_id)")
+        .eq("tournament_id", tournamentId)
+        .order("position_numeric", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as ScoreRow[];
+    },
+  });
+
+  if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
+  if (rows.length === 0) {
+    return (
+      <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
+        <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
+        <p className="text-sm text-muted-foreground">
+          Major7s scoring will appear here once results are tallied.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
-      <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
-      <p className="text-sm text-muted-foreground">
-        Major7s scoring will appear here once results are tallied.
-      </p>
+    <div className="border border-border bg-card overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <tr>
+            <th className="text-left px-3 py-2 w-16">Pos</th>
+            <th className="text-left px-3 py-2">Team</th>
+            <th className="text-right px-3 py-2 w-24">Points</th>
+            <th className="text-right px-3 py-2 w-24">Thru Cut</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => {
+            const mine = !!myTeamId && r.team_id === myTeamId;
+            return (
+              <tr key={r.id} className={mine ? "bg-amber-50" : ""}>
+                <td className="px-3 py-2 font-mono text-xs">
+                  <span className="inline-flex items-center gap-1">
+                    {mine && <Star className="w-3 h-3 fill-amber-500 text-amber-500" />}
+                    {r.position_display}
+                  </span>
+                </td>
+                <td className="px-3 py-2 font-medium">{r.teams?.nickname ?? "—"}</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
+                <td className="px-3 py-2 text-right font-mono text-muted-foreground">{r.thru_cut}/7</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
