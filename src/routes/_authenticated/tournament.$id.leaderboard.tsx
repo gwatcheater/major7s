@@ -261,6 +261,25 @@ interface ScorePickRow {
   counted: boolean;
 }
 
+/**
+ * Shared <colgroup> for all three tables (active-team panel, main leaderboard,
+ * expanded breakdown). Identical widths ensure values line up column-for-column
+ * regardless of cell content. Browser tables auto-size columns to content
+ * unless told otherwise, so without this colgroup the medal cell pushes other
+ * columns around.
+ */
+function MajorCols() {
+  return (
+    <colgroup>
+      <col style={{ width: "72px" }} />  {/* Pos / Bucket */}
+      <col />                            {/* Team / Golfer name (flex) */}
+      <col style={{ width: "96px" }} />  {/* Points */}
+      <col style={{ width: "96px" }} />  {/* Thru Cut */}
+      <col style={{ width: "40px" }} />  {/* Chevron */}
+    </colgroup>
+  );
+}
+
 function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["tournament-scores", tournamentId],
@@ -300,12 +319,16 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
   const myRow = myTeamId ? rows.find((r) => r.team_id === myTeamId) ?? null : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
+      <div className="text-right text-xs uppercase tracking-widest text-muted-foreground">
+        {rows.length} {rows.length === 1 ? "team" : "teams"}
+      </div>
       {myRow && (
         <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
       )}
       <div className="border border-border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+          <MajorCols />
           <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
             <tr>
               <th className="text-center px-3 py-2 w-20">Pos</th>
@@ -336,21 +359,28 @@ function ActiveTeamPanel({
 }: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-amber-800 bg-amber-100 font-bold">
-        Your Team
-      </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <MajorCols />
+        <thead className="text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
+          <tr>
+            <th className="text-left px-3 py-1.5">Your Team</th>
+            <th />
+            <th className="text-right px-3 py-1.5">Points</th>
+            <th className="text-center px-3 py-1.5">Thru Cut</th>
+            <th />
+          </tr>
+        </thead>
         <tbody>
           <tr>
-            <td className="px-3 py-2 text-center w-20">
+            <td className="px-3 py-2 text-center">
               <div className="inline-flex justify-center">
                 <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
               </div>
             </td>
-            <td className="px-3 py-2 font-medium">{row.teams?.nickname ?? "—"}</td>
-            <td className="px-3 py-2 text-right font-mono font-semibold w-24">{row.total_points}</td>
-            <td className="px-3 py-2 text-center font-mono text-muted-foreground w-24">{row.thru_cut}</td>
-            <td className="px-3 py-2 w-8" />
+            <td className="px-3 py-2 font-medium truncate">{row.teams?.nickname ?? "—"}</td>
+            <td className="px-3 py-2 text-right font-mono font-semibold">{row.total_points}</td>
+            <td className="px-3 py-2 text-center font-mono text-muted-foreground">{row.thru_cut}</td>
+            <td />
           </tr>
         </tbody>
       </table>
@@ -454,22 +484,19 @@ function PickBreakdown({
   picks, loading, mine,
 }: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean }) {
   if (loading) {
-    return <div className="px-3 py-3 text-xs text-muted-foreground">Loading picks…</div>;
+    return <div className="px-3 py-3 text-sm text-muted-foreground">Loading picks…</div>;
   }
   if (!picks || picks.length === 0) {
-    return <div className="px-3 py-3 text-xs text-muted-foreground">No picks recorded.</div>;
+    return <div className="px-3 py-3 text-sm text-muted-foreground">No picks recorded.</div>;
   }
   return (
     <div className={`${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <MajorCols />
         <tbody>
           {picks.map((p) => {
             const cutLike = p.points === NON_FINISHER_POINTS;
-            // Four-state styling matrix:
-            //   counted + finished  -> normal
-            //   counted + cut       -> red (full opacity)
-            //   muted   + finished  -> grey, dimmed
-            //   muted   + cut       -> red, strongly dimmed
+            // Four-state styling matrix (counted/muted x finished/cut)
             let nameCls = "";
             let pointsCls = "font-mono font-semibold";
             let opacity = "";
@@ -484,13 +511,13 @@ function PickBreakdown({
             }
             return (
               <tr key={p.bucket} className={opacity}>
-                <td className="px-3 py-1.5 text-center text-muted-foreground uppercase tracking-widest text-[10px] w-20">
+                <td className={`pl-8 pr-3 py-0.5 text-muted-foreground ${nameCls}`}>
                   B{p.bucket}
                 </td>
-                <td className={`px-3 py-1.5 ${nameCls}`}>{p.golfer_name}</td>
-                <td className={`px-3 py-1.5 text-right w-24 ${pointsCls}`}>{p.points}</td>
-                <td className="px-3 py-1.5 w-24" />
-                <td className="px-3 py-1.5 w-8" />
+                <td className={`pl-2 pr-3 py-0.5 ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
+                <td />
+                <td />
               </tr>
             );
           })}
