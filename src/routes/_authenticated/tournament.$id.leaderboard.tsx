@@ -275,25 +275,13 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
     },
   });
 
-  // Distinct numeric positions, in order, to compute the medal mapping
-  // (gold = 1st distinct, silver = 2nd, bronze = 3rd).
-  const medalNumerics = useMemo(() => {
-    const seen = new Set<number>();
-    const out: number[] = [];
-    for (const r of rows) {
-      if (!seen.has(r.position_numeric)) {
-        seen.add(r.position_numeric);
-        out.push(r.position_numeric);
-        if (out.length === 3) break;
-      }
-    }
-    return out;
-  }, [rows]);
-
+  // Standard Competition Ranking: medals follow the numeric position directly.
+  // T1/T1 -> both gold, next team is at numeric 3 -> bronze (no silver).
+  // T2/T2 -> both silver, next team is at numeric 4 -> no bronze.
   function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
-    if (positionNumeric === medalNumerics[0]) return "gold";
-    if (positionNumeric === medalNumerics[1]) return "silver";
-    if (positionNumeric === medalNumerics[2]) return "bronze";
+    if (positionNumeric === 1) return "gold";
+    if (positionNumeric === 2) return "silver";
+    if (positionNumeric === 3) return "bronze";
     return null;
   }
 
