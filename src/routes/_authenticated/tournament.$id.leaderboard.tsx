@@ -359,14 +359,17 @@ function ActiveTeamPanel({
 }: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
+      <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
+        Your Team
+      </div>
       <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
         <MajorCols />
-        <thead className="text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
+        <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
-            <th className="text-left px-3 py-1.5">Your Team</th>
             <th />
-            <th className="text-right px-3 py-1.5">Points</th>
-            <th className="text-center px-3 py-1.5">Thru Cut</th>
+            <th />
+            <th className="text-right px-3 py-1">Points</th>
+            <th className="text-center px-3 py-1">Thru Cut</th>
             <th />
           </tr>
         </thead>
@@ -511,10 +514,10 @@ function PickBreakdown({
             }
             return (
               <tr key={p.bucket} className={opacity}>
-                <td className={`pl-8 pr-3 py-0.5 text-muted-foreground ${nameCls}`}>
+                <td className={`pl-20 pr-3 py-0.5 text-muted-foreground ${nameCls}`}>
                   B{p.bucket}
                 </td>
-                <td className={`pl-2 pr-3 py-0.5 ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`pl-4 pr-3 py-0.5 ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
                 <td />
