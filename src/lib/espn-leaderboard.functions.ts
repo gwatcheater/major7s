@@ -25,6 +25,224 @@ function parsePositionNumeric(displayName: string | undefined | null): number | 
   return Number.isFinite(n) ? n : null;
 }
 
+// Major7s scoring: each pick scores its golfer's finishing position; non-finishers (CUT/WD/DQ/etc) score 100.
+// Team total = best (lowest) 5 of 7 pick scores. Team position = standard golf-style ranking with ties.
+const NON_FINISHER_POINTS = 100;
+function isFinishedStatus(status: string | null): boolean {
+  // STATUS_FINISH is the "finished" status from ESPN; everything else (STATUS_CUT, STATUS_WITHDRAWN, etc.) counts as non-finished.
+  return status === "STATUS_FINISH";
+}
+
+interface LbForScoring {
+  golfer_id: string | null;
+  position_numeric: number | null;
+  status_type: string | null;
+}
+
+interface PickRow {
+  team_id: string;
+  bucket: number;
+  golfer_id: string | null;
+}
+
+interface PickScore {
+  bucket: number;
+  golfer_id: string | null;
+  golfer_name: string;
+  points: number;
+  status_type: string | null;
+  counted: boolean;
+}
+
+interface TeamAggregate {
+  team_id: string;
+  total_points: number;
+  thru_cut: number;
+  picks: PickScore[];
+}
+
+async function calculateMajor7sScores(
+  tournamentId: string,
+  calculatedByUserId: string,
+): Promise<{ teams_scored: number; teams_skipped_incomplete: number }> {
+  // 1) Pull the leaderboard we just upserted, keyed by golfer_id.
+  const { data: lbRows, error: lbErr } = await supabaseAdmin
+    .from("tournament_leaderboard")
+    .select("golfer_id, position_numeric, status_type")
+    .eq("tournament_id", tournamentId);
+  if (lbErr) throw new Error(`Score calc: ${lbErr.message}`);
+
+  const lbByGolferId = new Map<string, LbForScoring>();
+  for (const row of (lbRows ?? []) as LbForScoring[]) {
+    if (row.golfer_id) lbByGolferId.set(row.golfer_id, row);
+  }
+
+  // 2) Pull all picks for this tournament, plus their golfer names (snapshot).
+  const { data: pickRows, error: pErr } = await supabaseAdmin
+    .from("picks")
+    .select("team_id, bucket, golfer_id")
+    .eq("tournament_id", tournamentId);
+  if (pErr) throw new Error(`Score calc: ${pErr.message}`);
+
+  const allGolferIds = Array.from(
+    new Set(((pickRows ?? []) as PickRow[]).map((p) => p.golfer_id).filter((x): x is string => !!x)),
+  );
+  const golferNameById = new Map<string, string>();
+  if (allGolferIds.length > 0) {
+    const { data: golferRows, error: gErr } = await supabaseAdmin
+      .from("golfers")
+      .select("id, golfer_name")
+      .in("id", allGolferIds);
+    if (gErr) throw new Error(`Score calc: ${gErr.message}`);
+    for (const g of golferRows ?? []) {
+      golferNameById.set(g.id, g.golfer_name);
+    }
+  }
+
+  // 3) Group picks by team.
+  const picksByTeam = new Map<string, PickRow[]>();
+  for (const p of (pickRows ?? []) as PickRow[]) {
+    const arr = picksByTeam.get(p.team_id) ?? [];
+    arr.push(p);
+    picksByTeam.set(p.team_id, arr);
+  }
+
+  // 4) Score each team — only teams with all 7 picks.
+  const aggregates: TeamAggregate[] = [];
+  let skipped = 0;
+  for (const [teamId, picks] of picksByTeam) {
+    if (picks.length !== 7) {
+      skipped++;
+      continue;
+    }
+    const scored: PickScore[] = picks.map((p) => {
+      const lb = p.golfer_id ? lbByGolferId.get(p.golfer_id) : undefined;
+      const status = lb?.status_type ?? null;
+      let points: number;
+      if (!lb) {
+        // Picked golfer not on the leaderboard at all — treat as non-finisher.
+        points = NON_FINISHER_POINTS;
+      } else if (!isFinishedStatus(status)) {
+        points = NON_FINISHER_POINTS;
+      } else {
+        points = lb.position_numeric ?? NON_FINISHER_POINTS;
+      }
+      return {
+        bucket: p.bucket,
+        golfer_id: p.golfer_id,
+        golfer_name: (p.golfer_id && golferNameById.get(p.golfer_id)) || "Unknown",
+        points,
+        status_type: status,
+        counted: false,
+      };
+    });
+
+    // Best (lowest) 5 of 7 count toward total.
+    const sortedByPoints = [...scored].sort((a, b) => a.points - b.points);
+    const countedSet = new Set<number>();
+    for (let i = 0; i < 5 && i < sortedByPoints.length; i++) {
+      countedSet.add(sortedByPoints[i].bucket);
+    }
+    for (const s of scored) {
+      if (countedSet.has(s.bucket)) s.counted = true;
+    }
+    const total = scored.filter((s) => s.counted).reduce((sum, s) => sum + s.points, 0);
+    const thruCut = scored.filter((s) => isFinishedStatus(s.status_type)).length;
+
+    // Re-order picks back to bucket order for storage.
+    scored.sort((a, b) => a.bucket - b.bucket);
+
+    aggregates.push({
+      team_id: teamId,
+      total_points: total,
+      thru_cut: thruCut,
+      picks: scored,
+    });
+  }
+
+  // 5) Assign positions with golf-style ties (teams on the same total share a position;
+  //    the next team takes the position they'd otherwise have had).
+  aggregates.sort((a, b) => a.total_points - b.total_points);
+  let prevTotal: number | null = null;
+  let prevNumeric = 0;
+  const ranked = aggregates.map((agg, i) => {
+    let numeric: number;
+    if (prevTotal !== null && agg.total_points === prevTotal) {
+      numeric = prevNumeric; // tied with the previous team — same numeric position
+    } else {
+      numeric = i + 1;
+      prevTotal = agg.total_points;
+      prevNumeric = numeric;
+    }
+    return { ...agg, position_numeric: numeric };
+  });
+
+  // Compute T-prefixed display: anyone whose numeric is shared with another team gets "T".
+  const countByNumeric = new Map<number, number>();
+  for (const r of ranked) countByNumeric.set(r.position_numeric, (countByNumeric.get(r.position_numeric) ?? 0) + 1);
+  const positioned = ranked.map((r) => ({
+    ...r,
+    position_display: (countByNumeric.get(r.position_numeric) ?? 0) > 1 ? `T${r.position_numeric}` : String(r.position_numeric),
+  }));
+
+  // 6) Wipe prior scores for this tournament and re-insert (cleanest way to handle
+  //    teams that may have dropped out of scoring on recalc).
+  const { error: delErr } = await supabaseAdmin
+    .from("tournament_scores")
+    .delete()
+    .eq("tournament_id", tournamentId);
+  if (delErr) throw new Error(`Score calc: ${delErr.message}`);
+
+  if (positioned.length === 0) {
+    return { teams_scored: 0, teams_skipped_incomplete: skipped };
+  }
+
+  // 7) Insert parents, then children.
+  const parentRows = positioned.map((p) => ({
+    tournament_id: tournamentId,
+    team_id: p.team_id,
+    total_points: p.total_points,
+    thru_cut: p.thru_cut,
+    position_display: p.position_display,
+    position_numeric: p.position_numeric,
+    calculated_at: new Date().toISOString(),
+    calculated_by: calculatedByUserId,
+  }));
+  const { data: insertedParents, error: parentErr } = await supabaseAdmin
+    .from("tournament_scores")
+    .insert(parentRows)
+    .select("id, team_id");
+  if (parentErr) throw new Error(`Score calc: ${parentErr.message}`);
+
+  const parentIdByTeam = new Map<string, string>();
+  for (const row of insertedParents ?? []) parentIdByTeam.set(row.team_id, row.id);
+
+  const childRows: any[] = [];
+  for (const p of positioned) {
+    const parentId = parentIdByTeam.get(p.team_id);
+    if (!parentId) continue;
+    for (const pk of p.picks) {
+      childRows.push({
+        tournament_score_id: parentId,
+        bucket: pk.bucket,
+        golfer_id: pk.golfer_id,
+        golfer_name: pk.golfer_name,
+        points: pk.points,
+        status_type: pk.status_type,
+        counted: pk.counted,
+      });
+    }
+  }
+  if (childRows.length > 0) {
+    const { error: childErr } = await supabaseAdmin
+      .from("tournament_score_picks")
+      .insert(childRows);
+    if (childErr) throw new Error(`Score calc (picks): ${childErr.message}`);
+  }
+
+  return { teams_scored: positioned.length, teams_skipped_incomplete: skipped };
+}
+
 export const importEspnLeaderboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => InputSchema.parse(input))
@@ -45,17 +263,17 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     const url = `https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${encodeURIComponent(data.espn_event_id)}`;
     const res = await fetch(url);
     if (!res.ok) {
-      return { error: `ESPN API responded ${res.status}`, imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[] };
+      return { error: `ESPN API responded ${res.status}`, imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
     }
     const payload: any = await res.json();
     const event = payload?.events?.[0];
     const comp = event?.competitions?.[0];
     if (!comp) {
-      return { error: "Unexpected ESPN response (no competition)", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[] };
+      return { error: "Unexpected ESPN response (no competition)", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
     }
     const completed = event?.status?.type?.completed === true;
     if (!completed) {
-      return { error: "Tournament is not yet final on ESPN", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[] };
+      return { error: "Tournament is not yet final on ESPN", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
     }
 
     // Local golfers for name match
@@ -136,7 +354,7 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     }
 
     if (rows.length === 0) {
-      return { error: "No competitors found", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] };
+      return { error: "No competitors found", imported: 0, matched: 0, unmatched: 0, unmatched_names: [], teams_scored: 0, teams_skipped_incomplete: 0 };
     }
 
     const { error: upErr } = await supabaseAdmin
@@ -144,11 +362,16 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
       .upsert(rows, { onConflict: "tournament_id,espn_player_id" });
     if (upErr) throw new Error(upErr.message);
 
+    // After a successful leaderboard import, calculate Major7s scores.
+    const scoringResult = await calculateMajor7sScores(data.tournament_id, userId);
+
     return {
       imported: rows.length,
       matched,
       unmatched: unmatchedNames.length,
       unmatched_names: unmatchedNames,
+      teams_scored: scoringResult.teams_scored,
+      teams_skipped_incomplete: scoringResult.teams_skipped_incomplete,
       error: null as string | null,
     };
   });
