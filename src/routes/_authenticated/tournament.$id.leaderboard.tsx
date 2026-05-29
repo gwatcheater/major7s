@@ -104,7 +104,15 @@ function LeaderboardView() {
       if (xt !== yt) return xt - yt;
       return x.espn_display_name.localeCompare(y.espn_display_name);
     });
-    c.sort((x, y) => x.espn_display_name.localeCompare(y.espn_display_name));
+    c.sort((x, y) => {
+      const xp = x.score_to_par ?? 9999;
+      const yp = y.score_to_par ?? 9999;
+      if (xp !== yp) return xp - yp;
+      const xt = x.total_strokes ?? 9999;
+      const yt = y.total_strokes ?? 9999;
+      if (xt !== yt) return xt - yt;
+      return x.espn_display_name.localeCompare(y.espn_display_name);
+    });
     return { active: a, cut: c };
   }, [rows]);
 
