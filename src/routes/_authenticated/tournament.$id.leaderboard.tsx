@@ -69,11 +69,11 @@ function fmtToPar(v: number | null): { text: string; cls: string } {
 function MajorCols() {
   return (
     <colgroup>
-      <col style={{ width: "60px" }} />
+      <col style={{ width: "52px" }} />
       <col />
-      <col style={{ width: "80px" }} />
-      <col style={{ width: "80px" }} />
-      <col style={{ width: "36px" }} />
+      <col style={{ width: "64px" }} />
+      <col style={{ width: "64px" }} />
+      <col style={{ width: "32px" }} />
     </colgroup>
   );
 }
@@ -397,7 +397,7 @@ function ActiveTeamPanel({
                 <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
               </div>
             </td>
-            <td className="px-3 py-2 font-medium truncate">{row.teams?.nickname ?? "—"}</td>
+            <td className="px-3 py-2 font-medium break-words">{row.teams?.nickname ?? "—"}</td>
             <td className="px-3 py-2 text-right font-mono font-semibold">{row.total_points}</td>
             <td className="px-3 py-2 text-center font-mono text-muted-foreground">{row.thru_cut}</td>
             <td className="px-3 py-2 text-muted-foreground">
@@ -479,15 +479,15 @@ function ExpandableTeamRow({
         className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="px-3 py-2 text-center">
+        <td className="px-2 py-2 text-center">
           <div className="inline-flex justify-center">
             <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
           </div>
         </td>
-        <td className="px-3 py-2 font-medium truncate">{r.teams?.nickname ?? "—"}</td>
+        <td className="px-3 py-2 font-medium break-words">{r.teams?.nickname ?? "—"}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
-        <td className="px-3 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
-        <td className="px-3 py-2 text-muted-foreground">
+        <td className="px-2 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
+        <td className="px-2 py-2 text-muted-foreground">
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </td>
       </tr>
@@ -542,7 +542,7 @@ function PickBreakdown({
                     <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 w-6">
                       B{p.bucket}
                     </span>
-                    <span className="truncate">{p.golfer_name}</span>
+                    <span className="break-words">{p.golfer_name}</span>
                   </span>
                 </td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
