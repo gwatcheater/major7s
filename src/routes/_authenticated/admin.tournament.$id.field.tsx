@@ -562,6 +562,12 @@ function AdminFieldPage() {
         </div>
       </div>
 
+      <EspnLeaderboardSection
+        tournamentId={id}
+        initialEspnEventId={(tournament as any)?.espn_event_id ?? ""}
+        onSaved={() => refetchTournament()}
+      />
+
       <AdvancedFieldPortal
         tournamentId={id}
         tournamentName={tournament?.name ?? ""}
