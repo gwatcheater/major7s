@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
+import { EspnLeaderboardSection } from "@/components/admin/espn-leaderboard-section";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 
