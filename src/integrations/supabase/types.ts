@@ -244,11 +244,87 @@ export type Database = {
         }
         Relationships: []
       }
+      tournament_leaderboard: {
+        Row: {
+          country: string | null
+          espn_display_name: string
+          espn_player_id: string
+          golfer_id: string | null
+          id: string
+          imported_at: string
+          is_tie: boolean | null
+          position_display: string | null
+          position_numeric: number | null
+          round_1: number | null
+          round_2: number | null
+          round_3: number | null
+          round_4: number | null
+          score_to_par: number | null
+          status_type: string | null
+          total_strokes: number | null
+          tournament_id: string
+        }
+        Insert: {
+          country?: string | null
+          espn_display_name: string
+          espn_player_id: string
+          golfer_id?: string | null
+          id?: string
+          imported_at?: string
+          is_tie?: boolean | null
+          position_display?: string | null
+          position_numeric?: number | null
+          round_1?: number | null
+          round_2?: number | null
+          round_3?: number | null
+          round_4?: number | null
+          score_to_par?: number | null
+          status_type?: string | null
+          total_strokes?: number | null
+          tournament_id: string
+        }
+        Update: {
+          country?: string | null
+          espn_display_name?: string
+          espn_player_id?: string
+          golfer_id?: string | null
+          id?: string
+          imported_at?: string
+          is_tie?: boolean | null
+          position_display?: string | null
+          position_numeric?: number | null
+          round_1?: number | null
+          round_2?: number | null
+          round_3?: number | null
+          round_4?: number | null
+          score_to_par?: number | null
+          status_type?: string | null
+          total_strokes?: number | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_leaderboard_golfer_id_fkey"
+            columns: ["golfer_id"]
+            isOneToOne: false
+            referencedRelation: "golfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_leaderboard_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournaments: {
         Row: {
           bucket_sizes: Json
           created_at: string
           end_date: string
+          espn_event_id: string | null
           id: string
           location: string
           logo_url: string | null
@@ -263,6 +339,7 @@ export type Database = {
           bucket_sizes?: Json
           created_at?: string
           end_date: string
+          espn_event_id?: string | null
           id?: string
           location: string
           logo_url?: string | null
@@ -277,6 +354,7 @@ export type Database = {
           bucket_sizes?: Json
           created_at?: string
           end_date?: string
+          espn_event_id?: string | null
           id?: string
           location?: string
           logo_url?: string | null
