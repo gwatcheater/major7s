@@ -53,7 +53,7 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     if (!comp) {
       return { error: "Unexpected ESPN response (no competition)", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[] };
     }
-    const completed = comp?.status?.type?.completed === true;
+    const completed = event?.status?.type?.completed === true;
     if (!completed) {
       return { error: "Tournament is not yet final on ESPN", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[] };
     }
