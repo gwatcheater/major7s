@@ -138,7 +138,10 @@ async function calculateMajor7sScores(
     });
 
     // Best (lowest) 5 of 7 count toward total.
-    const sortedByPoints = [...scored].sort((a, b) => a.points - b.points);
+    // Sort by points ascending; tie-break by bucket ascending so that on tied
+    // scores we keep the lower bucket in the best-5 and mute the higher bucket
+    // (Major7s convention).
+    const sortedByPoints = [...scored].sort((a, b) => a.points - b.points || a.bucket - b.bucket);
     const countedSet = new Set<number>();
     for (let i = 0; i < 5 && i < sortedByPoints.length; i++) {
       countedSet.add(sortedByPoints[i].bucket);
