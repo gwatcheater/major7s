@@ -7,6 +7,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
+// VERSION MARKER: leaderboard v3 — single-cell bucket label, sticky headers, expandable panel
+// If you see this comment in the deployed bundle, you're on the right version.
+
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
   component: LeaderboardView,
 });
@@ -30,6 +33,26 @@ interface LbRow {
   round_4: number | null;
 }
 
+interface ScoreRow {
+  id: string;
+  team_id: string;
+  total_points: number;
+  thru_cut: number;
+  position_display: string;
+  position_numeric: number;
+  teams: { nickname: string; owner_user_id: string } | null;
+}
+
+interface ScorePickRow {
+  bucket: number;
+  golfer_name: string;
+  points: number;
+  status_type: string | null;
+  counted: boolean;
+}
+
+const NON_FINISHER_POINTS = 100;
+
 function isCutOrWithdrawn(status: string | null) {
   return status === "STATUS_CUT" || status === "STATUS_WITHDRAWN";
 }
@@ -39,6 +62,20 @@ function fmtToPar(v: number | null): { text: string; cls: string } {
   if (v === 0) return { text: "E", cls: "text-foreground" };
   if (v < 0) return { text: String(v), cls: "text-red-600 font-semibold" };
   return { text: `+${v}`, cls: "text-foreground" };
+}
+
+// Shared column widths for ALL Major7s tables (panel, leaderboard, breakdown).
+// Identical widths + tableLayout:fixed guarantee column alignment across them.
+function MajorCols() {
+  return (
+    <colgroup>
+      <col style={{ width: "60px" }} />
+      <col />
+      <col style={{ width: "80px" }} />
+      <col style={{ width: "80px" }} />
+      <col style={{ width: "36px" }} />
+    </colgroup>
+  );
 }
 
 function LeaderboardView() {
@@ -167,9 +204,9 @@ function LeaderboardView() {
   );
 }
 
-/* ============================================================
-   TOURNAMENT VIEW (ESPN leaderboard)
-   ============================================================ */
+// =============================================================
+// TOURNAMENT VIEW (ESPN leaderboard)
+// =============================================================
 function TournamentTable({
   active, cut, myPickGolferIds,
 }: { active: LbRow[]; cut: LbRow[]; myPickGolferIds: Set<string> }) {
@@ -240,44 +277,14 @@ function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }
   );
 }
 
-/* ============================================================
-   MAJOR7S VIEW (computed picks-game scores)
-   ============================================================ */
-interface ScoreRow {
-  id: string;
-  team_id: string;
-  total_points: number;
-  thru_cut: number;
-  position_display: string;
-  position_numeric: number;
-  teams: { nickname: string; owner_user_id: string } | null;
-}
-
-interface ScorePickRow {
-  bucket: number;
-  golfer_name: string;
-  points: number;
-  status_type: string | null;
-  counted: boolean;
-}
-
-/**
- * Shared <colgroup> for all three tables (active-team panel, main leaderboard,
- * expanded breakdown). Identical widths ensure values line up column-for-column
- * regardless of cell content. Browser tables auto-size columns to content
- * unless told otherwise, so without this colgroup the medal cell pushes other
- * columns around.
- */
-function MajorCols() {
-  return (
-    <colgroup>
-      <col style={{ width: "72px" }} />  {/* Pos / Bucket */}
-      <col />                            {/* Team / Golfer name (flex) */}
-      <col style={{ width: "96px" }} />  {/* Points */}
-      <col style={{ width: "96px" }} />  {/* Thru Cut */}
-      <col style={{ width: "40px" }} />  {/* Chevron */}
-    </colgroup>
-  );
+// =============================================================
+// MAJOR7S VIEW
+// =============================================================
+function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
+  if (positionNumeric === 1) return "gold";
+  if (positionNumeric === 2) return "silver";
+  if (positionNumeric === 3) return "bronze";
+  return null;
 }
 
 function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
@@ -293,16 +300,6 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
       return (data ?? []) as unknown as ScoreRow[];
     },
   });
-
-  // Standard Competition Ranking: medals follow the numeric position directly.
-  // T1/T1 -> both gold, next team is at numeric 3 -> bronze (no silver).
-  // T2/T2 -> both silver, next team is at numeric 4 -> no bronze.
-  function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
-    if (positionNumeric === 1) return "gold";
-    if (positionNumeric === 2) return "silver";
-    if (positionNumeric === 3) return "bronze";
-    return null;
-  }
 
   if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
   if (rows.length === 0) {
@@ -323,19 +320,21 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
       <div className="text-right text-xs uppercase tracking-widest text-muted-foreground">
         {rows.length} {rows.length === 1 ? "team" : "teams"}
       </div>
+
       {myRow && (
         <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
       )}
+
       <div className="border border-border bg-card">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <MajorCols />
           <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
             <tr>
-              <th className="text-center px-3 py-2 w-20">Pos</th>
+              <th className="text-center px-3 py-2">Pos</th>
               <th className="text-left px-3 py-2">Team</th>
-              <th className="text-right px-3 py-2 w-24">Points</th>
-              <th className="text-center px-3 py-2 w-24">Thru Cut</th>
-              <th className="px-3 py-2 w-8" />
+              <th className="text-right px-3 py-2">Points</th>
+              <th className="text-center px-3 py-2">Thru Cut</th>
+              <th />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -371,6 +370,7 @@ function ActiveTeamPanel({
       return (data ?? []) as ScorePickRow[];
     },
   });
+
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
       <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
@@ -424,13 +424,10 @@ function ActiveTeamPanel({
 function PositionMedal({
   positionDisplay, medal, size = "sm",
 }: { positionDisplay: string; medal: "gold" | "silver" | "bronze" | null; size?: "sm" | "lg" }) {
-  // Sizes: small for table rows, large for the active-team panel.
   const dim = size === "lg" ? "w-12 h-12 text-base" : "w-9 h-9 text-xs";
-  // Plain (non-medal) position: monospaced text, no circle.
   if (!medal) {
     return <span className="font-mono text-xs">{positionDisplay}</span>;
   }
-  // Metallic gradients via inline styles (Tailwind doesn't have these out of the box).
   const styles: Record<string, React.CSSProperties> = {
     gold: {
       background: "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
@@ -487,13 +484,11 @@ function ExpandableTeamRow({
             <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
           </div>
         </td>
-        <td className="px-3 py-2 font-medium">{r.teams?.nickname ?? "—"}</td>
+        <td className="px-3 py-2 font-medium truncate">{r.teams?.nickname ?? "—"}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
         <td className="px-3 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
         <td className="px-3 py-2 text-muted-foreground">
-          <ChevronDown
-            className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          />
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </td>
       </tr>
       <tr>
@@ -511,8 +506,6 @@ function ExpandableTeamRow({
   );
 }
 
-const NON_FINISHER_POINTS = 100;
-
 function PickBreakdown({
   picks, loading, mine,
 }: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean }) {
@@ -524,12 +517,11 @@ function PickBreakdown({
   }
   return (
     <div className={`${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
-      <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+      <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
         <MajorCols />
         <tbody>
           {picks.map((p) => {
             const cutLike = p.points === NON_FINISHER_POINTS;
-            // Four-state styling matrix (counted/muted x finished/cut)
             let nameCls = "";
             let pointsCls = "font-mono font-semibold";
             let opacity = "";
@@ -544,14 +536,10 @@ function PickBreakdown({
             }
             return (
               <tr key={p.bucket} className={opacity}>
-                {/* Empty Pos cell — keeps the row aligned with the leaderboard columns. */}
                 <td />
-                {/* Bucket label + golfer name in the SAME cell so they cannot collide.
-                    On mobile the cell flexes and the name truncates instead of wrapping
-                    awkwardly under the label. */}
                 <td className={`px-3 py-0.5 ${nameCls}`}>
                   <span className="inline-flex items-baseline gap-2 min-w-0 w-full">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 w-7">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 w-6">
                       B{p.bucket}
                     </span>
                     <span className="truncate">{p.golfer_name}</span>
