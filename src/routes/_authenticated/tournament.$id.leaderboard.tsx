@@ -326,10 +326,10 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
       {myRow && (
         <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
       )}
-      <div className="border border-border bg-card overflow-x-auto">
+      <div className="border border-border bg-card">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <MajorCols />
-          <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
             <tr>
               <th className="text-center px-3 py-2 w-20">Pos</th>
               <th className="text-left px-3 py-2">Team</th>
@@ -357,6 +357,20 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
 function ActiveTeamPanel({
   row, medal,
 }: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
+  const [open, setOpen] = useState(false);
+  const { data: picks, isLoading: picksLoading } = useQuery({
+    queryKey: ["tournament-score-picks", row.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_score_picks")
+        .select("bucket, golfer_name, points, status_type, counted")
+        .eq("tournament_score_id", row.id)
+        .order("bucket", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ScorePickRow[];
+    },
+  });
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
       <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
@@ -366,7 +380,7 @@ function ActiveTeamPanel({
         <MajorCols />
         <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
-            <th />
+            <th className="text-center px-3 py-1">Pos</th>
             <th />
             <th className="text-right px-3 py-1">Points</th>
             <th className="text-center px-3 py-1">Thru Cut</th>
@@ -374,7 +388,10 @@ function ActiveTeamPanel({
           </tr>
         </thead>
         <tbody>
-          <tr>
+          <tr
+            className="cursor-pointer hover:bg-amber-100/50 transition-colors"
+            onClick={() => setOpen((o) => !o)}
+          >
             <td className="px-3 py-2 text-center">
               <div className="inline-flex justify-center">
                 <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
@@ -383,7 +400,20 @@ function ActiveTeamPanel({
             <td className="px-3 py-2 font-medium truncate">{row.teams?.nickname ?? "—"}</td>
             <td className="px-3 py-2 text-right font-mono font-semibold">{row.total_points}</td>
             <td className="px-3 py-2 text-center font-mono text-muted-foreground">{row.thru_cut}</td>
-            <td />
+            <td className="px-3 py-2 text-muted-foreground">
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+            </td>
+          </tr>
+          <tr>
+            <td colSpan={5} className="p-0 border-0">
+              <div
+                className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
+                  open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                }`}
+              >
+                <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={true} />
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -514,10 +544,19 @@ function PickBreakdown({
             }
             return (
               <tr key={p.bucket} className={opacity}>
-                <td className={`pl-20 pr-3 py-0.5 text-muted-foreground ${nameCls}`}>
-                  B{p.bucket}
+                {/* Empty Pos cell — keeps the row aligned with the leaderboard columns. */}
+                <td />
+                {/* Bucket label + golfer name in the SAME cell so they cannot collide.
+                    On mobile the cell flexes and the name truncates instead of wrapping
+                    awkwardly under the label. */}
+                <td className={`px-3 py-0.5 ${nameCls}`}>
+                  <span className="inline-flex items-baseline gap-2 min-w-0 w-full">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 w-7">
+                      B{p.bucket}
+                    </span>
+                    <span className="truncate">{p.golfer_name}</span>
+                  </span>
                 </td>
-                <td className={`pl-4 pr-3 py-0.5 ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
                 <td />
