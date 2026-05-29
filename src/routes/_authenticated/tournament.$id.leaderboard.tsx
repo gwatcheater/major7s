@@ -537,14 +537,7 @@ function PickBreakdown({
             return (
               <tr key={p.bucket} className={opacity}>
                 <td />
-                <td className={`px-3 py-0.5 ${nameCls}`}>
-                  <span className="inline-flex items-baseline gap-2 min-w-0 w-full">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 w-6">
-                      B{p.bucket}
-                    </span>
-                    <span className="break-words">{p.golfer_name}</span>
-                  </span>
-                </td>
+                <td className={`pl-8 pr-3 py-0.5 break-words ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
                 <td />
