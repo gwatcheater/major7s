@@ -23,20 +23,37 @@ interface Tournament {
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
+  // Subtle rounded pills: muted backgrounds, colour carried in the text.
   const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
-    upcoming: { label: "Upcoming · Locked", bg: "var(--muted)", color: "var(--muted-foreground)" },
-    open_for_picks: { label: "Open for Picks", bg: "var(--forest)", color: "white" },
-    picks_closed: { label: "Picks Closed", bg: "var(--muted)", color: "var(--muted-foreground)" },
-    live: { label: "Live · In Progress", bg: "var(--alert)", color: "white" },
-    completed: { label: "Completed", bg: "var(--forest-deep)", color: "white" },
+    upcoming:       { label: "Upcoming",        bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
+    open_for_picks: { label: "Open for Picks",  bg: "rgb(220 252 231)", color: "rgb(22 101 52)"  }, // green
+    picks_closed:   { label: "Picks Closed",    bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
+    live:           { label: "Live",            bg: "rgb(254 243 199)", color: "rgb(146 64 14)"  }, // amber
+    completed:      { label: "Completed",       bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
   };
   const m = map[status];
   return (
     <span
-      className="font-display text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm"
+      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
       style={{ backgroundColor: m.bg, color: m.color }}
     >
       {m.label}
+    </span>
+  );
+}
+
+function PicksBadge({ complete }: { complete: boolean }) {
+  // Subtle rounded pill matching the StatusBadge style.
+  const styles = complete
+    ? { bg: "rgb(220 252 231)", color: "rgb(22 101 52)", label: "Picks Selected" }   // green
+    : { bg: "rgb(254 226 226)", color: "rgb(153 27 27)", label: "Picks Not Selected" }; // red
+  return (
+    <span
+      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full inline-flex items-center gap-1"
+      style={{ backgroundColor: styles.bg, color: styles.color }}
+    >
+      {complete ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+      {styles.label}
     </span>
   );
 }
@@ -138,55 +155,43 @@ function HomePage() {
                   className="absolute top-0 left-0 w-1 h-full pointer-events-none"
                   style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }}
                 />
-                <div className="flex-1 p-6 md:p-8 relative pointer-events-none">
-                  <div className="flex justify-between items-start mb-6 gap-4">
-                    <div className="flex items-start gap-4 min-w-0">
-                      {t.logo_url && (
-                        <img
-                          src={t.logo_url}
-                          alt={`${t.name} logo`}
-                          className="h-12 w-12 object-contain rounded-lg border bg-card shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p
-                          className="text-[11px] font-bold uppercase tracking-[0.2em]"
-                          style={{ color: "var(--gold)" }}
-                        >
-                          {tournamentDateRange(t.start_date, t.end_date)}
-                        </p>
-                        <h3 className="font-display text-2xl md:text-3xl uppercase mt-1 leading-none">
-                          {t.name}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-2">{t.location}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <StatusBadge status={t.status} />
-                      {activeTeam && (
-                        <span
-                          className="font-display text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1"
-                          style={{
-                            backgroundColor: complete ? "var(--success)" : "var(--alert)",
-                            color: "white",
-                          }}
-                        >
-                          {complete ? (
-                            <CheckCircle2 className="size-3" />
-                          ) : (
-                            <AlertCircle className="size-3" />
-                          )}
-                          {complete ? "Picks Selected" : "Picks Not Selected"}
-                        </span>
-                      )}
+                <div className="flex-1 p-5 md:p-8 relative pointer-events-none">
+                  {/* Status badges row — top right, both on one row */}
+                  <div className="flex justify-end gap-2 mb-4 flex-wrap">
+                    {activeTeam && <PicksBadge complete={complete} />}
+                    <StatusBadge status={t.status} />
+                  </div>
+
+                  {/* Identity row — logo left, name/venue/dates stacked right */}
+                  <div className="flex items-start gap-4 min-w-0">
+                    {t.logo_url ? (
+                      <img
+                        src={t.logo_url}
+                        alt={`${t.name} logo`}
+                        className="h-20 w-20 object-contain rounded-lg border bg-card shrink-0"
+                      />
+                    ) : (
+                      <div className="h-20 w-20 rounded-lg border bg-muted shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display text-2xl md:text-3xl uppercase leading-tight break-words">
+                        {t.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1.5">{t.location}</p>
+                      <p
+                        className="text-[11px] font-bold uppercase tracking-[0.2em] mt-1.5"
+                        style={{ color: "var(--gold)" }}
+                      >
+                        {tournamentDateRange(t.start_date, t.end_date)}
+                      </p>
                     </div>
                   </div>
 
                   {showLineupCta ? (
-                    <div className="flex items-end justify-between border-t border-border pt-4 mt-4 flex-wrap gap-4">
+                    <div className="flex items-end justify-between border-t border-border pt-4 mt-6 flex-wrap gap-4">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                          Registration Closes In
+                          Picks Close In
                         </span>
                         <Countdown targetIso={t.submission_deadline} />
                       </div>
@@ -194,14 +199,14 @@ function HomePage() {
                         to="/tournament/$id/lineup"
                         params={{ id: t.id }}
                         onClick={(e) => e.stopPropagation()}
-                        className="relative z-20 pointer-events-auto px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white"
+                        className="relative z-20 pointer-events-auto px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white rounded-md"
                         style={{ backgroundColor: "var(--forest-deep)" }}
                       >
                         {complete ? "Edit Lineup →" : "Enter Lineup →"}
                       </Link>
                     </div>
                   ) : (
-                    <div className="border-t border-border pt-4 mt-4 text-xs text-muted-foreground">
+                    <div className="border-t border-border pt-4 mt-6 text-xs text-muted-foreground">
                       View tournament hub →
                     </div>
                   )}
