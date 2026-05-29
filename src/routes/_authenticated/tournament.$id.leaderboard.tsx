@@ -397,7 +397,7 @@ function ActiveTeamPanel({
                 <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
               </div>
             </td>
-            <td className="px-3 py-2 font-medium break-words">{row.teams?.nickname ?? "—"}</td>
+            <td className="px-3 py-2 font-medium truncate">{row.teams?.nickname ?? "—"}</td>
             <td className="px-3 py-2 text-right font-mono font-semibold">{row.total_points}</td>
             <td className="px-3 py-2 text-center font-mono text-muted-foreground">{row.thru_cut}</td>
             <td className="px-3 py-2 text-muted-foreground">
@@ -484,7 +484,7 @@ function ExpandableTeamRow({
             <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
           </div>
         </td>
-        <td className="px-3 py-2 font-medium break-words">{r.teams?.nickname ?? "—"}</td>
+        <td className="px-3 py-2 font-medium truncate">{r.teams?.nickname ?? "—"}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
         <td className="px-2 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
         <td className="px-2 py-2 text-muted-foreground">
@@ -537,7 +537,7 @@ function PickBreakdown({
             return (
               <tr key={p.bucket} className={opacity}>
                 <td />
-                <td className={`pl-8 pr-3 py-0.5 break-words ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
                 <td />
