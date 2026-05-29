@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Star } from "lucide-react";
+import { ArrowLeft, Star, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
@@ -71,8 +71,6 @@ function LeaderboardView() {
     },
   });
 
-  // Picks for the active team (or effective user's team in shadow mode) for this tournament.
-  // Used to highlight rows belonging to my picks.
   const { data: myPickGolferIds = new Set<string>() } = useQuery({
     queryKey: ["my-picks-golfer-ids", activeTeam?.id, id],
     enabled: !!activeTeam?.id && !!effectiveUserId,
@@ -86,8 +84,6 @@ function LeaderboardView() {
     },
   });
 
-  // Sort: active/finished players first (by position_numeric asc, then total asc, then name),
-  // then cut/withdrawn at the bottom (alphabetical).
   const { active, cut } = useMemo(() => {
     const a: LbRow[] = [];
     const c: LbRow[] = [];
@@ -135,7 +131,6 @@ function LeaderboardView() {
         </h1>
       </header>
 
-      {/* Segmented toggle */}
       <div className="inline-flex rounded-md border border-border bg-card p-1 mb-6">
         <button
           type="button"
@@ -172,76 +167,9 @@ function LeaderboardView() {
   );
 }
 
-interface ScoreRow {
-  id: string;
-  team_id: string;
-  total_points: number;
-  thru_cut: number;
-  position_display: string;
-  position_numeric: number;
-  teams: { nickname: string; owner_user_id: string } | null;
-}
-
-function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["tournament-scores", tournamentId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tournament_scores")
-        .select("id, team_id, total_points, thru_cut, position_display, position_numeric, teams(nickname, owner_user_id)")
-        .eq("tournament_id", tournamentId)
-        .order("position_numeric", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as unknown as ScoreRow[];
-    },
-  });
-
-  if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
-  if (rows.length === 0) {
-    return (
-      <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
-        <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
-        <p className="text-sm text-muted-foreground">
-          Major7s scoring will appear here once results are tallied.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border border-border bg-card overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
-          <tr>
-            <th className="text-left px-3 py-2 w-16">Pos</th>
-            <th className="text-left px-3 py-2">Team</th>
-            <th className="text-right px-3 py-2 w-24">Points</th>
-            <th className="text-right px-3 py-2 w-24">Thru Cut</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {rows.map((r) => {
-            const mine = !!myTeamId && r.team_id === myTeamId;
-            return (
-              <tr key={r.id} className={mine ? "bg-amber-50" : ""}>
-                <td className="px-3 py-2 font-mono text-xs">
-                  <span className="inline-flex items-center gap-1">
-                    {mine && <Star className="w-3 h-3 fill-amber-500 text-amber-500" />}
-                    {r.position_display}
-                  </span>
-                </td>
-                <td className="px-3 py-2 font-medium">{r.teams?.nickname ?? "—"}</td>
-                <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
-                <td className="px-3 py-2 text-right font-mono text-muted-foreground">{r.thru_cut}/7</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
+/* ============================================================
+   TOURNAMENT VIEW (ESPN leaderboard)
+   ============================================================ */
 function TournamentTable({
   active, cut, myPickGolferIds,
 }: { active: LbRow[]; cut: LbRow[]; myPickGolferIds: Set<string> }) {
@@ -262,7 +190,7 @@ function TournamentTable({
         </thead>
         <tbody className="divide-y divide-border">
           {active.map((r) => (
-            <Row key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} />
+            <TourneyRow key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} />
           ))}
           {cut.length > 0 && (
             <>
@@ -272,7 +200,7 @@ function TournamentTable({
                 </td>
               </tr>
               {cut.map((r) => (
-                <Row key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} dim />
+                <TourneyRow key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} dim />
               ))}
             </>
           )}
@@ -282,15 +210,12 @@ function TournamentTable({
   );
 }
 
-function Row({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }) {
+function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }) {
   const par = fmtToPar(r.score_to_par);
   const pos = r.position_display ?? "—";
   const posLabel = r.is_tie && r.position_numeric !== null ? `T${r.position_numeric}` : pos;
-
-  // Subtle gold tint for picked rows; muted text for cut/withdrawn.
   const rowBg = mine ? "bg-amber-50" : "";
   const text = dim ? "text-muted-foreground" : "";
-
   return (
     <tr className={`${rowBg} ${text}`}>
       <td className="px-3 py-2 font-mono text-xs">
@@ -312,5 +237,267 @@ function Row({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }) {
       <td className="px-2 py-2 text-right font-mono text-xs">{r.round_3 ?? "—"}</td>
       <td className="px-2 py-2 text-right font-mono text-xs">{r.round_4 ?? "—"}</td>
     </tr>
+  );
+}
+
+/* ============================================================
+   MAJOR7S VIEW (computed picks-game scores)
+   ============================================================ */
+interface ScoreRow {
+  id: string;
+  team_id: string;
+  total_points: number;
+  thru_cut: number;
+  position_display: string;
+  position_numeric: number;
+  teams: { nickname: string; owner_user_id: string } | null;
+}
+
+interface ScorePickRow {
+  bucket: number;
+  golfer_name: string;
+  points: number;
+  status_type: string | null;
+  counted: boolean;
+}
+
+function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["tournament-scores", tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_scores")
+        .select("id, team_id, total_points, thru_cut, position_display, position_numeric, teams(nickname, owner_user_id)")
+        .eq("tournament_id", tournamentId)
+        .order("position_numeric", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as ScoreRow[];
+    },
+  });
+
+  // Distinct numeric positions, in order, to compute the medal mapping
+  // (gold = 1st distinct, silver = 2nd, bronze = 3rd).
+  const medalNumerics = useMemo(() => {
+    const seen = new Set<number>();
+    const out: number[] = [];
+    for (const r of rows) {
+      if (!seen.has(r.position_numeric)) {
+        seen.add(r.position_numeric);
+        out.push(r.position_numeric);
+        if (out.length === 3) break;
+      }
+    }
+    return out;
+  }, [rows]);
+
+  function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
+    if (positionNumeric === medalNumerics[0]) return "gold";
+    if (positionNumeric === medalNumerics[1]) return "silver";
+    if (positionNumeric === medalNumerics[2]) return "bronze";
+    return null;
+  }
+
+  if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
+  if (rows.length === 0) {
+    return (
+      <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
+        <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
+        <p className="text-sm text-muted-foreground">
+          Major7s scoring will appear here once results are tallied.
+        </p>
+      </div>
+    );
+  }
+
+  const myRow = myTeamId ? rows.find((r) => r.team_id === myTeamId) ?? null : null;
+
+  return (
+    <div className="space-y-6">
+      {myRow && (
+        <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
+      )}
+      <div className="border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
+            <tr>
+              <th className="text-left px-3 py-2 w-20">Pos</th>
+              <th className="text-left px-3 py-2">Team</th>
+              <th className="text-right px-3 py-2 w-24">Points</th>
+              <th className="text-right px-3 py-2 w-24">Thru Cut</th>
+              <th className="px-3 py-2 w-8" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((r) => (
+              <ExpandableTeamRow
+                key={r.id}
+                r={r}
+                mine={!!myTeamId && r.team_id === myTeamId}
+                medal={medalFor(r.position_numeric)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ActiveTeamPanel({
+  row, medal,
+}: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
+  return (
+    <div className="border border-amber-300 bg-amber-50 rounded-md p-4 flex items-center gap-4">
+      <PositionMedal positionDisplay={row.position_display} medal={medal} size="lg" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Your team</div>
+        <div className="font-display text-lg uppercase truncate">{row.teams?.nickname ?? "—"}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Points</div>
+        <div className="font-mono text-xl font-bold">{row.total_points}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Thru Cut</div>
+        <div className="font-mono text-xl font-bold">{row.thru_cut}</div>
+      </div>
+    </div>
+  );
+}
+
+function PositionMedal({
+  positionDisplay, medal, size = "sm",
+}: { positionDisplay: string; medal: "gold" | "silver" | "bronze" | null; size?: "sm" | "lg" }) {
+  // Sizes: small for table rows, large for the active-team panel.
+  const dim = size === "lg" ? "w-12 h-12 text-base" : "w-9 h-9 text-xs";
+  // Plain (non-medal) position: monospaced text, no circle.
+  if (!medal) {
+    return <span className="font-mono text-xs">{positionDisplay}</span>;
+  }
+  // Metallic gradients via inline styles (Tailwind doesn't have these out of the box).
+  const styles: Record<string, React.CSSProperties> = {
+    gold: {
+      background: "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
+      color: "#3a2a00",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    silver: {
+      background: "radial-gradient(circle at 30% 30%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)",
+      color: "#222",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    bronze: {
+      background: "radial-gradient(circle at 30% 30%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
+      color: "#2a1500",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+  };
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full font-bold leading-none ${dim}`}
+      style={styles[medal]}
+    >
+      {positionDisplay}
+    </span>
+  );
+}
+
+function ExpandableTeamRow({
+  r, mine, medal,
+}: { r: ScoreRow; mine: boolean; medal: "gold" | "silver" | "bronze" | null }) {
+  const [open, setOpen] = useState(false);
+  const { data: picks, isLoading: picksLoading } = useQuery({
+    queryKey: ["tournament-score-picks", r.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_score_picks")
+        .select("bucket, golfer_name, points, status_type, counted")
+        .eq("tournament_score_id", r.id)
+        .order("bucket", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ScorePickRow[];
+    },
+  });
+  const rowBg = mine ? "bg-amber-50" : "";
+  return (
+    <>
+      <tr
+        className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <td className="px-3 py-2">
+          <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
+        </td>
+        <td className="px-3 py-2 font-medium">{r.teams?.nickname ?? "—"}</td>
+        <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
+        <td className="px-3 py-2 text-right font-mono text-muted-foreground">{r.thru_cut}</td>
+        <td className="px-3 py-2 text-muted-foreground">
+          <ChevronDown
+            className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </td>
+      </tr>
+      <tr>
+        <td colSpan={5} className="p-0 border-0">
+          <div
+            className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
+              open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={mine} />
+          </div>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+const NON_FINISHER_POINTS = 100;
+
+function PickBreakdown({
+  picks, loading, mine,
+}: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean }) {
+  if (loading) {
+    return <div className="px-6 py-3 text-xs text-muted-foreground">Loading picks…</div>;
+  }
+  if (!picks || picks.length === 0) {
+    return <div className="px-6 py-3 text-xs text-muted-foreground">No picks recorded.</div>;
+  }
+  return (
+    <div className={`px-6 py-3 ${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
+      <table className="w-full text-xs">
+        <tbody>
+          {picks.map((p) => {
+            const cutLike = p.points === NON_FINISHER_POINTS;
+            // Four-state styling matrix:
+            //   counted + finished  -> normal
+            //   counted + cut       -> red (full opacity)
+            //   muted   + finished  -> grey
+            //   muted   + cut       -> red dimmed
+            let nameCls = "";
+            let pointsCls = "font-mono";
+            let opacity = "";
+            if (cutLike) {
+              nameCls = "text-red-600";
+              pointsCls += " text-red-600";
+              if (!p.counted) opacity = "opacity-50";
+            } else if (!p.counted) {
+              nameCls = "text-muted-foreground";
+              pointsCls += " text-muted-foreground";
+            }
+            return (
+              <tr key={p.bucket} className={opacity}>
+                <td className="py-1 pr-3 text-muted-foreground uppercase tracking-widest text-[10px] w-12">
+                  B{p.bucket}
+                </td>
+                <td className={`py-1 pr-3 ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`py-1 text-right ${pointsCls}`}>{p.points}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
