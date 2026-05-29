@@ -47,7 +47,7 @@ function LeaderboardView() {
   const { getEffectiveUserId } = useImpersonation();
   const { activeTeam } = useTeams();
   const effectiveUserId = getEffectiveUserId(user?.id);
-  const [view, setView] = useState<View>("tournament");
+  const [view, setView] = useState<View>("major7s");
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament", id],
@@ -134,21 +134,21 @@ function LeaderboardView() {
       <div className="inline-flex rounded-md border border-border bg-card p-1 mb-6">
         <button
           type="button"
-          onClick={() => setView("tournament")}
-          className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
-            view === "tournament" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Tournament
-        </button>
-        <button
-          type="button"
           onClick={() => setView("major7s")}
           className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
             view === "major7s" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           Major7s
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("tournament")}
+          className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
+            view === "tournament" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Tournament
         </button>
       </div>
 
@@ -308,10 +308,10 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
             <tr>
-              <th className="text-left px-3 py-2 w-20">Pos</th>
+              <th className="text-center px-3 py-2 w-20">Pos</th>
               <th className="text-left px-3 py-2">Team</th>
               <th className="text-right px-3 py-2 w-24">Points</th>
-              <th className="text-right px-3 py-2 w-24">Thru Cut</th>
+              <th className="text-center px-3 py-2 w-24">Thru Cut</th>
               <th className="px-3 py-2 w-8" />
             </tr>
           </thead>
@@ -335,20 +335,25 @@ function ActiveTeamPanel({
   row, medal,
 }: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
   return (
-    <div className="border border-amber-300 bg-amber-50 rounded-md p-4 flex items-center gap-4">
-      <PositionMedal positionDisplay={row.position_display} medal={medal} size="lg" />
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Your team</div>
-        <div className="font-display text-lg uppercase truncate">{row.teams?.nickname ?? "—"}</div>
+    <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
+      <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-amber-800 bg-amber-100 font-bold">
+        Your Team
       </div>
-      <div className="text-right">
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Points</div>
-        <div className="font-mono text-xl font-bold">{row.total_points}</div>
-      </div>
-      <div className="text-right">
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Thru Cut</div>
-        <div className="font-mono text-xl font-bold">{row.thru_cut}</div>
-      </div>
+      <table className="w-full text-sm">
+        <tbody>
+          <tr>
+            <td className="px-3 py-2 text-center w-20">
+              <div className="inline-flex justify-center">
+                <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
+              </div>
+            </td>
+            <td className="px-3 py-2 font-medium">{row.teams?.nickname ?? "—"}</td>
+            <td className="px-3 py-2 text-right font-mono font-semibold w-24">{row.total_points}</td>
+            <td className="px-3 py-2 text-center font-mono text-muted-foreground w-24">{row.thru_cut}</td>
+            <td className="px-3 py-2 w-8" />
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -414,12 +419,14 @@ function ExpandableTeamRow({
         className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="px-3 py-2">
-          <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
+        <td className="px-3 py-2 text-center">
+          <div className="inline-flex justify-center">
+            <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
+          </div>
         </td>
         <td className="px-3 py-2 font-medium">{r.teams?.nickname ?? "—"}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
-        <td className="px-3 py-2 text-right font-mono text-muted-foreground">{r.thru_cut}</td>
+        <td className="px-3 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
         <td className="px-3 py-2 text-muted-foreground">
           <ChevronDown
             className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
@@ -447,40 +454,43 @@ function PickBreakdown({
   picks, loading, mine,
 }: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean }) {
   if (loading) {
-    return <div className="px-6 py-3 text-xs text-muted-foreground">Loading picks…</div>;
+    return <div className="px-3 py-3 text-xs text-muted-foreground">Loading picks…</div>;
   }
   if (!picks || picks.length === 0) {
-    return <div className="px-6 py-3 text-xs text-muted-foreground">No picks recorded.</div>;
+    return <div className="px-3 py-3 text-xs text-muted-foreground">No picks recorded.</div>;
   }
   return (
-    <div className={`px-6 py-3 ${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
-      <table className="w-full text-xs">
+    <div className={`${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
+      <table className="w-full text-sm">
         <tbody>
           {picks.map((p) => {
             const cutLike = p.points === NON_FINISHER_POINTS;
             // Four-state styling matrix:
             //   counted + finished  -> normal
             //   counted + cut       -> red (full opacity)
-            //   muted   + finished  -> grey
-            //   muted   + cut       -> red dimmed
+            //   muted   + finished  -> grey, dimmed
+            //   muted   + cut       -> red, strongly dimmed
             let nameCls = "";
-            let pointsCls = "font-mono";
+            let pointsCls = "font-mono font-semibold";
             let opacity = "";
             if (cutLike) {
               nameCls = "text-red-600";
-              pointsCls += " text-red-600";
-              if (!p.counted) opacity = "opacity-50";
+              pointsCls = "font-mono font-semibold text-red-600";
+              if (!p.counted) opacity = "opacity-30";
             } else if (!p.counted) {
               nameCls = "text-muted-foreground";
-              pointsCls += " text-muted-foreground";
+              pointsCls = "font-mono font-semibold text-muted-foreground";
+              opacity = "opacity-60";
             }
             return (
               <tr key={p.bucket} className={opacity}>
-                <td className="py-1 pr-3 text-muted-foreground uppercase tracking-widest text-[10px] w-12">
+                <td className="px-3 py-1.5 text-center text-muted-foreground uppercase tracking-widest text-[10px] w-20">
                   B{p.bucket}
                 </td>
-                <td className={`py-1 pr-3 ${nameCls}`}>{p.golfer_name}</td>
-                <td className={`py-1 text-right ${pointsCls}`}>{p.points}</td>
+                <td className={`px-3 py-1.5 ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-1.5 text-right w-24 ${pointsCls}`}>{p.points}</td>
+                <td className="px-3 py-1.5 w-24" />
+                <td className="px-3 py-1.5 w-8" />
               </tr>
             );
           })}
