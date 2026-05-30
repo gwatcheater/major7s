@@ -25,11 +25,11 @@ interface Tournament {
 function StatusBadge({ status }: { status: Tournament["status"] }) {
   // Subtle rounded pills: muted backgrounds, colour carried in the text.
   const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
-    upcoming:       { label: "Upcoming",        bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
-    open_for_picks: { label: "Open for Picks",  bg: "rgb(220 252 231)", color: "rgb(22 101 52)"  }, // green
-    picks_closed:   { label: "Picks Closed",    bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
-    live:           { label: "Live",            bg: "rgb(254 243 199)", color: "rgb(146 64 14)"  }, // amber
-    completed:      { label: "Completed",       bg: "rgb(241 245 249)", color: "rgb(71 85 105)"  }, // slate
+    upcoming:       { label: "Upcoming",        bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
+    open_for_picks: { label: "Open for Picks",  bg: "rgb(187 247 208)", color: "rgb(20 83 45)"   }, // green, deeper
+    picks_closed:   { label: "Picks Closed",    bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
+    live:           { label: "Live",            bg: "rgb(253 230 138)", color: "rgb(120 53 15)"  }, // amber, deeper
+    completed:      { label: "Completed",       bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
   };
   const m = map[status];
   return (
@@ -45,8 +45,8 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
 function PicksBadge({ complete }: { complete: boolean }) {
   // Subtle rounded pill matching the StatusBadge style.
   const styles = complete
-    ? { bg: "rgb(220 252 231)", color: "rgb(22 101 52)", label: "Picks Selected" }   // green
-    : { bg: "rgb(254 226 226)", color: "rgb(153 27 27)", label: "Picks Not Selected" }; // red
+    ? { bg: "rgb(187 247 208)", color: "rgb(20 83 45)",  label: "Picks Selected" }       // green, deeper
+    : { bg: "rgb(254 202 202)", color: "rgb(127 29 29)", label: "Picks Not Selected" };  // red, deeper
   return (
     <span
       className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full inline-flex items-center gap-1"
@@ -93,30 +93,7 @@ function HomePage() {
 
   return (
     <div className="p-4 md:p-12 max-w-6xl">
-      <header className="mb-10 flex justify-between items-end flex-wrap gap-4">
-        <div>
-          <p
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--gold)" }}
-          >
-            The Season
-          </p>
-          <h1
-            className="font-display text-4xl md:text-5xl uppercase mt-1"
-            style={{ color: "var(--forest-deep)" }}
-          >
-            Tournament <span style={{ color: "var(--gold)" }}>Feed</span>
-          </h1>
-        </div>
-        {activeTeam && (
-          <div className="text-right">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
-              Active Team
-            </div>
-            <div className="font-display text-xl uppercase">{activeTeam.nickname}</div>
-          </div>
-        )}
-      </header>
+      <header className="mb-6" />
 
       {isLoading ? (
         <div className="text-center py-20 text-muted-foreground text-sm">
@@ -141,7 +118,7 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                className="relative bg-card border border-border overflow-hidden flex flex-col md:flex-row hover:border-primary/30 transition-colors animate-reveal"
+                className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col md:flex-row hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Full-card click target navigates to the hub */}
@@ -152,14 +129,14 @@ function HomePage() {
                   className="absolute inset-0 z-10"
                 />
                 <div
-                  className="absolute top-0 left-0 w-1 h-full pointer-events-none"
+                  className="absolute top-0 left-0 w-1.5 h-full pointer-events-none"
                   style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }}
                 />
                 <div className="flex-1 p-5 md:p-8 relative pointer-events-none">
                   {/* Status badges row — top right, both on one row */}
                   <div className="flex justify-end gap-2 mb-4 flex-wrap">
-                    {activeTeam && <PicksBadge complete={complete} />}
                     <StatusBadge status={t.status} />
+                    {activeTeam && <PicksBadge complete={complete} />}
                   </div>
 
                   {/* Identity row — logo left, name/venue/dates stacked right */}
@@ -199,10 +176,13 @@ function HomePage() {
                         to="/tournament/$id/lineup"
                         params={{ id: t.id }}
                         onClick={(e) => e.stopPropagation()}
-                        className="relative z-20 pointer-events-auto px-6 py-3 font-display text-[10px] uppercase tracking-widest text-white rounded-md"
-                        style={{ backgroundColor: "var(--forest-deep)" }}
+                        className="relative z-20 pointer-events-auto inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-lg hover:scale-[1.03] transition-all"
+                        style={{
+                          background: "linear-gradient(135deg, var(--forest-deep) 0%, var(--forest) 50%, var(--gold) 110%)",
+                        }}
                       >
-                        {complete ? "Edit Lineup →" : "Enter Lineup →"}
+                        Picks
+                        <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
                       </Link>
                     </div>
                   ) : (
