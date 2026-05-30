@@ -140,12 +140,33 @@ function ArchivePage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6">
-          {completedTournaments.map((t, i) => {
-            const link = tournamentCardLink(t);
-            const entered = (pickCounts[t.id] ?? 0) > 0;
-            const score = teamScores[t.id];
-            return (
+        <div className="space-y-10">
+          {(() => {
+            // Group by year of end_date. Source array is already sorted desc by end_date.
+            const groups: Record<string, Tournament[]> = {};
+            const yearsInOrder: string[] = [];
+            for (const t of completedTournaments) {
+              const year = new Date(t.end_date).getFullYear().toString();
+              if (!groups[year]) {
+                groups[year] = [];
+                yearsInOrder.push(year);
+              }
+              groups[year].push(t);
+            }
+            return yearsInOrder.map((year) => (
+              <section key={year}>
+                <h2
+                  className="font-display text-2xl md:text-3xl mb-4"
+                  style={{ color: "var(--forest-deep)" }}
+                >
+                  {year}
+                </h2>
+                <div className="grid gap-6">
+                  {groups[year].map((t, i) => {
+                    const link = tournamentCardLink(t);
+                    const entered = (pickCounts[t.id] ?? 0) > 0;
+                    const score = teamScores[t.id];
+                    return (
               <div
                 key={t.id}
                 className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
@@ -243,8 +264,12 @@ function ArchivePage() {
                   </Link>
                 </div>
               </div>
-            );
-          })}
+                    );
+                  })}
+                </div>
+              </section>
+            ));
+          })()}
         </div>
       )}
     </div>
