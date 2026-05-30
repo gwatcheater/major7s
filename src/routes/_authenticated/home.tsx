@@ -195,7 +195,7 @@ function HomePage() {
                       onClick={(e) => e.stopPropagation()}
                       className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all"
                       style={{
-                        background: "linear-gradient(135deg, var(--forest-deep) 0%, var(--forest) 50%, var(--gold) 110%)",
+                        backgroundColor: "var(--forest-deep)",
                       }}
                     >
                       Picks
