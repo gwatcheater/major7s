@@ -207,22 +207,38 @@ function LeaderboardView() {
 // =============================================================
 // TOURNAMENT VIEW (ESPN leaderboard)
 // =============================================================
+function TourneyCols() {
+  // Tight widths so the Golfer column gets the leftover horizontal space.
+  // On a 380px viewport: 36 + 52 + 28*4 = 200 numeric, leaving ~180 for Golfer name.
+  return (
+    <colgroup>
+      <col style={{ width: "36px" }} />
+      <col />
+      <col style={{ width: "52px" }} />
+      <col style={{ width: "28px" }} />
+      <col style={{ width: "28px" }} />
+      <col style={{ width: "28px" }} />
+      <col style={{ width: "28px" }} />
+    </colgroup>
+  );
+}
+
 function TournamentTable({
   active, cut, myPickGolferIds,
 }: { active: LbRow[]; cut: LbRow[]; myPickGolferIds: Set<string> }) {
   return (
-    <div className="border border-border bg-card overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="border border-border bg-card">
+      <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <TourneyCols />
         <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
-            <th className="text-left px-3 py-2 w-16">Pos</th>
-            <th className="text-left px-3 py-2">Golfer</th>
-            <th className="text-right px-3 py-2 w-20">To Par</th>
-            <th className="text-right px-3 py-2 w-16">Tot</th>
-            <th className="text-right px-2 py-2 w-10">R1</th>
-            <th className="text-right px-2 py-2 w-10">R2</th>
-            <th className="text-right px-2 py-2 w-10">R3</th>
-            <th className="text-right px-2 py-2 w-10">R4</th>
+            <th className="text-left px-2 py-2">Pos</th>
+            <th className="text-left px-2 py-2">Golfer</th>
+            <th className="text-right px-2 py-2">To Par</th>
+            <th className="text-right px-0.5 py-2">R1</th>
+            <th className="text-right px-0.5 py-2">R2</th>
+            <th className="text-right px-0.5 py-2">R3</th>
+            <th className="text-right px-0.5 py-2">R4</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -232,7 +248,7 @@ function TournamentTable({
           {cut.length > 0 && (
             <>
               <tr className="bg-muted/30">
-                <td colSpan={8} className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                <td colSpan={7} className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                   Missed Cut / Withdrew
                 </td>
               </tr>
@@ -255,24 +271,23 @@ function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }
   const text = dim ? "text-muted-foreground" : "";
   return (
     <tr className={`${rowBg} ${text}`}>
-      <td className="px-3 py-2 font-mono text-xs">
+      <td className="px-2 py-2 font-mono text-xs">
         <span className="inline-flex items-center gap-1">
           {mine && <Star className="w-3 h-3 fill-amber-500 text-amber-500" />}
           {posLabel}
         </span>
       </td>
-      <td className="px-3 py-2">
-        <div className="font-medium leading-tight">{r.espn_display_name}</div>
+      <td className="px-2 py-2">
+        <div className="font-medium leading-tight truncate">{r.espn_display_name}</div>
         {r.country && (
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{r.country}</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{r.country}</div>
         )}
       </td>
-      <td className={`px-3 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
-      <td className="px-3 py-2 text-right font-mono">{r.total_strokes ?? "—"}</td>
-      <td className="px-2 py-2 text-right font-mono text-xs">{r.round_1 ?? "—"}</td>
-      <td className="px-2 py-2 text-right font-mono text-xs">{r.round_2 ?? "—"}</td>
-      <td className="px-2 py-2 text-right font-mono text-xs">{r.round_3 ?? "—"}</td>
-      <td className="px-2 py-2 text-right font-mono text-xs">{r.round_4 ?? "—"}</td>
+      <td className={`px-2 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
+      <td className="px-0.5 py-2 text-right font-mono text-xs">{r.round_1 ?? "—"}</td>
+      <td className="px-0.5 py-2 text-right font-mono text-xs">{r.round_2 ?? "—"}</td>
+      <td className="px-0.5 py-2 text-right font-mono text-xs">{r.round_3 ?? "—"}</td>
+      <td className="px-0.5 py-2 text-right font-mono text-xs">{r.round_4 ?? "—"}</td>
     </tr>
   );
 }
