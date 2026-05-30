@@ -91,6 +91,34 @@ function HomePage() {
     },
   });
 
+  // Pull a short preview of picked golfer names per tournament (first 3 buckets)
+  // for the inline summary chip shown on cards where picks are complete.
+  const { data: pickPreview = {} } = useQuery({
+    queryKey: ["pick-preview", activeTeam?.id, tournaments.map((t) => t.id).join(",")],
+    enabled: !!activeTeam && tournaments.length > 0,
+    queryFn: async () => {
+      const out: Record<string, string[]> = {};
+      const tournamentIds = tournaments.map((t) => t.id);
+      if (tournamentIds.length === 0) return out;
+      const { data, error } = await supabase
+        .from("picks")
+        .select("tournament_id, bucket, golfers(golfer_name)")
+        .eq("team_id", activeTeam!.id)
+        .in("tournament_id", tournamentIds)
+        .lte("bucket", 3)
+        .order("bucket", { ascending: true });
+      if (error) throw error;
+      for (const row of (data ?? []) as any[]) {
+        const name = row?.golfers?.golfer_name;
+        if (!name) continue;
+        const arr = out[row.tournament_id] ?? [];
+        arr.push(name);
+        out[row.tournament_id] = arr;
+      }
+      return out;
+    },
+  });
+
   return (
     <div className="p-4 md:p-12 max-w-6xl">
       <header className="mb-6" />
@@ -118,7 +146,11 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col md:flex-row hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
+                className={`relative border rounded-xl overflow-hidden flex flex-col group hover:shadow-lg transition-all animate-reveal ${
+                  complete
+                    ? "bg-emerald-50/40 border-emerald-200/70 hover:border-emerald-300"
+                    : "bg-card border-border hover:border-primary/40"
+                }`}
                 style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Full-card click target navigates to the hub */}
@@ -128,10 +160,12 @@ function HomePage() {
                   aria-label={`Open ${t.name}`}
                   className="absolute inset-0 z-10"
                 />
+                {/* Left accent stripe */}
                 <div
                   className="absolute top-0 left-0 w-1.5 h-full pointer-events-none"
                   style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }}
                 />
+
                 <div className="flex-1 p-5 md:p-8 relative pointer-events-none">
                   {/* Status badges row — top right, both on one row */}
                   <div className="flex justify-end gap-2 mb-4 flex-wrap">
@@ -139,14 +173,21 @@ function HomePage() {
                     {activeTeam && <PicksBadge complete={complete} />}
                   </div>
 
-                  {/* Identity row — logo left, name/venue/dates stacked right */}
+                  {/* Identity row — logo left, name/venue/dates stacked right.
+                     Logo gets a soft gold ring when picks are open, to feel "live". */}
                   <div className="flex items-start gap-4 min-w-0">
                     {t.logo_url ? (
-                      <img
-                        src={t.logo_url}
-                        alt={`${t.name} logo`}
-                        className="h-20 w-20 object-contain rounded-lg border bg-card shrink-0"
-                      />
+                      <div
+                        className={`shrink-0 rounded-lg ${
+                          isOpen ? "ring-2 ring-amber-300/60 ring-offset-2 ring-offset-transparent" : ""
+                        }`}
+                      >
+                        <img
+                          src={t.logo_url}
+                          alt={`${t.name} logo`}
+                          className="h-20 w-20 object-contain rounded-lg border bg-card"
+                        />
+                      </div>
                     ) : (
                       <div className="h-20 w-20 rounded-lg border bg-muted shrink-0" />
                     )}
@@ -164,33 +205,55 @@ function HomePage() {
                     </div>
                   </div>
 
-                  {showLineupCta ? (
-                    <div className="flex items-end justify-between border-t border-border pt-4 mt-6 flex-wrap gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                          Picks Close In
-                        </span>
-                        <Countdown targetIso={t.submission_deadline} />
-                      </div>
-                      <Link
-                        to="/tournament/$id/lineup"
-                        params={{ id: t.id }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="relative z-20 pointer-events-auto inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-lg hover:scale-[1.03] transition-all"
-                        style={{
-                          background: "linear-gradient(135deg, var(--forest-deep) 0%, var(--forest) 50%, var(--gold) 110%)",
-                        }}
-                      >
-                        Picks
-                        <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="border-t border-border pt-4 mt-6 text-xs text-muted-foreground">
-                      View tournament hub →
+                  {/* Inline pick preview — shown only when picks are complete.
+                     Tiny one-line summary of the top 3 selections. */}
+                  {complete && pickPreview[t.id] && pickPreview[t.id].length > 0 && (
+                    <div className="mt-4 text-xs text-emerald-900/80 italic truncate">
+                      {pickPreview[t.id].slice(0, 3).join(" · ")}
+                      {(pickCounts[t.id] ?? 0) > 3 && (
+                        <span className="text-muted-foreground"> · +{(pickCounts[t.id] ?? 0) - 3}</span>
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Countdown strip — coloured band running across the card bottom.
+                   Gold when picks are open, otherwise neutral. Big mono numbers, small
+                   d/h/m/s labels. The hero PICKS button sits on the right of the strip. */}
+                {showLineupCta ? (
+                  <div
+                    className="relative flex items-stretch justify-between gap-3 px-5 py-3 md:px-8 md:py-4"
+                    style={{
+                      background: "linear-gradient(90deg, rgba(245,196,65,0.16) 0%, rgba(245,196,65,0.06) 100%)",
+                      borderTop: "1px solid rgba(245,196,65,0.35)",
+                    }}
+                  >
+                    <div className="flex flex-col justify-center min-w-0">
+                      <span className="text-[10px] font-bold text-amber-900/70 uppercase tracking-widest leading-none mb-1.5">
+                        Picks Close In
+                      </span>
+                      <div className="font-mono font-bold text-base md:text-lg leading-none tracking-tight text-amber-950">
+                        <Countdown targetIso={t.submission_deadline} />
+                      </div>
+                    </div>
+                    <Link
+                      to="/tournament/$id/lineup"
+                      params={{ id: t.id }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all"
+                      style={{
+                        background: "linear-gradient(135deg, var(--forest-deep) 0%, var(--forest) 50%, var(--gold) 110%)",
+                      }}
+                    >
+                      Picks
+                      <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="px-5 py-3 md:px-8 md:py-3 text-xs text-muted-foreground border-t border-border bg-muted/30">
+                    View tournament hub →
+                  </div>
+                )}
               </div>
             );
           })}
