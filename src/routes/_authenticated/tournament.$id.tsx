@@ -129,10 +129,10 @@ function TournamentHub() {
   return (
     <div className="p-4 md:p-12 max-w-5xl mx-auto">
       <Link
-        to="/home"
+        to={t.status === "completed" ? "/archive" : "/home"}
         className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
       >
-        ← Feed
+        ← {t.status === "completed" ? "Archive" : "Live & Upcoming"}
       </Link>
 
       {/* HEADER */}
