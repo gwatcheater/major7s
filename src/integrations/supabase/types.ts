@@ -319,6 +319,105 @@ export type Database = {
           },
         ]
       }
+      tournament_score_picks: {
+        Row: {
+          bucket: number
+          counted: boolean
+          golfer_id: string | null
+          golfer_name: string
+          id: string
+          points: number
+          status_type: string | null
+          tournament_score_id: string
+        }
+        Insert: {
+          bucket: number
+          counted?: boolean
+          golfer_id?: string | null
+          golfer_name: string
+          id?: string
+          points: number
+          status_type?: string | null
+          tournament_score_id: string
+        }
+        Update: {
+          bucket?: number
+          counted?: boolean
+          golfer_id?: string | null
+          golfer_name?: string
+          id?: string
+          points?: number
+          status_type?: string | null
+          tournament_score_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_score_picks_golfer_id_fkey"
+            columns: ["golfer_id"]
+            isOneToOne: false
+            referencedRelation: "golfers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_score_picks_tournament_score_id_fkey"
+            columns: ["tournament_score_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_scores: {
+        Row: {
+          calculated_at: string
+          calculated_by: string | null
+          id: string
+          position_display: string
+          position_numeric: number
+          team_id: string
+          thru_cut: number
+          total_points: number
+          tournament_id: string
+        }
+        Insert: {
+          calculated_at?: string
+          calculated_by?: string | null
+          id?: string
+          position_display: string
+          position_numeric: number
+          team_id: string
+          thru_cut: number
+          total_points: number
+          tournament_id: string
+        }
+        Update: {
+          calculated_at?: string
+          calculated_by?: string | null
+          id?: string
+          position_display?: string
+          position_numeric?: number
+          team_id?: string
+          thru_cut?: number
+          total_points?: number
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_scores_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_scores_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournaments: {
         Row: {
           bucket_sizes: Json
