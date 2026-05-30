@@ -306,6 +306,7 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
       const positionDisplay: string | null = c?.status?.position?.displayName ?? null;
       const isTie: boolean = c?.status?.position?.isTie === true;
       const statusType: string | null = c?.status?.type?.name ?? null;
+      const statusShortDetail: string | null = c?.status?.type?.shortDetail ?? null;
       const positionNumeric =
         statusType === "STATUS_CUT" || statusType === "STATUS_WITHDRAWN" || positionDisplay === "-"
           ? null
@@ -346,6 +347,7 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
         position_numeric: positionNumeric,
         is_tie: isTie,
         status_type: statusType,
+        status_short_detail: statusShortDetail,
         total_strokes: totalStrokes,
         score_to_par: scoreToPar,
         round_1: rounds[1],
