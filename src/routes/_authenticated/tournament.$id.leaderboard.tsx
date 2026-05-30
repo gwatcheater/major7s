@@ -214,7 +214,7 @@ function TourneyCols() {
     <colgroup>
       <col style={{ width: "36px" }} />
       <col />
-      <col style={{ width: "52px" }} />
+      <col style={{ width: "56px" }} />
       <col style={{ width: "30px" }} />
       <col style={{ width: "30px" }} />
       <col style={{ width: "30px" }} />
@@ -234,7 +234,7 @@ function TournamentTable({
           <tr>
             <th className="text-left px-2 py-2">Pos</th>
             <th className="text-left px-2 py-2">Golfer</th>
-            <th className="text-right px-2 py-2">To Par</th>
+            <th className="text-right px-2 py-2 whitespace-nowrap">To Par</th>
             <th className="text-right px-1 py-2">R1</th>
             <th className="text-right px-1 py-2">R2</th>
             <th className="text-right px-1 py-2">R3</th>
