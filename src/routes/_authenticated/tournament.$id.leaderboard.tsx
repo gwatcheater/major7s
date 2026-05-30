@@ -87,7 +87,7 @@ function LeaderboardView() {
   const [view, setView] = useState<View>("major7s");
 
   const { data: tournament } = useQuery({
-    queryKey: ["tournament", id],
+    queryKey: ["tournament-leaderboard-header", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments").select("id, name, location").eq("id", id).single();
