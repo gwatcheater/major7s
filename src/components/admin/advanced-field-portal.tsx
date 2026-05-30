@@ -26,13 +26,13 @@ type ParseResult = { rows: ParsedRow[]; errors: LineError[] };
 const BUCKETS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 const BUCKET_COLORS: Record<number, string> = {
-  1: "bg-emerald-600 text-white",
-  2: "bg-teal-600 text-white",
-  3: "bg-sky-600 text-white",
-  4: "bg-indigo-600 text-white",
-  5: "bg-violet-600 text-white",
-  6: "bg-amber-600 text-white",
-  7: "bg-rose-600 text-white",
+  1: "bg-green-700 text-white",
+  2: "bg-amber-500 text-black",
+  3: "bg-blue-700 text-white",
+  4: "bg-rose-500 text-white",
+  5: "bg-violet-700 text-white",
+  6: "bg-orange-600 text-white",
+  7: "bg-slate-600 text-white",
 };
 
 export function parseFieldCsv(text: string): ParseResult {
@@ -440,11 +440,14 @@ Ludvig Aberg, 5`}
                 <ul className="divide-y divide-border">
                   {golfers.map((g) => (
                     <li key={g.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                      <span
-                        className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${BUCKET_COLORS[g.bucket_number] ?? "bg-muted"}`}
-                      >
-                        B{g.bucket_number}
-                      </span>
+                      <BucketEditor
+                        golferId={g.id}
+                        golferName={g.golfer_name}
+                        currentBucket={g.bucket_number}
+                        sizes={sizes}
+                        counts={counts}
+                        tournamentId={tournamentId}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="truncate">{g.golfer_name}</div>
                         <div className="text-[10px] text-muted-foreground font-mono">
@@ -469,6 +472,108 @@ Ludvig Aberg, 5`}
 
       {/* Danger zone */}
       <DangerZone tournamentId={tournamentId} tournamentName={tournamentName} />
+    </div>
+  );
+}
+
+function BucketEditor({
+  golferId,
+  golferName,
+  currentBucket,
+  sizes,
+  counts,
+  tournamentId,
+}: {
+  golferId: string;
+  golferName: string;
+  currentBucket: number;
+  sizes: Record<number, number>;
+  counts: Record<number, number>;
+  tournamentId: string;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  async function move(toBucket: number) {
+    if (toBucket === currentBucket) {
+      setOpen(false);
+      return;
+    }
+    // Warn-but-allow capacity check.
+    const capacity = sizes[toBucket] ?? 0;
+    const existing = counts[toBucket] ?? 0;
+    if (capacity > 0 && existing >= capacity) {
+      toast.warning(`Bucket ${toBucket} is full (${existing}/${capacity}) — moving anyway`);
+    }
+    setSaving(true);
+    setOpen(false);
+    const { error } = await supabase
+      .from("golfers")
+      .update({ bucket_number: toBucket })
+      .eq("id", golferId);
+    setSaving(false);
+    if (error) {
+      toast.error(`Couldn't move ${golferName}: ${error.message}`);
+      return;
+    }
+    toast.success(`${golferName} → Bucket ${toBucket}`);
+    qc.invalidateQueries({ queryKey: ["admin-field-golfers", tournamentId] });
+    qc.invalidateQueries({ queryKey: ["field", tournamentId] });
+  }
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={saving}
+        className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${BUCKET_COLORS[currentBucket] ?? "bg-muted"} hover:opacity-80 disabled:opacity-50`}
+        aria-label={`Change bucket for ${golferName}`}
+      >
+        B{currentBucket}
+      </button>
+      {open && (
+        <div className="absolute z-20 left-0 mt-1 min-w-[140px] rounded-md border border-border bg-popover shadow-md p-1">
+          {BUCKETS.map((b) => {
+            const capacity = sizes[b] ?? 0;
+            const existing = counts[b] ?? 0;
+            const isCurrent = b === currentBucket;
+            const isFull = capacity > 0 && existing >= capacity;
+            return (
+              <button
+                key={b}
+                type="button"
+                onClick={() => move(b)}
+                className={`w-full flex items-center justify-between gap-2 text-xs px-2 py-1 rounded hover:bg-accent ${
+                  isCurrent ? "font-bold" : ""
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${BUCKET_COLORS[b]}`}>
+                    B{b}
+                  </span>
+                  {isCurrent && <span className="text-muted-foreground">current</span>}
+                </span>
+                <span className={`text-[10px] tabular-nums ${isFull ? "text-amber-600" : "text-muted-foreground"}`}>
+                  {existing}/{capacity}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
