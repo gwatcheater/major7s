@@ -25,6 +25,7 @@ interface LbRow {
   position_numeric: number | null;
   is_tie: boolean;
   status_type: string | null;
+  status_short_detail: string | null;
   total_strokes: number | null;
   score_to_par: number | null;
   round_1: number | null;
@@ -101,7 +102,7 @@ function LeaderboardView() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("id, golfer_id, espn_display_name, country, position_display, position_numeric, is_tie, status_type, total_strokes, score_to_par, round_1, round_2, round_3, round_4")
+        .select("id, golfer_id, espn_display_name, country, position_display, position_numeric, is_tie, status_type, status_short_detail, total_strokes, score_to_par, round_1, round_2, round_3, round_4")
         .eq("tournament_id", id);
       if (error) throw error;
       return (data ?? []) as LbRow[];
@@ -265,8 +266,15 @@ function TournamentTable({
 
 function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }) {
   const par = fmtToPar(r.score_to_par);
-  const pos = r.position_display ?? "—";
-  const posLabel = r.is_tie && r.position_numeric !== null ? `T${r.position_numeric}` : pos;
+  let posLabel: string;
+  if (r.position_numeric === null) {
+    // Didn't finish — surface the human-readable status (CUT/WD/DQ) rather than a dash.
+    posLabel = r.status_short_detail ?? r.position_display ?? "—";
+  } else if (r.is_tie) {
+    posLabel = `T${r.position_numeric}`;
+  } else {
+    posLabel = r.position_display ?? String(r.position_numeric);
+  }
   const rowBg = mine ? "bg-amber-50" : "";
   const text = dim ? "text-muted-foreground" : "";
   return (
