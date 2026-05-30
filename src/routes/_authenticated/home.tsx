@@ -91,34 +91,6 @@ function HomePage() {
     },
   });
 
-  // Pull a short preview of picked golfer names per tournament (first 3 buckets)
-  // for the inline summary chip shown on cards where picks are complete.
-  const { data: pickPreview = {} } = useQuery({
-    queryKey: ["pick-preview", activeTeam?.id, tournaments.map((t) => t.id).join(",")],
-    enabled: !!activeTeam && tournaments.length > 0,
-    queryFn: async () => {
-      const out: Record<string, string[]> = {};
-      const tournamentIds = tournaments.map((t) => t.id);
-      if (tournamentIds.length === 0) return out;
-      const { data, error } = await supabase
-        .from("picks")
-        .select("tournament_id, bucket, golfers(golfer_name)")
-        .eq("team_id", activeTeam!.id)
-        .in("tournament_id", tournamentIds)
-        .lte("bucket", 3)
-        .order("bucket", { ascending: true });
-      if (error) throw error;
-      for (const row of (data ?? []) as any[]) {
-        const name = row?.golfers?.golfer_name;
-        if (!name) continue;
-        const arr = out[row.tournament_id] ?? [];
-        arr.push(name);
-        out[row.tournament_id] = arr;
-      }
-      return out;
-    },
-  });
-
   return (
     <div className="p-4 md:p-12 max-w-6xl">
       <header className="mb-6" />
@@ -146,11 +118,7 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                className={`relative border rounded-xl overflow-hidden flex flex-col group hover:shadow-lg transition-all animate-reveal ${
-                  complete
-                    ? "bg-emerald-50/40 border-emerald-200/70 hover:border-emerald-300"
-                    : "bg-card border-border hover:border-primary/40"
-                }`}
+                className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Full-card click target navigates to the hub */}
@@ -177,22 +145,16 @@ function HomePage() {
                      Logo gets a soft gold ring when picks are open, to feel "live". */}
                   <div className="flex items-start gap-4 min-w-0">
                     {t.logo_url ? (
-                      <div
-                        className={`shrink-0 rounded-lg ${
-                          isOpen ? "ring-2 ring-amber-300/60 ring-offset-2 ring-offset-transparent" : ""
-                        }`}
-                      >
-                        <img
-                          src={t.logo_url}
-                          alt={`${t.name} logo`}
-                          className="h-20 w-20 object-contain rounded-lg border bg-card"
-                        />
-                      </div>
+                      <img
+                        src={t.logo_url}
+                        alt={`${t.name} logo`}
+                        className="h-20 w-20 object-contain rounded-lg border bg-card shrink-0"
+                      />
                     ) : (
                       <div className="h-20 w-20 rounded-lg border bg-muted shrink-0" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-display text-2xl md:text-3xl uppercase leading-tight break-words">
+                      <h3 className="font-display text-2xl md:text-3xl leading-tight break-words">
                         {t.name}
                       </h3>
                       <p className="text-sm text-muted-foreground mt-1.5">{t.location}</p>
@@ -205,16 +167,7 @@ function HomePage() {
                     </div>
                   </div>
 
-                  {/* Inline pick preview — shown only when picks are complete.
-                     Tiny one-line summary of the top 3 selections. */}
-                  {complete && pickPreview[t.id] && pickPreview[t.id].length > 0 && (
-                    <div className="mt-4 text-xs text-emerald-900/80 italic truncate">
-                      {pickPreview[t.id].slice(0, 3).join(" · ")}
-                      {(pickCounts[t.id] ?? 0) > 3 && (
-                        <span className="text-muted-foreground"> · +{(pickCounts[t.id] ?? 0) - 3}</span>
-                      )}
-                    </div>
-                  )}
+
                 </div>
 
                 {/* Countdown strip — coloured band running across the card bottom.
