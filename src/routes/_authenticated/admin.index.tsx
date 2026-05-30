@@ -506,7 +506,7 @@ function TournamentTab() {
             >
               {tournaments.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}
+                  {t.name} ({t.start_date?.slice(0, 4) ?? ''})
                 </option>
               ))}
             </select>
@@ -1195,7 +1195,7 @@ function SubmissionsTab() {
         >
           {tournaments.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name}
+              {t.name} ({t.start_date?.slice(0, 4) ?? ''})
             </option>
           ))}
         </select>
