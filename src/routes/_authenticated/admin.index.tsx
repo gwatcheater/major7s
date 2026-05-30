@@ -684,7 +684,7 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
                     // Parse as a UTC date to avoid timezone shifts on date-only strings.
                     const startMs = new Date(start + "T00:00:00").getTime();
                     if (!prev.end_date) {
-                      const end = new Date(startMs + 3 * 86400000); // Thu → Sun (4 days inclusive)
+                      const end = new Date(startMs + 4 * 86400000); // start + 4 days
                       next.end_date = end.toISOString().slice(0, 10);
                     }
                     if (!prev.submission_deadline) {
