@@ -561,6 +561,7 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
     submission_deadline: "",
     status: "upcoming" as TournamentStatus,
   });
+  const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -610,17 +611,49 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create New Tournament</CardTitle>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <CardTitle className="flex items-center gap-2">
+            <Trophy className="size-4" />
+            Create New Tournament
+          </CardTitle>
+          <span className="text-xs uppercase tracking-widest text-muted-foreground">
+            {open ? "Hide ▲" : "Show ▼"}
+          </span>
+        </button>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {open && (
+        <CardContent>
+          <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Name *</Label>
-            <Input
+            <select
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              maxLength={120}
-            />
+              onChange={(e) => {
+                const name = e.target.value;
+                setForm((prev) => {
+                  const next = { ...prev, name };
+                  // Masters Tournament is always at Augusta National Golf Club.
+                  // Force-fill on selection; clear when switching to a different major.
+                  if (name === "Masters Tournament") {
+                    next.location = "Augusta National Golf Club";
+                  } else if (prev.name === "Masters Tournament") {
+                    next.location = "";
+                  }
+                  return next;
+                });
+              }}
+              className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
+            >
+              <option value="" disabled>Select a major…</option>
+              <option value="Masters Tournament">Masters Tournament</option>
+              <option value="PGA Championship">PGA Championship</option>
+              <option value="U.S. Open">U.S. Open</option>
+              <option value="The Open Championship">The Open Championship</option>
+            </select>
           </div>
           <div>
             <Label>Location *</Label>
@@ -643,7 +676,33 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
             <Input
               type="date"
               value={form.start_date}
-              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+              onChange={(e) => {
+                const start = e.target.value;
+                setForm((prev) => {
+                  const next = { ...prev, start_date: start };
+                  if (start) {
+                    // Parse as a UTC date to avoid timezone shifts on date-only strings.
+                    const startMs = new Date(start + "T00:00:00").getTime();
+                    if (!prev.end_date) {
+                      const end = new Date(startMs + 3 * 86400000); // start + 3 days = 4-day event
+                      next.end_date = end.toISOString().slice(0, 10);
+                    }
+                    if (!prev.submission_deadline) {
+                      const deadline = new Date(startMs - 86400000); // start - 1 day
+                      deadline.setHours(22, 0, 0, 0);                // local 22:00
+                      // datetime-local string is YYYY-MM-DDTHH:mm in local tz
+                      const pad = (n: number) => String(n).padStart(2, "0");
+                      next.submission_deadline =
+                        deadline.getFullYear() + "-" +
+                        pad(deadline.getMonth() + 1) + "-" +
+                        pad(deadline.getDate()) + "T" +
+                        pad(deadline.getHours()) + ":" +
+                        pad(deadline.getMinutes());
+                    }
+                  }
+                  return next;
+                });
+              }}
             />
           </div>
           <div>
@@ -681,8 +740,9 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
               {saving ? "Creating…" : "Create Tournament"}
             </Button>
           </div>
-        </form>
-      </CardContent>
+          </form>
+        </CardContent>
+      )}
     </Card>
   );
 }
