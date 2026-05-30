@@ -539,6 +539,9 @@ function TournamentTab() {
                 initialEspnEventId={(selected as any).espn_event_id ?? ""}
                 onSaved={() => qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] })}
               />
+              <BulkPickUpload key={`bulk-${selected.id}`} tournamentId={selected.id} />
+
+
 
             </div>
           )}
