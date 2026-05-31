@@ -78,27 +78,14 @@ async function calculateMajor7sScores(
   }
 
   // 2) Pull all picks for this tournament, plus their golfer names (snapshot).
-  // Paginated to avoid Supabase PostgREST 1000-row default limit.
-  const pickRows: PickRow[] = [];
-  {
-    const PAGE_SIZE = 1000;
-    let from = 0;
-    while (true) {
-      const { data, error } = await supabaseAdmin
-        .from("picks")
-        .select("team_id, bucket, golfer_id")
-        .eq("tournament_id", tournamentId)
-        .range(from, from + PAGE_SIZE - 1);
-      if (error) throw new Error(`Score calc: ${error.message}`);
-      const rows = (data ?? []) as PickRow[];
-      pickRows.push(...rows);
-      if (rows.length < PAGE_SIZE) break;
-      from += PAGE_SIZE;
-    }
-  }
+  const { data: pickRows, error: pErr } = await supabaseAdmin
+    .from("picks")
+    .select("team_id, bucket, golfer_id")
+    .eq("tournament_id", tournamentId);
+  if (pErr) throw new Error(`Score calc: ${pErr.message}`);
 
   const allGolferIds = Array.from(
-    new Set(pickRows.map((p) => p.golfer_id).filter((x): x is string => !!x)),
+    new Set(((pickRows ?? []) as PickRow[]).map((p) => p.golfer_id).filter((x): x is string => !!x)),
   );
   const golferNameById = new Map<string, string>();
   if (allGolferIds.length > 0) {
@@ -114,7 +101,7 @@ async function calculateMajor7sScores(
 
   // 3) Group picks by team.
   const picksByTeam = new Map<string, PickRow[]>();
-  for (const p of pickRows) {
+  for (const p of (pickRows ?? []) as PickRow[]) {
     const arr = picksByTeam.get(p.team_id) ?? [];
     arr.push(p);
     picksByTeam.set(p.team_id, arr);
@@ -259,6 +246,95 @@ async function calculateMajor7sScores(
   return { teams_scored: positioned.length, teams_skipped_incomplete: skipped };
 }
 
+interface ResultRow {
+  tournament_id: string;
+  team_id: string;
+  result_type: string;
+  position: number;
+  context: Record<string, unknown>;
+}
+
+async function calculateTournamentResults(tournamentId: string): Promise<void> {
+  // Read the freshly-written tournament_scores rows; from them, derive:
+  //   - podium: positions 1, 2, 3 with SCR ties (all teams sharing those numerics)
+  //   - botr:   single winner, the team with the LOWEST total_points among teams with thru_cut < 5
+  //   - wooden_spoon: team(s) with the HIGHEST total_points (last place); ties allowed
+  const { data: scoreRows, error } = await supabaseAdmin
+    .from("tournament_scores")
+    .select("team_id, total_points, thru_cut, position_numeric")
+    .eq("tournament_id", tournamentId);
+  if (error) throw new Error(`Results calc: ${error.message}`);
+
+  const rows = (scoreRows ?? []) as Array<{
+    team_id: string;
+    total_points: number;
+    thru_cut: number;
+    position_numeric: number;
+  }>;
+
+  // Wipe prior results for this tournament. Re-inserting is the cleanest way to
+  // handle teams entering/leaving qualification across recalcs.
+  const { error: delErr } = await supabaseAdmin
+    .from("tournament_results")
+    .delete()
+    .eq("tournament_id", tournamentId);
+  if (delErr) throw new Error(`Results calc: ${delErr.message}`);
+
+  if (rows.length === 0) return;
+
+  const toInsert: ResultRow[] = [];
+
+  // --- PODIUM: positions 1, 2, 3 (with ties) ---
+  for (const r of rows) {
+    if (r.position_numeric === 1 || r.position_numeric === 2 || r.position_numeric === 3) {
+      toInsert.push({
+        tournament_id: tournamentId,
+        team_id: r.team_id,
+        result_type: "podium",
+        position: r.position_numeric,
+        context: { total_points: r.total_points, thru_cut: r.thru_cut },
+      });
+    }
+  }
+
+  // --- BOTR: lowest points among teams with thru_cut < 5 ---
+  const botrCandidates = rows.filter((r) => r.thru_cut < 5);
+  if (botrCandidates.length > 0) {
+    const minBotrPoints = Math.min(...botrCandidates.map((r) => r.total_points));
+    const botrWinners = botrCandidates.filter((r) => r.total_points === minBotrPoints);
+    // If multiple teams tie at the lowest BOTR points, they all share position 1.
+    for (const w of botrWinners) {
+      toInsert.push({
+        tournament_id: tournamentId,
+        team_id: w.team_id,
+        result_type: "botr",
+        position: 1,
+        context: { total_points: w.total_points, thru_cut: w.thru_cut },
+      });
+    }
+  }
+
+  // --- WOODEN SPOON: highest points overall (last place); ties allowed ---
+  const maxPoints = Math.max(...rows.map((r) => r.total_points));
+  const lastPlaceTeams = rows.filter((r) => r.total_points === maxPoints);
+  for (const t of lastPlaceTeams) {
+    toInsert.push({
+      tournament_id: tournamentId,
+      team_id: t.team_id,
+      result_type: "wooden_spoon",
+      position: 1,
+      context: { total_points: t.total_points, thru_cut: t.thru_cut },
+    });
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insErr } = await supabaseAdmin
+      .from("tournament_results")
+      .insert(toInsert);
+    if (insErr) throw new Error(`Results calc (insert): ${insErr.message}`);
+  }
+}
+
 export const importEspnLeaderboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => InputSchema.parse(input))
@@ -382,6 +458,7 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
 
     // After a successful leaderboard import, calculate Major7s scores.
     const scoringResult = await calculateMajor7sScores(data.tournament_id, userId);
+    await calculateTournamentResults(data.tournament_id);
 
     return {
       imported: rows.length,
