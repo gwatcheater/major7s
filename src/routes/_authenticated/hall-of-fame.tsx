@@ -17,7 +17,6 @@ type Tour = {
   name: string;
   location: string;
   start_date: string;
-  logo_url: string | null;
 };
 
 type CellEntry = { nickname: string; points: number | null; tie: boolean };
@@ -27,7 +26,6 @@ type AggRow = {
   year: string;
   name: string;
   location: string;
-  logo: string | null;
   p1: CellEntry[];
   p2: CellEntry[];
   p3: CellEntry[];
