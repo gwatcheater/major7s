@@ -323,7 +323,14 @@ function BulkImportTab() {
         errors.push({ line, reason: "Missing email" });
         return;
       }
-      const [email, first_name = "", last_name = "", phone = "", team_name = "", referral_name = ""] = parts;
+      const [
+        email,
+        first_name = "",
+        last_name = "",
+        phone = "",
+        team_name = "",
+        referral_name = "",
+      ] = parts;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errors.push({ line, reason: `Invalid email: ${email}` });
         return;
@@ -506,7 +513,7 @@ function TournamentTab() {
             >
               {tournaments.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.start_date?.slice(0, 4) ?? ''})
+                  {t.name} ({t.start_date?.slice(0, 4) ?? ""})
                 </option>
               ))}
             </select>
@@ -540,9 +547,6 @@ function TournamentTab() {
                 onSaved={() => qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] })}
               />
               <BulkPickUpload key={`bulk-${selected.id}`} tournamentId={selected.id} />
-
-
-
             </div>
           )}
         </CardContent>
@@ -628,118 +632,124 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
       {open && (
         <CardContent>
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Name *</Label>
-            <select
-              value={form.name}
-              onChange={(e) => {
-                const name = e.target.value;
-                setForm((prev) => {
-                  const next = { ...prev, name };
-                  // Masters Tournament is always at Augusta National Golf Club.
-                  // Force-fill on selection; clear when switching to a different major.
-                  if (name === "Masters Tournament") {
-                    next.location = "Augusta National Golf Club";
-                  } else if (prev.name === "Masters Tournament") {
-                    next.location = "";
-                  }
-                  return next;
-                });
-              }}
-              className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
-            >
-              <option value="" disabled>Select a major…</option>
-              <option value="Masters Tournament">Masters Tournament</option>
-              <option value="PGA Championship">PGA Championship</option>
-              <option value="U.S. Open">U.S. Open</option>
-              <option value="The Open Championship">The Open Championship</option>
-            </select>
-          </div>
-          <div>
-            <Label>Location *</Label>
-            <Input
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-              maxLength={120}
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label>Logo URL</Label>
-            <Input
-              value={form.logo_url}
-              onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-              placeholder="https://…"
-            />
-          </div>
-          <div>
-            <Label>Start Date *</Label>
-            <Input
-              type="date"
-              value={form.start_date}
-              onChange={(e) => {
-                const start = e.target.value;
-                setForm((prev) => {
-                  const next = { ...prev, start_date: start };
-                  if (start) {
-                    // Parse as a UTC date to avoid timezone shifts on date-only strings.
-                    const startMs = new Date(start + "T00:00:00").getTime();
-                    if (!prev.end_date) {
-                      const end = new Date(startMs + 4 * 86400000); // start + 4 days
-                      next.end_date = end.toISOString().slice(0, 10);
+            <div>
+              <Label>Name *</Label>
+              <select
+                value={form.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setForm((prev) => {
+                    const next = { ...prev, name };
+                    // Masters Tournament is always at Augusta National Golf Club.
+                    // Force-fill on selection; clear when switching to a different major.
+                    if (name === "Masters Tournament") {
+                      next.location = "Augusta National Golf Club";
+                    } else if (prev.name === "Masters Tournament") {
+                      next.location = "";
                     }
-                    if (!prev.submission_deadline) {
-                      const deadline = new Date(startMs - 86400000); // start - 1 day
-                      deadline.setHours(22, 0, 0, 0);                // local 22:00
-                      // datetime-local string is YYYY-MM-DDTHH:mm in local tz
-                      const pad = (n: number) => String(n).padStart(2, "0");
-                      next.submission_deadline =
-                        deadline.getFullYear() + "-" +
-                        pad(deadline.getMonth() + 1) + "-" +
-                        pad(deadline.getDate()) + "T" +
-                        pad(deadline.getHours()) + ":" +
-                        pad(deadline.getMinutes());
-                    }
-                  }
-                  return next;
-                });
-              }}
-            />
-          </div>
-          <div>
-            <Label>End Date *</Label>
-            <Input
-              type="date"
-              value={form.end_date}
-              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Submission Deadline *</Label>
-            <Input
-              type="datetime-local"
-              value={form.submission_deadline}
-              onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Status</Label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value as TournamentStatus })}
-              className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
-            >
-              {(Object.keys(TSTATUS_LABEL) as TournamentStatus[]).map((s) => (
-                <option key={s} value={s}>
-                  {TSTATUS_LABEL[s]}
+                    return next;
+                  });
+                }}
+                className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
+              >
+                <option value="" disabled>
+                  Select a major…
                 </option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <Button type="submit" disabled={saving}>
-              {saving ? "Creating…" : "Create Tournament"}
-            </Button>
-          </div>
+                <option value="Masters Tournament">Masters Tournament</option>
+                <option value="PGA Championship">PGA Championship</option>
+                <option value="U.S. Open">U.S. Open</option>
+                <option value="The Open Championship">The Open Championship</option>
+              </select>
+            </div>
+            <div>
+              <Label>Location *</Label>
+              <Input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                maxLength={120}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Logo URL</Label>
+              <Input
+                value={form.logo_url}
+                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+                placeholder="https://…"
+              />
+            </div>
+            <div>
+              <Label>Start Date *</Label>
+              <Input
+                type="date"
+                value={form.start_date}
+                onChange={(e) => {
+                  const start = e.target.value;
+                  setForm((prev) => {
+                    const next = { ...prev, start_date: start };
+                    if (start) {
+                      // Parse as a UTC date to avoid timezone shifts on date-only strings.
+                      const startMs = new Date(start + "T00:00:00").getTime();
+                      if (!prev.end_date) {
+                        const end = new Date(startMs + 4 * 86400000); // start + 4 days
+                        next.end_date = end.toISOString().slice(0, 10);
+                      }
+                      if (!prev.submission_deadline) {
+                        const deadline = new Date(startMs - 86400000); // start - 1 day
+                        deadline.setHours(22, 0, 0, 0); // local 22:00
+                        // datetime-local string is YYYY-MM-DDTHH:mm in local tz
+                        const pad = (n: number) => String(n).padStart(2, "0");
+                        next.submission_deadline =
+                          deadline.getFullYear() +
+                          "-" +
+                          pad(deadline.getMonth() + 1) +
+                          "-" +
+                          pad(deadline.getDate()) +
+                          "T" +
+                          pad(deadline.getHours()) +
+                          ":" +
+                          pad(deadline.getMinutes());
+                      }
+                    }
+                    return next;
+                  });
+                }}
+              />
+            </div>
+            <div>
+              <Label>End Date *</Label>
+              <Input
+                type="date"
+                value={form.end_date}
+                onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Submission Deadline *</Label>
+              <Input
+                type="datetime-local"
+                value={form.submission_deadline}
+                onChange={(e) => setForm({ ...form, submission_deadline: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Status</Label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as TournamentStatus })}
+                className="w-full h-9 px-3 border border-input rounded-md bg-background text-sm"
+              >
+                {(Object.keys(TSTATUS_LABEL) as TournamentStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {TSTATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <Button type="submit" disabled={saving}>
+                {saving ? "Creating…" : "Create Tournament"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       )}
@@ -1122,6 +1132,25 @@ function SubmissionsTab() {
     },
   });
 
+  // Primary team nicknames for resolving display names
+  const { data: allTeamsForSubs = [] } = useQuery({
+    queryKey: ["admin-all-teams"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("owner_user_id, nickname, is_primary")
+        .eq("is_primary", true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const primaryTeamByUser = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of allTeamsForSubs) m.set(t.owner_user_id, t.nickname);
+    return m;
+  }, [allTeamsForSubs]);
+
   // Embedded join: picks → teams (FK exists) and picks → golfers (FK exists)
   // Paginated to avoid Supabase PostgREST 1000-row default limit.
   type PickWithJoin = {
@@ -1267,7 +1296,7 @@ function SubmissionsTab() {
         >
           {tournaments.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name} ({t.start_date?.slice(0, 4) ?? ''})
+              {t.name} ({t.start_date?.slice(0, 4) ?? ""})
             </option>
           ))}
         </select>
@@ -1310,7 +1339,9 @@ function SubmissionsTab() {
                     return (
                       <tr key={u.id} className="border-b last:border-0">
                         <td className="py-1 pr-2">{full}</td>
-                        <td className="py-1 pr-2 text-muted-foreground">{u.nickname}</td>
+                        <td className="py-1 pr-2 text-muted-foreground">
+                          {primaryTeamByUser.get(u.id) ?? u.nickname}
+                        </td>
                         <td className="py-1 text-muted-foreground">{u.email ?? ""}</td>
                       </tr>
                     );
