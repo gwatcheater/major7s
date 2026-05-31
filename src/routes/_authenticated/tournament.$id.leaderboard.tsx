@@ -305,7 +305,10 @@ function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null 
   return null;
 }
 
+type MajorView = "all" | "botr";
+
 function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
+  const [mode, setMode] = useState<MajorView>("all");
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["tournament-scores", tournamentId],
     queryFn: async () => {
@@ -331,16 +334,53 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
     );
   }
 
-  const myRow = myTeamId ? rows.find((r) => r.team_id === myTeamId) ?? null : null;
+  // BOTR filter: teams with fewer than 5 picks through the cut. Keeps
+  // each team's overall position_numeric — BOTR is a filtered view of the
+  // same ranking, not a re-ranking of the consolation set.
+  const visibleRows = mode === "botr" ? rows.filter((r) => r.thru_cut < 5) : rows;
+  const myRow = myTeamId ? visibleRows.find((r) => r.team_id === myTeamId) ?? null : null;
+  const allMyRow = myTeamId ? rows.find((r) => r.team_id === myTeamId) ?? null : null;
+  // If the user is in BOTR mode but their team doesn't qualify, surface that
+  // gently rather than silently hiding the panel.
+  const myTeamDisqualifiedFromBotr = mode === "botr" && !!allMyRow && !myRow;
 
   return (
     <div className="space-y-3">
-      <div className="text-right text-xs uppercase tracking-widest text-muted-foreground">
-        {rows.length} {rows.length === 1 ? "team" : "teams"}
+      {/* ALL / BOTR mode toggle */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="inline-flex rounded-md border border-border bg-card p-1">
+          <button
+            type="button"
+            onClick={() => setMode("all")}
+            className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded ${
+              mode === "all" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("botr")}
+            className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded ${
+              mode === "botr" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+            }`}
+            title="Best of the Rest — teams with fewer than 5 picks through the cut"
+          >
+            BOTR
+          </button>
+        </div>
+        <div className="text-xs uppercase tracking-widest text-muted-foreground">
+          {visibleRows.length} {visibleRows.length === 1 ? "team" : "teams"}
+        </div>
       </div>
 
       {myRow && (
         <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
+      )}
+      {myTeamDisqualifiedFromBotr && (
+        <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
+          Your team has 5+ picks through the cut and isn't in this competition.
+        </div>
       )}
 
       <div className="border border-border bg-card">
@@ -356,14 +396,22 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((r) => (
-              <ExpandableTeamRow
-                key={r.id}
-                r={r}
-                mine={!!myTeamId && r.team_id === myTeamId}
-                medal={medalFor(r.position_numeric)}
-              />
-            ))}
+            {visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                  No teams in this competition yet.
+                </td>
+              </tr>
+            ) : (
+              visibleRows.map((r) => (
+                <ExpandableTeamRow
+                  key={r.id}
+                  r={r}
+                  mine={!!myTeamId && r.team_id === myTeamId}
+                  medal={medalFor(r.position_numeric)}
+                />
+              ))
+            )}
           </tbody>
         </table>
       </div>
