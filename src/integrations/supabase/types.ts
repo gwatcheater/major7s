@@ -260,6 +260,7 @@ export type Database = {
           round_3: number | null
           round_4: number | null
           score_to_par: number | null
+          status_short_detail: string | null
           status_type: string | null
           total_strokes: number | null
           tournament_id: string
@@ -279,6 +280,7 @@ export type Database = {
           round_3?: number | null
           round_4?: number | null
           score_to_par?: number | null
+          status_short_detail?: string | null
           status_type?: string | null
           total_strokes?: number | null
           tournament_id: string
@@ -298,6 +300,7 @@ export type Database = {
           round_3?: number | null
           round_4?: number | null
           score_to_par?: number | null
+          status_short_detail?: string | null
           status_type?: string | null
           total_strokes?: number | null
           tournament_id?: string
@@ -312,6 +315,51 @@ export type Database = {
           },
           {
             foreignKeyName: "tournament_leaderboard_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_results: {
+        Row: {
+          calculated_at: string
+          context: Json | null
+          id: string
+          position: number
+          result_type: string
+          team_id: string
+          tournament_id: string
+        }
+        Insert: {
+          calculated_at?: string
+          context?: Json | null
+          id?: string
+          position: number
+          result_type: string
+          team_id: string
+          tournament_id: string
+        }
+        Update: {
+          calculated_at?: string
+          context?: Json | null
+          id?: string
+          position?: number
+          result_type?: string
+          team_id?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_results_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_results_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
