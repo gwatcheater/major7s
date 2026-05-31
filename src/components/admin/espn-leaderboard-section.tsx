@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,6 +38,7 @@ export function EspnLeaderboardSection({
   } | null>(null);
 
   const importFn = useServerFn(importEspnLeaderboard);
+  const qc = useQueryClient();
 
   useEffect(() => {
     setEspnId(initialEspnEventId ?? "");
@@ -54,6 +56,8 @@ export function EspnLeaderboardSection({
       return;
     }
     toast.success("ESPN tournament ID saved");
+    qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
+    qc.invalidateQueries({ queryKey: ["tournament", tournamentId] });
     onSaved?.();
   }
 
@@ -66,8 +70,15 @@ export function EspnLeaderboardSection({
         data: { tournament_id: tournamentId, espn_event_id: espnId.trim() },
       });
       setResult(res as any);
-      if ((res as any)?.error) toast.error((res as any).error);
-      else toast.success(`Imported ${(res as any).imported} players`);
+      if ((res as any)?.error) {
+        toast.error((res as any).error);
+      } else {
+        toast.success(`Imported ${(res as any).imported} players`);
+        // ESPN ingest writes tournament_leaderboard + recalculates tournament_scores;
+        // refresh both so the leaderboard view updates without a page reload.
+        qc.invalidateQueries({ queryKey: ["tournament-leaderboard", tournamentId] });
+        qc.invalidateQueries({ queryKey: ["tournament-scores", tournamentId] });
+      }
     } catch (e: any) {
       toast.error(e?.message ?? "Import failed");
       setResult({ error: e?.message ?? "Import failed" });
