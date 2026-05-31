@@ -17,7 +17,6 @@ type Tour = {
   name: string;
   location: string;
   start_date: string;
-  logo_url: string | null;
 };
 
 type CellEntry = { nickname: string; points: number | null; tie: boolean };
@@ -27,7 +26,6 @@ type AggRow = {
   year: string;
   name: string;
   location: string;
-  logo: string | null;
   p1: CellEntry[];
   p2: CellEntry[];
   p3: CellEntry[];
@@ -40,7 +38,7 @@ function useHallOfFame() {
     queryKey: ["hall-of-fame"],
     queryFn: async (): Promise<AggRow[]> => {
       const [{ data: tours }, { data: results }] = await Promise.all([
-        supabase.from("tournaments").select("id,name,location,start_date,logo_url").order("start_date", { ascending: false }),
+        supabase.from("tournaments").select("id,name,location,start_date").order("start_date", { ascending: false }),
         supabase.from("tournament_results").select("tournament_id,result_type,position,context,teams(nickname)"),
       ]);
       const rs = (results ?? []) as unknown as Row[];
@@ -64,7 +62,6 @@ function useHallOfFame() {
             year: t.start_date?.slice(0, 4) ?? "",
             name: t.name,
             location: t.location,
-            logo: t.logo_url,
             p1: pick(rows, "podium", 1),
             p2: pick(rows, "podium", 2),
             p3: pick(rows, "podium", 3),
@@ -128,42 +125,32 @@ function HallOfFamePage() {
       {/* Sticky table */}
       <div className="relative">
         <div className="overflow-x-auto overflow-y-visible">
-          <div className="min-w-[920px] pr-16 md:pr-0">
+          <div className="min-w-[860px] pr-16 md:pr-0">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
                 <tr className="border-y border-white/10">
-                  <th className="sticky left-0 z-30 text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-16" style={{ backgroundColor: "var(--forest-deep)" }}>Year</th>
-                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-14"></th>
-                  <th className="sticky left-[120px] z-30 text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px]" style={{ backgroundColor: "var(--forest-deep)" }}>Tournament</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[140px]" style={{ color: "var(--gold)" }}>1st</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[140px]">2nd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[140px]">3rd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">BOTR</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[140px]" style={{ color: "var(--alert,#ef4444)" }}>Wooden Spoon</th>
+                  <th className="sticky left-0 z-30 text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-16 bg-[#042417]">Year</th>
+                  <th className="sticky left-16 z-30 text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[200px] bg-[#042417]">Tournament</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[180px]">Location</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--gold)" }}>1st</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">2nd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">3rd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[130px]">BOTR</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--alert,#ef4444)" }}>Wooden Spoon</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={9} className="text-center py-12 text-white/40 text-sm">Loading…</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-white/40 text-sm">Loading…</td></tr>
                 )}
                 {!isLoading && (data?.length ?? 0) === 0 && (
-                  <tr><td colSpan={9} className="text-center py-12 text-white/40 text-sm">No results yet.</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-white/40 text-sm">No results yet.</td></tr>
                 )}
                 {data?.map((r) => (
                   <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors align-top">
-                    <td className="sticky left-0 z-10 px-3 py-4 font-display text-lg tabular-nums" style={{ backgroundColor: "var(--forest-deep)", color: "var(--gold)" }}>{r.year}</td>
-                    <td className="px-2 py-4">
-                      {r.logo ? (
-                        <img src={r.logo} alt="" className="size-10 object-contain rounded-sm bg-white/5" />
-                      ) : (
-                        <div className="size-10 rounded-sm bg-white/5 grid place-items-center">
-                          <Trophy className="size-4 text-white/30" />
-                        </div>
-                      )}
-                    </td>
-                    <td className="sticky left-[120px] z-10 px-3 py-4 text-sm font-semibold text-white" style={{ backgroundColor: "var(--forest-deep)" }}>{r.name}</td>
-                    <td className="px-3 py-4 text-xs text-white/60">{r.location}</td>
+                    <td className="sticky left-0 z-20 px-3 py-4 font-display text-lg tabular-nums bg-[#042417]" style={{ color: "var(--gold)" }}>{r.year}</td>
+                    <td className="sticky left-16 z-20 px-3 py-4 text-sm font-semibold text-white whitespace-normal bg-[#042417]">{r.name}</td>
+                    <td className="px-3 py-4 text-xs text-white/60 whitespace-normal">{r.location}</td>
                     <td className="px-3 py-4"><Cell entries={r.p1} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p2} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p3} /></td>
