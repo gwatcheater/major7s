@@ -78,14 +78,27 @@ async function calculateMajor7sScores(
   }
 
   // 2) Pull all picks for this tournament, plus their golfer names (snapshot).
-  const { data: pickRows, error: pErr } = await supabaseAdmin
-    .from("picks")
-    .select("team_id, bucket, golfer_id")
-    .eq("tournament_id", tournamentId);
-  if (pErr) throw new Error(`Score calc: ${pErr.message}`);
+  // Paginated to avoid Supabase PostgREST 1000-row default limit.
+  const pickRows: PickRow[] = [];
+  {
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabaseAdmin
+        .from("picks")
+        .select("team_id, bucket, golfer_id")
+        .eq("tournament_id", tournamentId)
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw new Error(`Score calc: ${error.message}`);
+      const rows = (data ?? []) as PickRow[];
+      pickRows.push(...rows);
+      if (rows.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+  }
 
   const allGolferIds = Array.from(
-    new Set(((pickRows ?? []) as PickRow[]).map((p) => p.golfer_id).filter((x): x is string => !!x)),
+    new Set(pickRows.map((p) => p.golfer_id).filter((x): x is string => !!x)),
   );
   const golferNameById = new Map<string, string>();
   if (allGolferIds.length > 0) {
@@ -101,7 +114,7 @@ async function calculateMajor7sScores(
 
   // 3) Group picks by team.
   const picksByTeam = new Map<string, PickRow[]>();
-  for (const p of (pickRows ?? []) as PickRow[]) {
+  for (const p of pickRows) {
     const arr = picksByTeam.get(p.team_id) ?? [];
     arr.push(p);
     picksByTeam.set(p.team_id, arr);

@@ -87,12 +87,24 @@ export function BulkPickUpload({ tournamentId }: { tournamentId: string | null }
       if (pErr) throw pErr;
       const statusByUser = new Map<string, string>();
       for (const p of profs ?? []) statusByUser.set(p.id, p.status);
-      const { data: existing, error: eErr } = await supabase
-        .from("picks")
-        .select("team_id")
-        .eq("tournament_id", tournamentId!);
-      if (eErr) throw eErr;
-      const teamsWithPicks = new Set((existing ?? []).map((p) => p.team_id));
+      const existingTeamIds: string[] = [];
+      {
+        const PAGE_SIZE = 1000;
+        let from = 0;
+        while (true) {
+          const { data: page, error: eErr } = await supabase
+            .from("picks")
+            .select("team_id")
+            .eq("tournament_id", tournamentId!)
+            .range(from, from + PAGE_SIZE - 1);
+          if (eErr) throw eErr;
+          const rows = page ?? [];
+          existingTeamIds.push(...rows.map((p) => p.team_id));
+          if (rows.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+      }
+      const teamsWithPicks = new Set(existingTeamIds);
       return { teams: teams ?? [], statusByUser, teamsWithPicks };
     },
   });

@@ -1123,32 +1123,44 @@ function SubmissionsTab() {
   });
 
   // Embedded join: picks → teams (FK exists) and picks → golfers (FK exists)
+  // Paginated to avoid Supabase PostgREST 1000-row default limit.
+  type PickWithJoin = {
+    id: string;
+    bucket: number;
+    tweak_count: number;
+    tournament_id: string;
+    golfers: { golfer_name: string } | null;
+    teams: { id: string; nickname: string; owner_user_id: string };
+  };
   const { data: fetchedPicks = [] } = useQuery({
     enabled: !!activeId,
     queryKey: ["admin-picks-for-tournament", activeId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("picks")
-        .select(
-          `
-          id,
-          bucket,
-          tweak_count,
-          tournament_id,
-          golfers ( golfer_name ),
-          teams!inner ( id, nickname, owner_user_id )
-        `,
-        )
-        .eq("tournament_id", activeId!);
-      if (error) throw error;
-      return (data ?? []) as unknown as Array<{
-        id: string;
-        bucket: number;
-        tweak_count: number;
-        tournament_id: string;
-        golfers: { golfer_name: string } | null;
-        teams: { id: string; nickname: string; owner_user_id: string };
-      }>;
+      const PAGE_SIZE = 1000;
+      const all: PickWithJoin[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select(
+            `
+            id,
+            bucket,
+            tweak_count,
+            tournament_id,
+            golfers ( golfer_name ),
+            teams!inner ( id, nickname, owner_user_id )
+          `,
+          )
+          .eq("tournament_id", activeId!)
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        const rows = (data ?? []) as unknown as PickWithJoin[];
+        all.push(...rows);
+        if (rows.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return all;
     },
   });
 
