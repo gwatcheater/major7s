@@ -251,7 +251,7 @@ interface ResultRow {
   team_id: string;
   result_type: string;
   position: number;
-  context: Record<string, unknown>;
+  context: { total_points: number; thru_cut: number };
 }
 
 async function calculateTournamentResults(tournamentId: string): Promise<void> {
