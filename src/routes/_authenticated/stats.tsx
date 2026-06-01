@@ -355,7 +355,7 @@ function AllTimeStatsPage() {
   // Render
   // -----------------------------------------------------------
   return (
-
+    <>
       <header className="mt-4 mb-6">
         <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
           Statistics
