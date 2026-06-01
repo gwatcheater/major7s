@@ -96,7 +96,8 @@ function AllTimeStatsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name, end_date, status, location");
+        .select("id, name, end_date, status, location")
+        .eq("status", "completed");
       if (error) throw error;
       return (data ?? []) as Tournament[];
     },
