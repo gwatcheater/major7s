@@ -358,7 +358,7 @@ function TournamentStatsPage() {
         <ArrowLeft className="h-3 w-3" /> Back
       </Link>
 
-      <header className="mt-4 mb-8">
+      <header className="mt-4 mb-6">
         <p
           className="text-[10px] font-bold uppercase tracking-widest"
           style={{ color: "var(--gold, #b08a3e)" }}
@@ -368,10 +368,34 @@ function TournamentStatsPage() {
         <h1 className="font-display text-3xl md:text-4xl mt-1 leading-tight">
           {t.name}
         </h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          {totalTeams} {totalTeams === 1 ? "team" : "teams"} entered
-        </p>
       </header>
+
+      {/* ============ SUMMARY STAT CARDS ============ */}
+      {(() => {
+        const totalPicks = picks.length;
+        const distinctGolfers = new Set(picks.map((p) => p.golfer_id)).size;
+        const fieldSize = golfers.length;
+        const pctField = fieldSize ? (distinctGolfers / fieldSize) * 100 : 0;
+        const summary = [
+          { label: "Teams", value: totalTeams.toString() },
+          { label: "Total golfers picked", value: totalPicks.toString() },
+          { label: "% of field picked", value: `${pctField.toFixed(1)}%` },
+        ];
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            {summary.map((s) => (
+              <Card key={s.label} className="p-5 text-center shadow-sm">
+                <p className="font-display text-3xl md:text-4xl leading-none tabular-nums">
+                  {s.value}
+                </p>
+                <p className="text-xs text-muted-foreground uppercase tracking-widest mt-2">
+                  {s.label}
+                </p>
+              </Card>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ============ SECTION 1: Most Popular Picks ============ */}
       <Card className="p-5 mb-6">
