@@ -197,6 +197,7 @@ function TournamentStatsPage() {
       .filter((p) => counts.get(p.golfer_id) === 1)
       .map((p) => ({
         golfer: golferById.get(p.golfer_id)?.golfer_name ?? "Unknown",
+        owgr: golferById.get(p.golfer_id)?.owgr_rank ?? null,
         team: teamById.get(p.team_id)?.nickname ?? "Unknown team",
         bucket: p.bucket,
       }))
