@@ -552,7 +552,8 @@ function TournamentStatsPage() {
                           {e.teamIds.map((tid) => (
                             <span
                               key={tid}
-                              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-foreground"
+                              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
+                              style={{ backgroundColor: "var(--forest-deep, #166534)" }}
                             >
                               {teamById.get(tid)?.nickname ?? "Unknown"}
                             </span>
