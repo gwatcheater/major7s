@@ -322,11 +322,11 @@ function ChasingMajorsView() {
               <tr className="border-y border-slate-200">
                 <SortHeader label="Rank"      k="rank"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0" widthClass="w-14" />
                 <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="min-w-[140px]" />
-                <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
-                <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
-                <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 text-center whitespace-nowrap" />
-                <SortHeader label="The Open"  k="theopen"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
-                <SortHeader label="Slam"      k="slam"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center whitespace-nowrap" />
+                <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 whitespace-nowrap" align="center" />
+                <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 whitespace-nowrap" align="center" />
+                <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 whitespace-nowrap" align="center" />
+                <SortHeader label="The Open"  k="theopen"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 whitespace-nowrap" align="center" />
+                <SortHeader label="Slam"      k="slam"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 whitespace-nowrap" align="center" />
               </tr>
             </thead>
             <tbody>
@@ -363,7 +363,7 @@ function ChasingMajorsView() {
 }
 
 function SortHeader({
-  label, k, sortKey, sortDir, onClick, sticky, widthClass,
+  label, k, sortKey, sortDir, onClick, sticky, widthClass, align = "left",
 }: {
   label: string;
   k: ChasingMajorsSortKey;
@@ -372,16 +372,22 @@ function SortHeader({
   onClick: (k: ChasingMajorsSortKey) => void;
   sticky?: string;
   widthClass?: string;
+  align?: "left" | "center";
 }) {
   const active = sortKey === k;
   const arrow = active ? (sortDir === "asc" ? "▲" : "▼") : "";
   const stickyCls = sticky ? `sticky ${sticky} z-30 bg-white` : "";
+  // The button is laid out as a flex container so we can control the cross-axis
+  // alignment of label+arrow. justify-center makes the button content sit in the
+  // middle of the cell width when align="center".
+  const justify = align === "center" ? "justify-center" : "justify-start";
+  const textAlignCls = align === "center" ? "text-center" : "text-left";
   return (
-    <th className={`text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest ${widthClass ?? ""} ${stickyCls}`}>
+    <th className={`${textAlignCls} px-2 py-3 text-[10px] font-bold uppercase tracking-widest ${widthClass ?? ""} ${stickyCls}`}>
       <button
         type="button"
         onClick={() => onClick(k)}
-        className={`inline-flex items-center gap-1 ${active ? "text-[color:var(--forest-deep)]" : "text-slate-500 hover:text-[color:var(--forest-deep)]"}`}
+        className={`w-full inline-flex items-center gap-1 ${justify} ${active ? "text-[color:var(--forest-deep)]" : "text-slate-500 hover:text-[color:var(--forest-deep)]"}`}
       >
         {label}
         <span className="text-[8px]">{arrow}</span>
