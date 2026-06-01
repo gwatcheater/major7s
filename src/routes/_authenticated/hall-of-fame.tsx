@@ -132,9 +132,9 @@ function HallOfFamePage() {
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
                 <tr className="border-y border-white/10">
-                  <th className="sticky left-0 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-14 bg-[#042417]">Year</th>
-                  <th className="sticky left-14 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px] bg-[#042417]">Tournament</th>
-                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
+                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-12 bg-[#042417]">Year</th>
+                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px] bg-[#042417]">Tournament</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--gold)" }}>1st</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">2nd</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">3rd</th>
