@@ -582,8 +582,21 @@ function TournamentStatsPage() {
         ) : (
           <div className="space-y-2">
             {identicalTeams.map((group, i) => (
-              <div key={i} className="border border-border rounded-md p-3 text-sm">
-                {group.map((tid) => teamById.get(tid)?.nickname ?? "Unknown").join(", ")}
+              <div key={i} className="border border-border rounded-md p-3 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {group.teamIds.map((tid) => (
+                    <span
+                      key={tid}
+                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
+                      style={{ backgroundColor: "var(--forest-deep, #166534)" }}
+                    >
+                      {teamById.get(tid)?.nickname ?? "Unknown"}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-sm">
+                  {group.picks.map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown").join(", ")}
+                </div>
               </div>
             ))}
           </div>
