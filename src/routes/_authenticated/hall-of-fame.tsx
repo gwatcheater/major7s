@@ -315,13 +315,14 @@ function ChasingMajorsView() {
 
   return (
     <div className="relative max-w-3xl mx-auto px-4 md:px-12">
-      <div className="overflow-x-auto overflow-y-visible">
-        <div className="min-w-[680px]">
-          <table className="w-full border-collapse">
+      {/* Desktop: dense sortable table */}
+      <div className="hidden md:block overflow-x-auto overflow-y-visible">
+        <div className="min-w-[620px]">
+          <table className="border-collapse" style={{ tableLayout: "fixed" }}>
             <thead className="sticky top-0 z-20 bg-white">
               <tr className="border-y border-slate-200">
                 <SortHeader label="Rank"      k="rank"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0" widthClass="w-14" />
-                <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="min-w-[140px]" />
+                <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="w-40" />
                 <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 whitespace-nowrap" align="center" />
                 <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 whitespace-nowrap" align="center" />
                 <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 whitespace-nowrap" align="center" />
@@ -354,10 +355,74 @@ function ChasingMajorsView() {
           </table>
         </div>
       </div>
+      {/* Desktop scroll affordance (only when desktop table is visible) */}
       <div
-        className="pointer-events-none absolute top-0 right-0 h-full w-16"
+        className="hidden md:block pointer-events-none absolute top-0 right-0 h-full w-16"
         style={{ background: "linear-gradient(to left, white, transparent)" }}
       />
+
+      {/* Mobile: one card per team, vertical stack. Sorted by spec rule. */}
+      <div className="md:hidden space-y-2">
+        {sorted.map((r) => (
+          <MobileTeamCard key={r.team_id} row={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?: boolean } }) {
+  const rankLabel = row.tied ? `T${row.rank}` : row.rank;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      {/* Header: rank + team on left, slam on right */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span
+            className="font-mono font-bold text-sm tabular-nums shrink-0 w-10"
+            style={{ color: "var(--gold)" }}
+          >
+            {rankLabel}
+          </span>
+          <span className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>
+            {row.nickname}
+          </span>
+        </div>
+        <div className="text-xs font-mono tabular-nums shrink-0">
+          <span
+            className={row.slamDistinctMajorsWon === 4 ? "font-bold" : ""}
+            style={row.slamDistinctMajorsWon === 4 ? { color: "var(--gold)" } : undefined}
+          >
+            {row.slamDistinctMajorsWon}
+          </span>
+          <span className="text-slate-400">/4</span>
+        </div>
+      </div>
+
+      {/* Four majors in a 4-column grid below */}
+      <div className="mt-2 grid grid-cols-4 gap-2 pl-[52px]">
+        <MobileMajorCell label="Masters"  value={row.bestByMajor["Masters Tournament"]} />
+        <MobileMajorCell label="PGA"      value={row.bestByMajor["PGA Championship"]} />
+        <MobileMajorCell label="U.S."     value={row.bestByMajor["U.S. Open"]} />
+        <MobileMajorCell label="The Open" value={row.bestByMajor["The Open Championship"]} />
+      </div>
+    </div>
+  );
+}
+
+function MobileMajorCell({ label, value }: { label: string; value: number | null }) {
+  const color =
+    value === 1 ? "var(--gold)" :
+    value === 2 ? "#7d7d7d" :
+    value === 3 ? "#c98447" : undefined;
+  return (
+    <div className="text-center">
+      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">
+        {label}
+      </div>
+      <div className="text-sm font-mono font-bold tabular-nums mt-0.5" style={value === null ? { color: "#cbd5e1" } : { color }}>
+        {value === null ? "—" : value}
+      </div>
     </div>
   );
 }
