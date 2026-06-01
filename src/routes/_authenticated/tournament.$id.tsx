@@ -255,17 +255,20 @@ function TournamentHub() {
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
 
-        <Link
-          to="/stats"
-          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
-        >
-          <BarChart3 className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <div className="font-display text-sm uppercase">Statistics</div>
-            <div className="text-xs text-muted-foreground">Pick stats & fun facts — Tap to view</div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </Link>
+        {(["picks_closed", "live", "completed"].includes(t.status)) && (
+          <Link
+            to="/tournament/$id/stats"
+            params={{ id }}
+            className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
+          >
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <div className="flex-1">
+              <div className="font-display text-sm uppercase">Statistics</div>
+              <div className="text-xs text-muted-foreground">Pick stats & fun facts — Tap to view</div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        )}
 
         <Collapsible open={blogOpen} onOpenChange={setBlogOpen}>
           <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors">
