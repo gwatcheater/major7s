@@ -571,42 +571,89 @@ function SummaryStat({ label, value }: { label: string; value: number }) {
 }
 
 function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; bronze: number; total: number } }) {
+  // Olympic-style podium layout: gold tallest in the middle, silver left, bronze right.
+  // Above each pillar: the team's count of finishes at that position.
+  // On each pillar: the position number (1/2/3).
+  // Above each pillar count: a small medal icon hinting at the rank.
+  // The whole thing always renders even when all counts are zero (graceful empty).
+  const goldStyle: React.CSSProperties = {
+    background: "radial-gradient(circle at 30% 25%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
+  };
+  const silverStyle: React.CSSProperties = {
+    background: "radial-gradient(circle at 30% 25%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)",
+  };
+  const bronzeStyle: React.CSSProperties = {
+    background: "radial-gradient(circle at 30% 25%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
+  };
   return (
     <div className="text-center">
       <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
         Total Podiums
       </div>
-      <div className="font-display text-3xl md:text-4xl mt-1">{breakdown.total}</div>
-      <div className="flex justify-center gap-3 mt-2">
-        <MedalCount icon="gold" value={breakdown.gold} />
-        <MedalCount icon="silver" value={breakdown.silver} />
-        <MedalCount icon="bronze" value={breakdown.bronze} />
+      <div className="font-display text-3xl md:text-4xl mt-1 mb-2">{breakdown.total}</div>
+
+      {/* The podium itself: three columns sharing a baseline. */}
+      <div className="flex items-end justify-center gap-1.5 h-[120px] mt-2">
+        {/* Silver — left, mid height */}
+        <PodiumPillar
+          rank={2}
+          count={breakdown.silver}
+          heightClass="h-[60%]"
+          style={silverStyle}
+          textColor="#222"
+          icon={<Medal className="w-4 h-4" style={{ color: "#7d7d7d" }} />}
+        />
+        {/* Gold — middle, tallest */}
+        <PodiumPillar
+          rank={1}
+          count={breakdown.gold}
+          heightClass="h-[85%]"
+          style={goldStyle}
+          textColor="#3a2a00"
+          icon={<Trophy className="w-4 h-4" style={{ color: "#b8860b" }} />}
+        />
+        {/* Bronze — right, shortest */}
+        <PodiumPillar
+          rank={3}
+          count={breakdown.bronze}
+          heightClass="h-[45%]"
+          style={bronzeStyle}
+          textColor="#2a1500"
+          icon={<Award className="w-4 h-4" style={{ color: "#c98447" }} />}
+        />
       </div>
     </div>
   );
 }
 
-function MedalCount({ icon, value }: { icon: "gold" | "silver" | "bronze"; value: number }) {
-  const style: React.CSSProperties = {
-    background:
-      icon === "gold"
-        ? "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)"
-        : icon === "silver"
-        ? "radial-gradient(circle at 30% 30%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)"
-        : "radial-gradient(circle at 30% 30%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
-    color: icon === "silver" ? "#222" : icon === "gold" ? "#3a2a00" : "#2a1500",
-  };
+function PodiumPillar({
+  rank, count, heightClass, style, textColor, icon,
+}: {
+  rank: 1 | 2 | 3;
+  count: number;
+  heightClass: string;
+  style: React.CSSProperties;
+  textColor: string;
+  icon: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col items-center">
-      <span
-        className="inline-flex items-center justify-center rounded-full w-7 h-7 text-xs font-bold"
-        style={style}
-        aria-label={icon}
-      />
-      <span className="text-xs font-mono font-semibold mt-0.5">{value}</span>
+    <div className="flex flex-col items-center justify-end w-12 md:w-14 h-full">
+      {/* Stack above the pillar: medal icon, then count */}
+      <div className="flex flex-col items-center mb-1">
+        {icon}
+        <span className="text-sm font-bold font-mono leading-none mt-0.5">{count}</span>
+      </div>
+      {/* The pillar itself, with the position number centred inside */}
+      <div
+        className={`w-full ${heightClass} rounded-t-md flex items-center justify-center font-display text-lg font-bold`}
+        style={{ ...style, color: textColor, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
+      >
+        {rank}
+      </div>
     </div>
   );
 }
+
 
 function KpiCard({ label, value }: { label: string; value: string | number }) {
   return (
