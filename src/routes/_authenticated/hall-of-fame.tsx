@@ -132,9 +132,9 @@ function HallOfFamePage() {
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
                 <tr className="border-y border-white/10">
-                  <th className="sticky left-0 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-14 bg-[#042417]">Year</th>
-                  <th className="sticky left-14 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px] bg-[#042417]">Tournament</th>
-                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
+                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-12 bg-[#042417]">Year</th>
+                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px] bg-[#042417]">Tournament</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--gold)" }}>1st</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">2nd</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">3rd</th>
@@ -151,9 +151,9 @@ function HallOfFamePage() {
                 )}
                 {data?.map((r) => (
                   <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors align-top">
-                    <td className="sticky left-0 z-20 px-2 py-4 text-left text-xs font-semibold tabular-nums bg-[#042417] leading-tight" style={{ color: "var(--gold)" }}>{r.year}</td>
-                    <td className="sticky left-14 z-20 px-2 py-4 text-left text-xs font-semibold text-white whitespace-normal bg-[#042417] leading-tight">{r.name}</td>
-                    <td className="px-2 py-4 text-left text-xs font-semibold text-white/60 whitespace-normal leading-tight">{r.location}</td>
+                    <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-[#042417] leading-tight" style={{ color: "var(--gold)" }}>{r.year}</td>
+                    <td className="sticky left-12 z-20 px-1 py-4 text-left text-xs font-semibold text-white whitespace-normal bg-[#042417] leading-tight">{r.name}</td>
+                    <td className="px-1 py-4 text-left text-xs font-semibold text-white/60 whitespace-normal leading-tight">{r.location}</td>
                     <td className="px-3 py-4"><Cell entries={r.p1} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p2} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p3} /></td>
