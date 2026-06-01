@@ -74,14 +74,15 @@ function useHallOfFame() {
   });
 }
 
-function Cell({ entries }: { entries: CellEntry[] }) {
+function Cell({ entries, nameColor }: { entries: CellEntry[]; nameColor?: string }) {
   if (entries.length === 0) return <span className="text-slate-300">—</span>;
   const isTie = entries.length > 1;
   const points = entries[0]?.points ?? null;
+  const color = nameColor ?? "var(--forest-deep)";
   return (
     <div className="space-y-1.5">
       {entries.map((e, i) => (
-        <div key={i} className="text-xs font-semibold text-[color:var(--forest-deep)] truncate leading-tight">
+        <div key={i} className="text-xs font-semibold truncate leading-tight" style={{ color }}>
           {e.nickname}
         </div>
       ))}
@@ -614,12 +615,12 @@ function HallOfFamePage() {
                 <tr className="border-y border-slate-200">
                   <th className="sticky left-0 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-14 bg-white">Year</th>
                   <th className="sticky left-14 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[180px] bg-white">Tournament</th>
-                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[140px]">Location</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--gold)" }}>1st</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 min-w-[130px]">2nd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 min-w-[130px]">3rd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 min-w-[130px]">BOTR</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--alert,#ef4444)" }}>Wooden Spoon</th>
+                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[180px] whitespace-nowrap">Location</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest w-[120px]" style={{ color: "var(--gold)" }}>1st</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[120px]">2nd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[120px]">3rd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[120px]">BOTR</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest w-[120px]" style={{ color: "var(--alert,#ef4444)" }}>Last Place</th>
                 </tr>
               </thead>
               <tbody>
@@ -631,10 +632,10 @@ function HallOfFamePage() {
                 )}
                 {data?.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
-                    <td className="sticky left-0 z-20 px-2 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight" style={{ color: "var(--gold)" }}>{r.year}</td>
+                    <td className="sticky left-0 z-20 px-2 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight text-[color:var(--forest-deep)]">{r.year}</td>
                     <td className="sticky left-14 z-20 px-2 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
-                    <td className="px-2 py-4 text-left text-xs font-semibold text-slate-500 whitespace-normal leading-tight">{r.location}</td>
-                    <td className="px-3 py-4"><Cell entries={r.p1} /></td>
+                    <td className="px-2 py-4 text-left text-xs font-semibold text-slate-500 whitespace-nowrap leading-tight">{r.location}</td>
+                    <td className="px-3 py-4"><Cell entries={r.p1} nameColor="var(--gold)" /></td>
                     <td className="px-3 py-4"><Cell entries={r.p2} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p3} /></td>
                     <td className="px-3 py-4"><Cell entries={r.botr} /></td>
