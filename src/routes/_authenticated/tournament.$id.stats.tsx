@@ -240,14 +240,15 @@ function TournamentStatsPage() {
 
   // ----- Section 4: Identical Teams -----
   const identicalTeams = useMemo(() => {
-    const groups = new Map<string, string[]>();
+    const groups = new Map<string, { teamIds: string[]; picks: Pick[] }>();
     for (const [teamId, ps] of picksByTeam.entries()) {
       if (ps.length !== 7) continue;
-      const key = Array.from(new Set(ps.map((p) => p.golfer_id))).sort().join("|");
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(teamId);
+      const sortedPicks = [...ps].sort((a, b) => a.bucket - b.bucket);
+      const key = sortedPicks.map((p) => p.golfer_id).join("|");
+      if (!groups.has(key)) groups.set(key, { teamIds: [], picks: sortedPicks });
+      groups.get(key)!.teamIds.push(teamId);
     }
-    return Array.from(groups.values()).filter((g) => g.length >= 2);
+    return Array.from(groups.values()).filter((g) => g.teamIds.length >= 2);
   }, [picksByTeam]);
 
   // ----- Section 5: Fun Facts -----
