@@ -75,18 +75,18 @@ function useHallOfFame() {
 }
 
 function Cell({ entries }: { entries: CellEntry[] }) {
-  if (entries.length === 0) return <span className="text-white/30">—</span>;
+  if (entries.length === 0) return <span className="text-slate-300">—</span>;
   const isTie = entries.length > 1;
   const points = entries[0]?.points ?? null;
   return (
     <div className="space-y-1.5">
       {entries.map((e, i) => (
-        <div key={i} className="text-xs font-semibold text-white truncate leading-tight">
+        <div key={i} className="text-xs font-semibold text-[color:var(--forest-deep)] truncate leading-tight">
           {e.nickname}
         </div>
       ))}
       {points != null && (
-        <div className="text-[11px] text-white/50 tabular-nums text-left pt-0.5">
+        <div className="text-[11px] text-slate-500 tabular-nums text-left pt-0.5">
           {points} pts{isTie && <span className="ml-1 font-bold" style={{ color: "var(--gold)" }}>(T)</span>}
         </div>
       )}
@@ -102,7 +102,7 @@ function ChipButton({ label, active, onClick }: { label: string; active: boolean
         "shrink-0 px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all border",
         active
           ? "border-transparent shadow-lg"
-          : "border-white/10 text-white/60 hover:text-white hover:border-white/30",
+          : "border-slate-200 text-slate-500 hover:text-[color:var(--forest-deep)] hover:border-slate-400",
       )}
       style={active ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
     >
@@ -119,8 +119,8 @@ function SubChipButton({ label, active, onClick }: { label: string; active: bool
       className={cn(
         "shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border",
         active
-          ? "bg-white text-[var(--forest-deep)] border-transparent"
-          : "border-white/15 text-white/60 hover:text-white hover:border-white/30",
+          ? "bg-[color:var(--forest-deep)] text-[color:var(--forest-deep)] border-transparent"
+          : "border-slate-200 text-slate-500 hover:text-[color:var(--forest-deep)] hover:border-slate-400",
       )}
     >
       {label}
@@ -301,10 +301,10 @@ function ChasingMajorsView() {
   }
 
   if (isLoading) {
-    return <div className="text-center py-12 text-white/40 text-sm">Loading…</div>;
+    return <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>;
   }
   if (sorted.length === 0) {
-    return <div className="text-center py-12 text-white/40 text-sm">No podium finishes yet.</div>;
+    return <div className="text-center py-12 text-slate-400 text-sm">No podium finishes yet.</div>;
   }
 
   return (
@@ -312,8 +312,8 @@ function ChasingMajorsView() {
       <div className="overflow-x-auto overflow-y-visible">
         <div className="min-w-[720px] pr-16 md:pr-0">
           <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
-              <tr className="border-y border-white/10">
+            <thead className="sticky top-0 z-20 bg-white">
+              <tr className="border-y border-slate-200">
                 <SortHeader label="Rank"      k="rank"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0" widthClass="w-14" />
                 <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="min-w-[140px]" />
                 <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
@@ -325,22 +325,22 @@ function ChasingMajorsView() {
             </thead>
             <tbody>
               {sorted.map((r) => (
-                <tr key={r.team_id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                  <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-[#042417]" style={{ color: "var(--gold)" }}>
+                <tr key={r.team_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-white" style={{ color: "var(--gold)" }}>
                     {r.rank}
                   </td>
-                  <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold text-white bg-[#042417] truncate">
+                  <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold text-[color:var(--forest-deep)] bg-white truncate">
                     {r.nickname}
                   </td>
                   <PositionCell value={r.bestByMajor["Masters Tournament"]} />
                   <PositionCell value={r.bestByMajor["PGA Championship"]} />
                   <PositionCell value={r.bestByMajor["U.S. Open"]} />
                   <PositionCell value={r.bestByMajor["The Open Championship"]} />
-                  <td className="px-2 py-3 text-center text-xs font-mono tabular-nums text-white">
+                  <td className="px-2 py-3 text-center text-xs font-mono tabular-nums text-[color:var(--forest-deep)]">
                     <span className={r.slamDistinctMajorsWon === 4 ? "font-bold" : ""} style={r.slamDistinctMajorsWon === 4 ? { color: "var(--gold)" } : undefined}>
                       {r.slamDistinctMajorsWon}
                     </span>
-                    <span className="text-white/40">/4</span>
+                    <span className="text-slate-400">/4</span>
                   </td>
                 </tr>
               ))}
@@ -350,7 +350,7 @@ function ChasingMajorsView() {
       </div>
       <div
         className="pointer-events-none absolute top-0 right-0 h-full w-16"
-        style={{ background: "linear-gradient(to left, var(--forest-deep), transparent)" }}
+        style={{ background: "linear-gradient(to left, white, transparent)" }}
       />
     </div>
   );
@@ -369,13 +369,13 @@ function SortHeader({
 }) {
   const active = sortKey === k;
   const arrow = active ? (sortDir === "asc" ? "▲" : "▼") : "";
-  const stickyCls = sticky ? `sticky ${sticky} z-30 bg-[#042417]` : "";
+  const stickyCls = sticky ? `sticky ${sticky} z-30 bg-white` : "";
   return (
     <th className={`text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest ${widthClass ?? ""} ${stickyCls}`}>
       <button
         type="button"
         onClick={() => onClick(k)}
-        className={`inline-flex items-center gap-1 ${active ? "text-white" : "text-white/60 hover:text-white"}`}
+        className={`inline-flex items-center gap-1 ${active ? "text-[color:var(--forest-deep)]" : "text-slate-500 hover:text-[color:var(--forest-deep)]"}`}
       >
         {label}
         <span className="text-[8px]">{arrow}</span>
@@ -386,7 +386,7 @@ function SortHeader({
 
 function PositionCell({ value }: { value: number | null }) {
   if (value === null) {
-    return <td className="px-2 py-3 text-center text-xs text-white/30">—</td>;
+    return <td className="px-2 py-3 text-center text-xs text-slate-300">—</td>;
   }
   // Gold/silver/bronze tints for 1/2/3.
   const color =
@@ -407,14 +407,14 @@ function HallOfFamePage() {
   const [vaultCategory, setVaultCategory] = useState<VaultCategory>("chasing_majors");
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--forest-deep)" }}>
+    <div className="min-h-screen bg-white">
       <div className="px-4 pt-6 pb-4 md:px-12 md:pt-10">
         <div className="flex items-center gap-2 mb-1.5">
           <Trophy className="size-5" style={{ color: "var(--gold)" }} />
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Archive</span>
         </div>
-        <h1 className="font-display text-3xl md:text-5xl uppercase text-white tracking-tight">Hall of Fame</h1>
-        <p className="text-xs md:text-sm text-white/50 mt-2">Every tournament. Every champion. Every wooden spoon.</p>
+        <h1 className="font-display text-3xl md:text-5xl uppercase tracking-tight" style={{ color: "var(--forest-deep)" }}>Hall of Fame</h1>
+        <p className="text-xs md:text-sm text-slate-500 mt-2">Every tournament. Every champion. Every wooden spoon.</p>
 
         {/* Top-level view toggle */}
         <div className="flex gap-2 mt-5 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
@@ -448,30 +448,30 @@ function HallOfFamePage() {
         <div className="overflow-x-auto overflow-y-visible">
           <div className="min-w-[860px] pr-16 md:pr-0">
             <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
-                <tr className="border-y border-white/10">
-                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 w-12 bg-[#042417]">Year</th>
-                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[160px] bg-[#042417]">Tournament</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[140px]">Location</th>
+              <thead className="sticky top-0 z-20 bg-white">
+                <tr className="border-y border-slate-200">
+                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-12 bg-white">Year</th>
+                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 min-w-[160px] bg-white">Tournament</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 min-w-[140px]">Location</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--gold)" }}>1st</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">2nd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/70 min-w-[130px]">3rd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-white/60 min-w-[130px]">BOTR</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 min-w-[130px]">2nd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 min-w-[130px]">3rd</th>
+                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 min-w-[130px]">BOTR</th>
                   <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest min-w-[130px]" style={{ color: "var(--alert,#ef4444)" }}>Wooden Spoon</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={8} className="text-center py-12 text-white/40 text-sm">Loading…</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-sm">Loading…</td></tr>
                 )}
                 {!isLoading && (data?.length ?? 0) === 0 && (
-                  <tr><td colSpan={8} className="text-center py-12 text-white/40 text-sm">No results yet.</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-sm">No results yet.</td></tr>
                 )}
                 {data?.map((r) => (
-                  <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors align-top">
-                    <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-[#042417] leading-tight" style={{ color: "var(--gold)" }}>{r.year}</td>
-                    <td className="sticky left-12 z-20 px-1 py-4 text-left text-xs font-semibold text-white whitespace-normal bg-[#042417] leading-tight">{r.name}</td>
-                    <td className="px-1 py-4 text-left text-xs font-semibold text-white/60 whitespace-normal leading-tight">{r.location}</td>
+                  <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
+                    <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight" style={{ color: "var(--gold)" }}>{r.year}</td>
+                    <td className="sticky left-12 z-20 px-1 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
+                    <td className="px-1 py-4 text-left text-xs font-semibold text-slate-500 whitespace-normal leading-tight">{r.location}</td>
                     <td className="px-3 py-4"><Cell entries={r.p1} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p2} /></td>
                     <td className="px-3 py-4"><Cell entries={r.p3} /></td>
@@ -486,7 +486,7 @@ function HallOfFamePage() {
         {/* Right-edge scroll affordance gradient */}
         <div
           className="pointer-events-none absolute top-0 right-0 h-full w-16"
-          style={{ background: "linear-gradient(to left, var(--forest-deep), transparent)" }}
+          style={{ background: "linear-gradient(to left, white, transparent)" }}
         />
       </div>
       )}
