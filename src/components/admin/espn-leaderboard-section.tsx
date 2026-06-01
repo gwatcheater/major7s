@@ -50,29 +50,27 @@ export function EspnLeaderboardSection({
     setEspnId(initialEspnEventId ?? "");
   }, [initialEspnEventId, tournamentId]);
 
+  async function loadPreview(id: string) {
+    setLoadingPreview(true);
+    try {
+      const res = await fetchEventInfoFn({ data: { espn_event_id: id } });
+      setEventPreview(res as { name: string | null; error: string | null });
+    } catch {
+      setEventPreview({ name: null, error: "Failed to fetch event info" });
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
   useEffect(() => {
     const id = initialEspnEventId?.trim();
     if (!id) {
       setEventPreview(null);
       return;
     }
-    let cancelled = false;
-    async function loadPreview() {
-      setLoadingPreview(true);
-      try {
-        const res = await fetchEventInfoFn({ data: { espn_event_id: id } });
-        if (!cancelled) setEventPreview(res as { name: string | null; error: string | null });
-      } catch {
-        if (!cancelled) setEventPreview({ name: null, error: "Failed to fetch event info" });
-      } finally {
-        if (!cancelled) setLoadingPreview(false);
-      }
-    }
-    loadPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialEspnEventId, tournamentId, fetchEventInfoFn]);
+    loadPreview(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEspnEventId, tournamentId]);
 
   async function saveEspnId() {
     setSaving(true);
@@ -89,6 +87,13 @@ export function EspnLeaderboardSection({
     qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] });
     qc.invalidateQueries({ queryKey: ["tournament", tournamentId] });
     onSaved?.();
+
+    const saved = espnId.trim();
+    if (saved) {
+      loadPreview(saved);
+    } else {
+      setEventPreview(null);
+    }
   }
 
   async function runImport() {
