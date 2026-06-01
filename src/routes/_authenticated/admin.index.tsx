@@ -482,7 +482,7 @@ function TournamentTab() {
       const { data, error } = await supabase
         .from("tournaments")
         .select(
-          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes",
+          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes, espn_event_id",
         )
         .order("start_date", { ascending: false });
       if (error) throw error;
