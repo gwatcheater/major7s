@@ -308,19 +308,19 @@ function ChasingMajorsView() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative max-w-3xl mx-auto px-4 md:px-12">
       <div className="overflow-x-auto overflow-y-visible">
-        <div className="min-w-[720px] pr-16 md:pr-0">
+        <div className="min-w-[680px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-20 bg-white">
               <tr className="border-y border-slate-200">
                 <SortHeader label="Rank"      k="rank"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0" widthClass="w-14" />
                 <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="min-w-[140px]" />
-                <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
-                <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
-                <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
-                <SortHeader label="The Open"  k="theopen"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
-                <SortHeader label="Slam"      k="slam"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center" />
+                <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
+                <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
+                <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 text-center whitespace-nowrap" />
+                <SortHeader label="The Open"  k="theopen"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center whitespace-nowrap" />
+                <SortHeader label="Slam"      k="slam"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center whitespace-nowrap" />
               </tr>
             </thead>
             <tbody>
