@@ -76,17 +76,20 @@ function useHallOfFame() {
 
 function Cell({ entries }: { entries: CellEntry[] }) {
   if (entries.length === 0) return <span className="text-white/30">—</span>;
+  const isTie = entries.length > 1;
+  const points = entries[0]?.points ?? null;
   return (
     <div className="space-y-1.5">
       {entries.map((e, i) => (
-        <div key={i} className="leading-tight">
-          <div className="text-xs font-semibold text-white truncate">
-            {e.nickname}
-            {e.tie && <span className="ml-1 text-[10px] font-bold" style={{ color: "var(--gold)" }}>(T)</span>}
-          </div>
-          {e.points != null && <div className="text-[11px] text-white/50 tabular-nums">{e.points} pts</div>}
+        <div key={i} className="text-xs font-semibold text-white truncate leading-tight">
+          {e.nickname}
         </div>
       ))}
+      {points != null && (
+        <div className="text-[11px] text-white/50 tabular-nums text-center pt-0.5">
+          {points} pts{isTie && <span className="ml-1 font-bold" style={{ color: "var(--gold)" }}>(T)</span>}
+        </div>
+      )}
     </div>
   );
 }
