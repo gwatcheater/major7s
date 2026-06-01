@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -94,9 +94,317 @@ function Cell({ entries }: { entries: CellEntry[] }) {
   );
 }
 
+function ChipButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "shrink-0 px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all border",
+        active
+          ? "border-transparent shadow-lg"
+          : "border-white/10 text-white/60 hover:text-white hover:border-white/30",
+      )}
+      style={active ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SubChipButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  // Subtler than the top-level toggle: smaller, white-toned, no big gold pop.
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border",
+        active
+          ? "bg-white text-[var(--forest-deep)] border-transparent"
+          : "border-white/15 text-white/60 hover:text-white hover:border-white/30",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+type VaultCategory = "chasing_majors";
+type ChasingMajorsSortKey = "rank" | "team" | "masters" | "pga" | "usopen" | "theopen" | "slam";
+
+interface ChasingMajorsRow {
+  team_id: string;
+  nickname: string;
+  bestByMajor: Record<string, number | null>; // major full name -> best position (1/2/3) or null
+  slamDistinctMajorsWon: number;               // 0-4
+  totalWins: number;                            // count of position=1 podiums across all majors
+  totalPodiums: number;                         // count of any podium (pos 1/2/3)
+}
+
+const MAJOR_FULL_NAMES = [
+  "Masters Tournament",
+  "PGA Championship",
+  "U.S. Open",
+  "The Open Championship",
+] as const;
+const MAJOR_SHORT: Record<string, string> = {
+  "Masters Tournament": "Masters",
+  "PGA Championship": "PGA",
+  "U.S. Open": "U.S. Open",
+  "The Open Championship": "The Open",
+};
+
+function useChasingMajors() {
+  return useQuery({
+    queryKey: ["chasing-majors"],
+    queryFn: async (): Promise<ChasingMajorsRow[]> => {
+      // Pull tournaments (for major-name lookup) and all podium rows.
+      const [{ data: tours }, { data: results }] = await Promise.all([
+        supabase.from("tournaments").select("id,name"),
+        supabase
+          .from("tournament_results")
+          .select("tournament_id,team_id,result_type,position,teams(nickname)")
+          .eq("result_type", "podium"),
+      ]);
+      const tourNameById = new Map<string, string>();
+      for (const t of (tours ?? []) as Array<{ id: string; name: string }>) {
+        tourNameById.set(t.id, t.name);
+      }
+
+      interface Acc {
+        nickname: string;
+        bestByMajor: Record<string, number | null>;
+        winsByMajor: Set<string>;
+        totalWins: number;
+        totalPodiums: number;
+      }
+      const byTeam = new Map<string, Acc>();
+
+      for (const r of (results ?? []) as unknown as Array<{
+        tournament_id: string;
+        team_id: string;
+        position: number;
+        teams: { nickname: string } | null;
+      }>) {
+        const majorName = tourNameById.get(r.tournament_id);
+        if (!majorName || !MAJOR_FULL_NAMES.includes(majorName as any)) continue;
+        const nickname = r.teams?.nickname ?? "—";
+
+        let acc = byTeam.get(r.team_id);
+        if (!acc) {
+          acc = {
+            nickname,
+            bestByMajor: Object.fromEntries(MAJOR_FULL_NAMES.map((m) => [m, null])),
+            winsByMajor: new Set<string>(),
+            totalWins: 0,
+            totalPodiums: 0,
+          };
+          byTeam.set(r.team_id, acc);
+        }
+        // Best (lowest) finish per major.
+        const cur = acc.bestByMajor[majorName];
+        if (cur === null || r.position < cur) acc.bestByMajor[majorName] = r.position;
+        // Wins tracking.
+        if (r.position === 1) {
+          acc.totalWins++;
+          acc.winsByMajor.add(majorName);
+        }
+        acc.totalPodiums++;
+      }
+
+      const out: ChasingMajorsRow[] = [];
+      for (const [team_id, acc] of byTeam) {
+        out.push({
+          team_id,
+          nickname: acc.nickname,
+          bestByMajor: acc.bestByMajor,
+          slamDistinctMajorsWon: acc.winsByMajor.size,
+          totalWins: acc.totalWins,
+          totalPodiums: acc.totalPodiums,
+        });
+      }
+      return out;
+    },
+  });
+}
+
+function ChasingMajorsView() {
+  const { data = [], isLoading } = useChasingMajors();
+  const [sortKey, setSortKey] = useState<ChasingMajorsSortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Base sort follows the spec: Slam desc, totalWins desc, totalPodiums desc.
+  // Use that to compute Rank, THEN apply user-clicked sort on top if any.
+  const ranked = useMemo(() => {
+    const baseSorted = [...data].sort((a, b) => {
+      if (b.slamDistinctMajorsWon !== a.slamDistinctMajorsWon)
+        return b.slamDistinctMajorsWon - a.slamDistinctMajorsWon;
+      if (b.totalWins !== a.totalWins) return b.totalWins - a.totalWins;
+      if (b.totalPodiums !== a.totalPodiums) return b.totalPodiums - a.totalPodiums;
+      return a.nickname.localeCompare(b.nickname);
+    });
+    // Assign ranks with shared positions for exact ties on (slam, wins, podiums).
+    let lastKey = "";
+    let lastRank = 0;
+    return baseSorted.map((r, i) => {
+      const key = `${r.slamDistinctMajorsWon}|${r.totalWins}|${r.totalPodiums}`;
+      const rank = key === lastKey ? lastRank : i + 1;
+      lastKey = key;
+      lastRank = rank;
+      return { ...r, rank };
+    });
+  }, [data]);
+
+  const sorted = useMemo(() => {
+    const arr = [...ranked];
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmpNullable = (a: number | null, b: number | null) => {
+      // null means no podium in that major — lower priority than any real finish.
+      // For ascending: nulls go last; for descending: nulls go last too (always least-relevant).
+      if (a === null && b === null) return 0;
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return a - b;
+    };
+    switch (sortKey) {
+      case "rank":
+        arr.sort((a, b) => dir * (a.rank - b.rank));
+        break;
+      case "team":
+        arr.sort((a, b) => dir * a.nickname.localeCompare(b.nickname));
+        break;
+      case "slam":
+        arr.sort((a, b) => dir * (a.slamDistinctMajorsWon - b.slamDistinctMajorsWon));
+        break;
+      case "masters":
+        arr.sort((a, b) => dir * cmpNullable(a.bestByMajor["Masters Tournament"], b.bestByMajor["Masters Tournament"]));
+        break;
+      case "pga":
+        arr.sort((a, b) => dir * cmpNullable(a.bestByMajor["PGA Championship"], b.bestByMajor["PGA Championship"]));
+        break;
+      case "usopen":
+        arr.sort((a, b) => dir * cmpNullable(a.bestByMajor["U.S. Open"], b.bestByMajor["U.S. Open"]));
+        break;
+      case "theopen":
+        arr.sort((a, b) => dir * cmpNullable(a.bestByMajor["The Open Championship"], b.bestByMajor["The Open Championship"]));
+        break;
+    }
+    return arr;
+  }, [ranked, sortKey, sortDir]);
+
+  function toggleSort(k: ChasingMajorsSortKey) {
+    if (sortKey === k) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(k);
+      setSortDir("asc");
+    }
+  }
+
+  if (isLoading) {
+    return <div className="text-center py-12 text-white/40 text-sm">Loading…</div>;
+  }
+  if (sorted.length === 0) {
+    return <div className="text-center py-12 text-white/40 text-sm">No podium finishes yet.</div>;
+  }
+
+  return (
+    <div className="relative">
+      <div className="overflow-x-auto overflow-y-visible">
+        <div className="min-w-[720px] pr-16 md:pr-0">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-20" style={{ backgroundColor: "var(--forest-deep)" }}>
+              <tr className="border-y border-white/10">
+                <SortHeader label="Rank"      k="rank"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0" widthClass="w-14" />
+                <SortHeader label="Team"      k="team"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="min-w-[140px]" />
+                <SortHeader label="Masters"   k="masters"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
+                <SortHeader label="PGA"       k="pga"       sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
+                <SortHeader label="U.S. Open" k="usopen"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
+                <SortHeader label="The Open"  k="theopen"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-20 text-center" />
+                <SortHeader label="Slam"      k="slam"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.team_id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-[#042417]" style={{ color: "var(--gold)" }}>
+                    {r.rank}
+                  </td>
+                  <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold text-white bg-[#042417] truncate">
+                    {r.nickname}
+                  </td>
+                  <PositionCell value={r.bestByMajor["Masters Tournament"]} />
+                  <PositionCell value={r.bestByMajor["PGA Championship"]} />
+                  <PositionCell value={r.bestByMajor["U.S. Open"]} />
+                  <PositionCell value={r.bestByMajor["The Open Championship"]} />
+                  <td className="px-2 py-3 text-center text-xs font-mono tabular-nums text-white">
+                    <span className={r.slamDistinctMajorsWon === 4 ? "font-bold" : ""} style={r.slamDistinctMajorsWon === 4 ? { color: "var(--gold)" } : undefined}>
+                      {r.slamDistinctMajorsWon}
+                    </span>
+                    <span className="text-white/40">/4</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div
+        className="pointer-events-none absolute top-0 right-0 h-full w-16"
+        style={{ background: "linear-gradient(to left, var(--forest-deep), transparent)" }}
+      />
+    </div>
+  );
+}
+
+function SortHeader({
+  label, k, sortKey, sortDir, onClick, sticky, widthClass,
+}: {
+  label: string;
+  k: ChasingMajorsSortKey;
+  sortKey: ChasingMajorsSortKey;
+  sortDir: "asc" | "desc";
+  onClick: (k: ChasingMajorsSortKey) => void;
+  sticky?: string;
+  widthClass?: string;
+}) {
+  const active = sortKey === k;
+  const arrow = active ? (sortDir === "asc" ? "▲" : "▼") : "";
+  const stickyCls = sticky ? `sticky ${sticky} z-30 bg-[#042417]` : "";
+  return (
+    <th className={`text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest ${widthClass ?? ""} ${stickyCls}`}>
+      <button
+        type="button"
+        onClick={() => onClick(k)}
+        className={`inline-flex items-center gap-1 ${active ? "text-white" : "text-white/60 hover:text-white"}`}
+      >
+        {label}
+        <span className="text-[8px]">{arrow}</span>
+      </button>
+    </th>
+  );
+}
+
+function PositionCell({ value }: { value: number | null }) {
+  if (value === null) {
+    return <td className="px-2 py-3 text-center text-xs text-white/30">—</td>;
+  }
+  // Gold/silver/bronze tints for 1/2/3.
+  const color =
+    value === 1 ? "var(--gold)" :
+    value === 2 ? "#d3d3d3" :
+    value === 3 ? "#c98447" : "white";
+  return (
+    <td className="px-2 py-3 text-center text-xs font-mono font-bold tabular-nums" style={{ color }}>
+      {value}
+    </td>
+  );
+}
+
 function HallOfFamePage() {
   const { data, isLoading } = useHallOfFame();
-  const [chip, setChip] = useState<"all">("all");
+  type View = "results" | "vault";
+  const [view, setView] = useState<View>("results");
+  const [vaultCategory, setVaultCategory] = useState<VaultCategory>("chasing_majors");
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--forest-deep)" }}>
@@ -108,24 +416,34 @@ function HallOfFamePage() {
         <h1 className="font-display text-3xl md:text-5xl uppercase text-white tracking-tight">Hall of Fame</h1>
         <p className="text-xs md:text-sm text-white/50 mt-2">Every tournament. Every champion. Every wooden spoon.</p>
 
-        {/* Chips */}
+        {/* Top-level view toggle */}
         <div className="flex gap-2 mt-5 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
-          <button
-            onClick={() => setChip("all")}
-            className={cn(
-              "shrink-0 px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all border",
-              chip === "all"
-                ? "border-transparent shadow-lg"
-                : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-            )}
-            style={chip === "all" ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
-          >
-            All Results
-          </button>
+          <ChipButton
+            label="All Results"
+            active={view === "results"}
+            onClick={() => setView("results")}
+          />
+          <ChipButton
+            label="The Vault"
+            active={view === "vault"}
+            onClick={() => setView("vault")}
+          />
         </div>
+
+        {/* Vault sub-buttons */}
+        {view === "vault" && (
+          <div className="flex gap-2 mt-3 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
+            <SubChipButton
+              label="Chasing Majors"
+              active={vaultCategory === "chasing_majors"}
+              onClick={() => setVaultCategory("chasing_majors")}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Sticky table */}
+      {/* Sticky All Results table */}
+      {view === "results" && (
       <div className="relative">
         <div className="overflow-x-auto overflow-y-visible">
           <div className="min-w-[860px] pr-16 md:pr-0">
@@ -171,6 +489,14 @@ function HallOfFamePage() {
           style={{ background: "linear-gradient(to left, var(--forest-deep), transparent)" }}
         />
       </div>
+      )}
+
+      {/* Vault view */}
+      {view === "vault" && (
+        <div className="px-4 md:px-12 pt-4 pb-12">
+          {vaultCategory === "chasing_majors" && <ChasingMajorsView />}
+        </div>
+      )}
     </div>
   );
 }
