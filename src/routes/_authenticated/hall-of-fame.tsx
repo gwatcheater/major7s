@@ -38,7 +38,7 @@ function useHallOfFame() {
     queryKey: ["hall-of-fame"],
     queryFn: async (): Promise<AggRow[]> => {
       const [{ data: tours }, { data: results }] = await Promise.all([
-        supabase.from("tournaments").select("id,name,location,start_date").order("start_date", { ascending: false }),
+        supabase.from("tournaments").select("id,name,location,start_date").eq("status", "completed").order("start_date", { ascending: false }),
         supabase.from("tournament_results").select("tournament_id,result_type,position,context,teams(nickname)"),
       ]);
       const rs = (results ?? []) as unknown as Row[];
@@ -112,16 +112,18 @@ function ChipButton({ label, active, onClick }: { label: string; active: boolean
 }
 
 function SubChipButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  // Subtler than the top-level toggle: smaller, white-toned, no big gold pop.
+  // Same colour treatment as the top-level ChipButton (gold-on-forest-deep when active)
+  // so the two button rows feel consistent and readable.
   return (
     <button
       onClick={onClick}
       className={cn(
         "shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border",
         active
-          ? "bg-[color:var(--forest-deep)] text-[color:var(--forest-deep)] border-transparent"
+          ? "border-transparent shadow-lg"
           : "border-slate-200 text-slate-500 hover:text-[color:var(--forest-deep)] hover:border-slate-400",
       )}
+      style={active ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
     >
       {label}
     </button>
@@ -159,7 +161,7 @@ function useChasingMajors() {
     queryFn: async (): Promise<ChasingMajorsRow[]> => {
       // Pull tournaments (for major-name lookup) and all podium rows.
       const [{ data: tours }, { data: results }] = await Promise.all([
-        supabase.from("tournaments").select("id,name"),
+        supabase.from("tournaments").select("id,name").eq("status", "completed"),
         supabase
           .from("tournament_results")
           .select("tournament_id,team_id,result_type,position,teams(nickname)")
