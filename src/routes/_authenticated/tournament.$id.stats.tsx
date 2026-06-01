@@ -360,70 +360,118 @@ function TournamentStatsPage() {
         <ArrowLeft className="h-3 w-3" /> Back
       </Link>
 
-      <header className="mt-4 mb-6">
-        <p
-          className="text-[10px] font-bold uppercase tracking-widest"
-          style={{ color: "var(--gold, #b08a3e)" }}
-        >
-          Tournament Statistics
-        </p>
-        <h1 className="font-display text-3xl md:text-4xl mt-1 leading-tight">
-          {t.name}
-        </h1>
-      </header>
-
-      {/* ============ SUMMARY STAT CARDS ============ */}
+      {/* ============ HERO: tournament title + headline KPIs ============ */}
       {(() => {
+        const fieldSize = golfers.length;
+        // Distinct golfers picked (by trimmed lowercase name — robust to duplicate
+        // golfer rows across casings).
         const distinctGolfers = new Set(
           picks
             .map((p) => golferById.get(p.golfer_id)?.golfer_name?.trim().toLowerCase())
             .filter((name): name is string => !!name)
         ).size;
-        const fieldSize = golfers.length;
-        const pctField = fieldSize ? (distinctGolfers / fieldSize) * 100 : 0;
-        const summary = [
-          { label: "Teams", value: totalTeams.toString() },
-          { label: "Total golfers picked", value: distinctGolfers.toString() },
-          { label: "% of field picked", value: `${pctField.toFixed(1)}%` },
-        ];
+        const pctField = fieldSize ? Math.round((distinctGolfers / fieldSize) * 100) : 0;
+
+        // Most picked golfer (single name + count + %).
+        const golferPickCounts = new Map<string, number>();
+        for (const p of picks) {
+          golferPickCounts.set(p.golfer_id, (golferPickCounts.get(p.golfer_id) ?? 0) + 1);
+        }
+        let topGolferId: string | null = null;
+        let topGolferCount = 0;
+        for (const [gid, n] of golferPickCounts) {
+          if (n > topGolferCount) { topGolferCount = n; topGolferId = gid; }
+        }
+        const topGolferName =
+          topGolferId ? golferById.get(topGolferId)?.golfer_name ?? "—" : "—";
+        const topPct = totalTeams > 0 ? Math.round((topGolferCount / totalTeams) * 100) : 0;
+
         return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            {summary.map((s) => (
-              <Card key={s.label} className="p-5 text-center shadow-sm">
-                <p className="font-display text-3xl md:text-4xl leading-none tabular-nums">
-                  {s.value}
-                </p>
-                <p className="text-xs text-muted-foreground uppercase tracking-widest mt-2">
-                  {s.label}
-                </p>
-              </Card>
-            ))}
-          </div>
+          <header
+            className="rounded-xl overflow-hidden mb-8 shadow-sm"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--forest-deep) 0%, #0a3a25 100%)",
+            }}
+          >
+            {/* Title strip */}
+            <div className="px-5 md:px-8 pt-6 pb-5">
+              <p
+                className="text-[10px] font-bold uppercase tracking-widest mb-1.5"
+                style={{ color: "var(--gold, #b08a3e)" }}
+              >
+                Tournament Statistics
+              </p>
+              <h1 className="font-display text-3xl md:text-4xl text-white leading-tight">
+                {t.name}
+              </h1>
+            </div>
+            {/* KPI strip */}
+            <div
+              className="grid grid-cols-3 divide-x border-t"
+              style={{ borderColor: "rgba(255,255,255,0.08)" }}
+            >
+              <KpiBlock
+                label="Total Entries"
+                value={totalTeams.toString()}
+                suffix="teams"
+              />
+              <KpiBlock
+                label="Field Coverage"
+                value={`${distinctGolfers}/${fieldSize}`}
+                meta={`${pctField}% of field`}
+              />
+              <KpiBlock
+                label="Most Picked"
+                value={topGolferName}
+                meta={topGolferCount > 0 ? `${topGolferCount} picks · ${topPct}%` : "—"}
+                gold
+              />
+            </div>
+          </header>
         );
       })()}
 
       {/* ============ SECTION 1: Most Popular Picks ============ */}
-      <Card className="p-5 mb-6">
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
             <h2 className="font-display text-lg uppercase">Most Popular Picks</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={sortMode === "picks" ? "default" : "outline"}
+          <div className="inline-flex rounded-full bg-slate-100 p-1">
+            <button
+              type="button"
               onClick={() => setSortMode("picks")}
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-colors ${
+                sortMode === "picks"
+                  ? "shadow-sm"
+                  : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+              }`}
+              style={
+                sortMode === "picks"
+                  ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" }
+                  : undefined
+              }
             >
               By picks
-            </Button>
-            <Button
-              size="sm"
-              variant={sortMode === "ranking" ? "default" : "outline"}
+            </button>
+            <button
+              type="button"
               onClick={() => setSortMode("ranking")}
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-colors ${
+                sortMode === "ranking"
+                  ? "shadow-sm"
+                  : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+              }`}
+              style={
+                sortMode === "ranking"
+                  ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" }
+                  : undefined
+              }
             >
               By ranking
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -481,7 +529,7 @@ function TournamentStatsPage() {
       </Card>
 
       {/* ============ SECTION 2: Unique Picks ============ */}
-      <Card className="p-5 mb-6">
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Unique Picks</h2>
@@ -518,7 +566,7 @@ function TournamentStatsPage() {
       </Card>
 
       {/* ============ SECTION 3: Popular Combinations ============ */}
-      <Card className="p-5 mb-6">
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Popular Combinations</h2>
@@ -575,7 +623,7 @@ function TournamentStatsPage() {
 
 
       {/* ============ SECTION 4: Identical Teams ============ */}
-      <Card className="p-5 mb-6">
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Identical Teams</h2>
@@ -608,7 +656,7 @@ function TournamentStatsPage() {
 
       {/* ============ SECTION 5: Fun Facts ============ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5">
+        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Fastest entry</h3>
@@ -627,7 +675,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Leaving it late</h3>
@@ -653,7 +701,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Repeat className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Tweaker</h3>
@@ -676,3 +724,34 @@ function TournamentStatsPage() {
     </div>
   );
 }
+
+function KpiBlock({
+  label, value, suffix, meta, gold,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+  meta?: string;
+  gold?: boolean;
+}) {
+  return (
+    <div className="px-4 md:px-6 py-4 border-white/10">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+        {label}
+      </p>
+      <p
+        className="font-display text-2xl md:text-3xl mt-1 leading-tight truncate"
+        style={{ color: gold ? "var(--gold, #b08a3e)" : "#fff" }}
+      >
+        {value}
+        {suffix && (
+          <span className="text-sm font-normal text-white/40 ml-1.5">{suffix}</span>
+        )}
+      </p>
+      {meta && (
+        <p className="text-[11px] text-white/50 mt-1 tabular-nums">{meta}</p>
+      )}
+    </div>
+  );
+}
+
