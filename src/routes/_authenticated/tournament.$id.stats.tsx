@@ -374,13 +374,16 @@ function TournamentStatsPage() {
 
       {/* ============ SUMMARY STAT CARDS ============ */}
       {(() => {
-        const totalPicks = picks.length;
-        const distinctGolfers = new Set(picks.map((p) => p.golfer_id)).size;
+        const distinctGolfers = new Set(
+          picks
+            .map((p) => golferById.get(p.golfer_id)?.golfer_name?.trim().toLowerCase())
+            .filter((name): name is string => !!name)
+        ).size;
         const fieldSize = golfers.length;
         const pctField = fieldSize ? (distinctGolfers / fieldSize) * 100 : 0;
         const summary = [
           { label: "Teams", value: totalTeams.toString() },
-          { label: "Total golfers picked", value: totalPicks.toString() },
+          { label: "Total golfers picked", value: distinctGolfers.toString() },
           { label: "% of field picked", value: `${pctField.toFixed(1)}%` },
         ];
         return (
