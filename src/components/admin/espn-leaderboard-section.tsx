@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { importEspnLeaderboard } from "@/lib/espn-leaderboard.functions";
+import { fetchEspnEventInfo, importEspnLeaderboard } from "@/lib/espn-leaderboard.functions";
 
 const inputCls =
   "w-full px-3 py-2 border border-input bg-white text-sm rounded-sm focus:outline-none focus:border-primary";
@@ -36,13 +36,43 @@ export function EspnLeaderboardSection({
     unmatched?: number;
     unmatched_names?: string[];
   } | null>(null);
+  const [eventPreview, setEventPreview] = useState<{
+    name: string | null;
+    error: string | null;
+  } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const importFn = useServerFn(importEspnLeaderboard);
+  const fetchEventInfoFn = useServerFn(fetchEspnEventInfo);
   const qc = useQueryClient();
 
   useEffect(() => {
     setEspnId(initialEspnEventId ?? "");
   }, [initialEspnEventId, tournamentId]);
+
+  useEffect(() => {
+    const id = initialEspnEventId?.trim();
+    if (!id) {
+      setEventPreview(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadPreview() {
+      setLoadingPreview(true);
+      try {
+        const res = await fetchEventInfoFn({ data: { espn_event_id: id } });
+        if (!cancelled) setEventPreview(res as { name: string | null; error: string | null });
+      } catch {
+        if (!cancelled) setEventPreview({ name: null, error: "Failed to fetch event info" });
+      } finally {
+        if (!cancelled) setLoadingPreview(false);
+      }
+    }
+    loadPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEspnEventId, tournamentId, fetchEventInfoFn]);
 
   async function saveEspnId() {
     setSaving(true);
@@ -110,6 +140,18 @@ export function EspnLeaderboardSection({
             </button>
           </div>
         </Labeled>
+
+        {loadingPreview && <p className="text-xs text-muted-foreground">Loading event info…</p>}
+        {eventPreview && !loadingPreview && (
+          <div className="border border-border bg-background p-3 text-xs">
+            {eventPreview.error ? (
+              <p className="text-destructive">{eventPreview.error}</p>
+            ) : (
+              <p className="font-semibold">{eventPreview.name}</p>
+            )}
+          </div>
+        )}
+
         <button
           onClick={runImport}
           disabled={!espnId.trim() || importing}
@@ -127,8 +169,7 @@ export function EspnLeaderboardSection({
               <>
                 <p>
                   Imported <strong>{result.imported}</strong> · matched{" "}
-                  <strong>{result.matched}</strong> · unmatched{" "}
-                  <strong>{result.unmatched}</strong>
+                  <strong>{result.matched}</strong> · unmatched <strong>{result.unmatched}</strong>
                 </p>
                 {result.unmatched_names && result.unmatched_names.length > 0 && (
                   <div>

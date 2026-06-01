@@ -98,7 +98,9 @@ async function calculateMajor7sScores(
   }
 
   const allGolferIds = Array.from(
-    new Set(((pickRows ?? []) as PickRow[]).map((p) => p.golfer_id).filter((x): x is string => !!x)),
+    new Set(
+      ((pickRows ?? []) as PickRow[]).map((p) => p.golfer_id).filter((x): x is string => !!x),
+    ),
   );
   const golferNameById = new Map<string, string>();
   if (allGolferIds.length > 0) {
@@ -195,10 +197,14 @@ async function calculateMajor7sScores(
 
   // Compute T-prefixed display: anyone whose numeric is shared with another team gets "T".
   const countByNumeric = new Map<number, number>();
-  for (const r of ranked) countByNumeric.set(r.position_numeric, (countByNumeric.get(r.position_numeric) ?? 0) + 1);
+  for (const r of ranked)
+    countByNumeric.set(r.position_numeric, (countByNumeric.get(r.position_numeric) ?? 0) + 1);
   const positioned = ranked.map((r) => ({
     ...r,
-    position_display: (countByNumeric.get(r.position_numeric) ?? 0) > 1 ? `T${r.position_numeric}` : String(r.position_numeric),
+    position_display:
+      (countByNumeric.get(r.position_numeric) ?? 0) > 1
+        ? `T${r.position_numeric}`
+        : String(r.position_numeric),
   }));
 
   // 6) Wipe prior scores for this tournament and re-insert (cleanest way to handle
@@ -341,12 +347,35 @@ async function calculateTournamentResults(tournamentId: string): Promise<void> {
   }
 
   if (toInsert.length > 0) {
-    const { error: insErr } = await supabaseAdmin
-      .from("tournament_results")
-      .insert(toInsert);
+    const { error: insErr } = await supabaseAdmin.from("tournament_results").insert(toInsert);
     if (insErr) throw new Error(`Results calc (insert): ${insErr.message}`);
   }
 }
+
+const EventInfoSchema = z.object({
+  espn_event_id: z.string().min(1).max(64),
+});
+
+export const fetchEspnEventInfo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => EventInfoSchema.parse(input))
+  .handler(async ({ data }) => {
+    const url = `https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${encodeURIComponent(data.espn_event_id)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      return { error: `ESPN API responded ${res.status}`, name: null };
+    }
+    const payload: any = await res.json();
+    const event = payload?.events?.[0];
+    if (!event) {
+      return { error: "No event found for this ESPN ID", name: null };
+    }
+    const eventName: string = event.name ?? "Unknown Event";
+    const eventDate: string | null = event.date ?? null;
+    const year = eventDate ? new Date(eventDate).getUTCFullYear() : null;
+    const display = year ? `${eventName} (${year})` : eventName;
+    return { error: null, name: display };
+  });
 
 export const importEspnLeaderboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -368,17 +397,41 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     const url = `https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${encodeURIComponent(data.espn_event_id)}`;
     const res = await fetch(url);
     if (!res.ok) {
-      return { error: `ESPN API responded ${res.status}`, imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
+      return {
+        error: `ESPN API responded ${res.status}`,
+        imported: 0,
+        matched: 0,
+        unmatched: 0,
+        unmatched_names: [] as string[],
+        teams_scored: 0,
+        teams_skipped_incomplete: 0,
+      };
     }
     const payload: any = await res.json();
     const event = payload?.events?.[0];
     const comp = event?.competitions?.[0];
     if (!comp) {
-      return { error: "Unexpected ESPN response (no competition)", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
+      return {
+        error: "Unexpected ESPN response (no competition)",
+        imported: 0,
+        matched: 0,
+        unmatched: 0,
+        unmatched_names: [] as string[],
+        teams_scored: 0,
+        teams_skipped_incomplete: 0,
+      };
     }
     const completed = event?.status?.type?.completed === true;
     if (!completed) {
-      return { error: "Tournament is not yet final on ESPN", imported: 0, matched: 0, unmatched: 0, unmatched_names: [] as string[], teams_scored: 0, teams_skipped_incomplete: 0 };
+      return {
+        error: "Tournament is not yet final on ESPN",
+        imported: 0,
+        matched: 0,
+        unmatched: 0,
+        unmatched_names: [] as string[],
+        teams_scored: 0,
+        teams_skipped_incomplete: 0,
+      };
     }
 
     // Local golfers for name match
@@ -461,7 +514,15 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     }
 
     if (rows.length === 0) {
-      return { error: "No competitors found", imported: 0, matched: 0, unmatched: 0, unmatched_names: [], teams_scored: 0, teams_skipped_incomplete: 0 };
+      return {
+        error: "No competitors found",
+        imported: 0,
+        matched: 0,
+        unmatched: 0,
+        unmatched_names: [],
+        teams_scored: 0,
+        teams_skipped_incomplete: 0,
+      };
     }
 
     const { error: upErr } = await supabaseAdmin
