@@ -247,13 +247,17 @@ function ChasingMajorsView() {
     // Assign ranks with shared positions for exact ties on (slam, wins, podiums).
     let lastKey = "";
     let lastRank = 0;
-    return baseSorted.map((r, i) => {
+    const withRanks = baseSorted.map((r, i) => {
       const key = `${r.slamDistinctMajorsWon}|${r.totalWins}|${r.totalPodiums}`;
       const rank = key === lastKey ? lastRank : i + 1;
       lastKey = key;
       lastRank = rank;
       return { ...r, rank };
     });
+    // Second pass: flag rows whose rank is shared by at least one other team.
+    const rankCounts = new Map<number, number>();
+    for (const r of withRanks) rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
+    return withRanks.map((r) => ({ ...r, tied: (rankCounts.get(r.rank) ?? 0) > 1 }));
   }, [data]);
 
   const sorted = useMemo(() => {
@@ -329,7 +333,7 @@ function ChasingMajorsView() {
               {sorted.map((r) => (
                 <tr key={r.team_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-white" style={{ color: "var(--gold)" }}>
-                    {r.rank}
+                    {r.tied ? `T${r.rank}` : r.rank}
                   </td>
                   <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold text-[color:var(--forest-deep)] bg-white truncate">
                     {r.nickname}
