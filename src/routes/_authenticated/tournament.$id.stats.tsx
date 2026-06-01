@@ -240,12 +240,12 @@ function TournamentStatsPage() {
 
   // ----- Section 4: Identical Teams -----
   const identicalTeams = useMemo(() => {
-    const groups = new Map<string, { teamIds: string[]; golferIds: string[] }>();
+    const groups = new Map<string, { teamIds: string[]; picks: Pick[] }>();
     for (const [teamId, ps] of picksByTeam.entries()) {
       if (ps.length !== 7) continue;
-      const ids = Array.from(new Set(ps.map((p) => p.golfer_id))).sort();
-      const key = ids.join("|");
-      if (!groups.has(key)) groups.set(key, { teamIds: [], golferIds: ids });
+      const sortedPicks = [...ps].sort((a, b) => a.bucket - b.bucket);
+      const key = sortedPicks.map((p) => p.golfer_id).join("|");
+      if (!groups.has(key)) groups.set(key, { teamIds: [], picks: sortedPicks });
       groups.get(key)!.teamIds.push(teamId);
     }
     return Array.from(groups.values()).filter((g) => g.teamIds.length >= 2);
@@ -380,7 +380,7 @@ function TournamentStatsPage() {
         const pctField = fieldSize ? (distinctGolfers / fieldSize) * 100 : 0;
         const summary = [
           { label: "Teams", value: totalTeams.toString() },
-          { label: "Total golfers picked", value: distinctGolfers.toString() },
+          { label: "Total golfers picked", value: totalPicks.toString() },
           { label: "% of field picked", value: `${pctField.toFixed(1)}%` },
         ];
         return (
@@ -580,10 +580,10 @@ function TournamentStatsPage() {
         {identicalTeams.length === 0 ? (
           <p className="text-sm text-muted-foreground">No identical teams — every entry is unique.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {identicalTeams.map((group, i) => (
-              <div key={i} className="border border-border rounded-md p-4">
-                <div className="flex flex-wrap gap-1.5 mb-3">
+              <div key={i} className="border border-border rounded-md p-3 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
                   {group.teamIds.map((tid) => (
                     <span
                       key={tid}
@@ -594,9 +594,9 @@ function TournamentStatsPage() {
                     </span>
                   ))}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {group.golferIds.map((gid) => golferById.get(gid)?.golfer_name ?? "Unknown").join(", ")}
-                </p>
+                <div className="text-sm">
+                  {group.picks.map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown").join(", ")}
+                </div>
               </div>
             ))}
           </div>
