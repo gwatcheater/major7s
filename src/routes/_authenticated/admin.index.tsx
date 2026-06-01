@@ -1308,7 +1308,7 @@ function SubmissionsTab() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Kpi label="Total Active Approved Users" value={activeApprovedUsers.length} />
-        <Kpi label="Total Submissions Made" value={usersWithPicksForThisTournament.size} />
+        <Kpi label="Total Submissions Made" value={pivotedRows.length} />
         <Kpi
           label="Missing Entries"
           value={usersWhoHaveNotEnteredYet.length}
