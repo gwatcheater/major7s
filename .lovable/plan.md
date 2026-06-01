@@ -1,56 +1,61 @@
-## Scope
+## Goal
 
-Two files were inspected:
-- `src/components/admin/users-directory-tab.tsx` (Account Configuration Panel)
-- `src/routes/_authenticated/admin.index.tsx` (Submissions tab + `exportCsv`)
+Create a new tournament-specific statistics page at `/tournament/$id/stats` that pulls data only for that tournament from existing tables. Visible only when the tournament status is `picks_closed`, `live`, or `completed`.
 
-The Account Configuration Panel already matches spec #1 end-to-end. Only the Submissions tab and CSV exporter need fixes.
+## New route
 
-## 1. Account Configuration Panel — verify, no edits
+`src/routes/_authenticated/tournament.$id.stats.tsx` — `createFileRoute("/_authenticated/tournament/$id/stats")`.
 
-Current behavior already satisfies the request:
-- Teams query orders `is_primary DESC, created_at ASC`, so the primary row renders at the top.
-- Each row keys on `team.id`, binds `value={edits[team.id] ?? team.nickname}` and dispatches updates/deletes against `team.id`.
-- Primary row shows an emerald `Primary` badge; non-primary shows a slate `Additional` badge.
-- Delete button is `disabled={team.is_primary || busy}` and `handleDelete` short-circuits when `team.is_primary` is true.
+Mobile-first single scrollable page using existing shadcn components (`Card`, `Badge`, `Button`, `Progress`, `Skeleton`, `Collapsible`) and existing color tokens / `var(--forest-deep)` for the primary green. No new design system.
 
-No code change here. (Confirm during implementation that nothing has drifted.)
+## Entry points (tournament cards)
 
-## 2. Submissions Spreadsheet — show the team identity, not the owner's profile
+- `src/routes/_authenticated/tournament.$id.tsx` — replace the current "Statistics" nav row (which links to `/stats`) with a link to `/tournament/$id/stats`, rendered only when `t.status ∈ {picks_closed, live, completed}`.
+- `src/routes/_authenticated/home.tsx` and `archive.tsx` tournament cards — add a small "Stats" link/button shown under the same status condition. (All other card behavior unchanged.)
 
-File: `src/routes/_authenticated/admin.index.tsx`, `SubmissionsTab` (~lines 554–804).
+The all-time `/stats` page stays as-is.
 
-The pivot already groups by `teams.id` (good). The bug is only in the row renderer at ~line 779–795:
+## Data sources (existing tables only)
 
-- "Name" column currently renders `p?.team_nickname` (the owner's primary `profiles.team_nickname`). Change it to render `r.teamName` (the joined `teams.nickname` for that specific team row).
-- Add a small `UUID` column (or repurpose) so each row's `r.teamId` is visible, matching the requested "specific team's own unique ID database token" mapping. Concretely, prepend a `<TableHead>UUID</TableHead>` and a `<TableCell className="font-mono text-[10px]">{r.teamId}</TableCell>`, and update the empty-state `colSpan` from 10 → 11.
-- Leave the `SimulateButton` wiring on `r.ownerUserId` (impersonation still targets the owning user account).
+- `tournaments` — get `submission_deadline`, `status`, `name` for the header + Fastest/Late timing baseline (used as "picks opened" fallback baseline if no explicit open time column exists — noted in code comment for adjustment).
+- `picks` — `team_id, bucket, golfer_id, submitted_at, last_edited_at, tweak_count` filtered by `tournament_id`.
+- `golfers` — `id, golfer_name, owgr_rank` filtered by `tournament_id`.
+- `teams` — `id, nickname` for all teams referenced.
 
-No changes to the pivot, query, or `profileById` lookup are required.
+One React Query per table, all scoped by `tournament_id`. All aggregation done client-side via `useMemo`.
 
-## 3. `exportCsv()` — align CSV with the on-screen grid
+## Sections
 
-Same file, `exportCsv` (~lines 669–692). Replace the header string and per-row mapping so:
+1. **Most Popular Picks** — flatten all picks, count per `golfer_id`, join golfer name + OWGR. Toggle `By picks | By ranking` using shadcn `Button` (active = `default`, inactive = `outline`). Each row: rank, name, OWGR badge (`Badge variant="secondary"`), 5px progress bar (`bg-muted` track, `var(--forest-deep)` fill, width = count / topCount), count + percentage right-aligned. Show top 10; `Collapsible` "Show all N golfers" reveals the rest.
 
-- Header line becomes:
-  `UUID,Full Name,Email,Phone,Team Name (Leaderboard Display),Bucket 1,...,Bucket 7`
-- Column 1 (`UUID`) → `r.teamId` (not `r.ownerUserId`).
-- Column 2 (`Full Name`) → owner's full name resolved via `profileById.get(r.ownerUserId)` (unchanged logic).
-- Column 3 (`Email`) → owner email (unchanged).
-- Column 4 (`Phone`) → owner phone (newly surfaced; the lookup already returns it via `nameFor`).
-- Column 5 (`Team Name (Leaderboard Display)`) → `r.teamName` (the specific team's nickname), not `p?.team_nickname`.
-- Bucket columns unchanged.
+2. **Unique Picks** — golfers with exactly one occurrence across all picks. Row: golfer name, team nickname, bucket.
 
-CSV values keep their existing quoting; only the source fields swap.
+3. **Popular Combinations** — four subsections (top 2/3/4/5). For each team build sorted set of its 7 picked golfer_ids; enumerate all C(7,k) subsets, count occurrences, take the max-count combination(s), show up to 3 ties. Display golfer names + team count + team nicknames sharing it.
+
+4. **Identical Teams** — group teams by the canonical sorted-tuple of their 7 picks; list any group with size ≥ 2. Friendly empty state otherwise.
+
+5. **Fun Facts** — three `Card`s side-by-side on desktop, stacked on mobile:
+   - Fastest entry: team with min `submitted_at`; show delta vs `tournaments.submission_deadline` open time (comment notes the assumption since no explicit open time exists).
+   - Leaving it late: team with max `submitted_at` before `submission_deadline`.
+   - Tweaker: team with max `tweak_count` (aggregated across their picks).
+
+## States
+
+- `Skeleton` placeholders while any query loads.
+- Error state with retry (calls `refetch`) using existing `Card` + muted text.
+- Empty states ("No picks yet", "No identical teams") inline per section.
+
+## Responsiveness
+
+Container `max-w-5xl mx-auto p-4 md:p-8`. Sections stack vertically. Fun Facts use `grid grid-cols-1 md:grid-cols-3`. Long lists scroll within page (no inner scroll).
 
 ## Out of scope
 
-- No schema changes; no RLS changes; no new queries.
-- No edits to impersonation, lineup, or tournament header code (already adjusted in prior turns).
-- No edits to `users-directory-tab.tsx`.
+No new tables, RPCs, edge functions, migrations, or design tokens. No edits to the all-time `/stats` page. Read-only.
 
-## Verification after build
+## Files touched
 
-1. Open Admin → Submissions; confirm a user who owns 2+ teams now appears as multiple rows, each showing its own team nickname and its own team UUID.
-2. Export CSV; confirm Column 1 holds team UUIDs and Column 5 holds the per-team nickname.
-3. Open Admin → User Management → ⚙️ Manage Account on a multi-team user; confirm Primary (emerald, delete disabled) sits above Additional (slate, delete enabled) and each input edits its own row.
+- NEW `src/routes/_authenticated/tournament.$id.stats.tsx`
+- EDIT `src/routes/_authenticated/tournament.$id.tsx` (swap Statistics link target + gate by status)
+- EDIT `src/routes/_authenticated/home.tsx` (add gated Stats link on card)
+- EDIT `src/routes/_authenticated/archive.tsx` (add gated Stats link on card)
