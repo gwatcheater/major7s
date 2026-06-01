@@ -86,7 +86,7 @@ function Cell({ entries }: { entries: CellEntry[] }) {
         </div>
       ))}
       {points != null && (
-        <div className="text-[11px] text-white/50 tabular-nums text-center pt-0.5">
+        <div className="text-[11px] text-white/50 tabular-nums text-left pt-0.5">
           {points} pts{isTie && <span className="ml-1 font-bold" style={{ color: "var(--gold)" }}>(T)</span>}
         </div>
       )}
