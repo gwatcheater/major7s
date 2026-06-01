@@ -103,6 +103,7 @@ function TournamentHub() {
   if (
     pathname.endsWith(`/tournament/${id}/lineup`) ||
     pathname.endsWith(`/tournament/${id}/leaderboard`) ||
+    pathname.endsWith(`/tournament/${id}/stats`) ||
     pathname.includes(`/tournament/${id}/blog`)
   ) return <Outlet />;
 
