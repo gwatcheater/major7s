@@ -481,23 +481,32 @@ function TournamentStatsPage() {
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Unique Picks</h2>
+          <Badge variant="secondary" className="rounded-full text-xs">
+            {uniquePicks.length}
+          </Badge>
         </div>
         {uniquePicks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No unique picks — every golfer is shared.</p>
         ) : (
-          <div className="divide-y divide-border border border-border rounded-md">
+          <div className="space-y-2">
             {uniquePicks.map((u, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
               >
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{u.golfer}</div>
-                  <div className="text-xs text-muted-foreground truncate">{u.team}</div>
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="font-medium truncate">{u.golfer}</span>
+                  {u.owgr != null && (
+                    <span className="text-xs text-muted-foreground">#{u.owgr}</span>
+                  )}
+                  <span className="text-xs text-muted-foreground">Bucket {u.bucket}</span>
                 </div>
-                <Badge variant="outline" className="text-[10px] shrink-0">
-                  Bucket {u.bucket}
-                </Badge>
+                <span
+                  className="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
+                  style={{ backgroundColor: "var(--forest-deep, #166534)" }}
+                >
+                  {u.team}
+                </span>
               </div>
             ))}
           </div>
@@ -513,31 +522,41 @@ function TournamentStatsPage() {
         <div className="space-y-5">
           {[2, 3, 4, 5].map((k) => {
             const entries = comboSections[k] ?? [];
+            const teamCount = entries[0]?.teamIds.length ?? 0;
             return (
               <div key={k}>
-                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                  Top {k}-pick combinations
-                </h3>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Top {k}-pick combination
+                  </h3>
+                  {entries.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      · {teamCount} {teamCount === 1 ? "team" : "teams"}
+                    </span>
+                  )}
+                </div>
                 {entries.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No shared {k}-pick combinations.</p>
                 ) : (
                   <div className="space-y-3">
                     {entries.map((e, idx) => (
                       <div key={idx} className="border border-border rounded-md p-3">
-                        <div className="flex flex-wrap gap-1.5 mb-2">
+                        <div className="flex flex-wrap gap-1.5 mb-3">
                           {e.golferIds.map((gid) => (
                             <Badge key={gid} variant="secondary" className="text-xs">
                               {golferById.get(gid)?.golfer_name ?? "Unknown"}
                             </Badge>
                           ))}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Shared by {e.teamIds.length} teams:{" "}
-                          <span className="text-foreground">
-                            {e.teamIds
-                              .map((tid) => teamById.get(tid)?.nickname ?? "Unknown")
-                              .join(", ")}
-                          </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {e.teamIds.map((tid) => (
+                            <span
+                              key={tid}
+                              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-foreground"
+                            >
+                              {teamById.get(tid)?.nickname ?? "Unknown"}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -548,6 +567,7 @@ function TournamentStatsPage() {
           })}
         </div>
       </Card>
+
 
       {/* ============ SECTION 4: Identical Teams ============ */}
       <Card className="p-5 mb-6">
