@@ -453,7 +453,7 @@ function TournamentStatsPage() {
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${(row.count / topCount) * 100}%`,
+                          width: `${Math.min(100, row.pct)}%`,
                           backgroundColor: "var(--forest-deep, #166534)",
                         }}
                       />
