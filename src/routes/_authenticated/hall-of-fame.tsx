@@ -229,6 +229,85 @@ function useChasingMajors() {
   });
 }
 
+function MobileResultCard({ row }: { row: AggRow }) {
+  // Vertical sections: 1st, 2nd, 3rd, BOTR, Wooden Spoon.
+  // Each section renders a small "icon | label | team(s) | points" row.
+  // Hide a section entirely if no team finished in that category for this tournament.
+  const sections: Array<{
+    key: string;
+    label: string;
+    icon: string;
+    iconColor: string;
+    entries: CellEntry[];
+  }> = [
+    { key: "p1",    label: "1ST",  icon: "●", iconColor: "var(--gold)",       entries: row.p1 },
+    { key: "p2",    label: "2ND",  icon: "●", iconColor: "#7d7d7d",            entries: row.p2 },
+    { key: "p3",    label: "3RD",  icon: "●", iconColor: "#c98447",            entries: row.p3 },
+    { key: "botr",  label: "BOTR", icon: "●", iconColor: "var(--forest-deep)", entries: row.botr },
+    { key: "spoon", label: "LAST", icon: "●", iconColor: "#dc2626",            entries: row.spoon },
+  ];
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      {/* Header: year, tournament, location (year and tourney on one line; location on second) */}
+      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono font-bold text-xs tabular-nums shrink-0" style={{ color: "var(--gold)" }}>
+            {row.year}
+          </span>
+          <span className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>
+            {row.name}
+          </span>
+        </div>
+        {row.location && (
+          <div className="text-[11px] text-slate-500 mt-0.5 leading-tight truncate">
+            {row.location}
+          </div>
+        )}
+      </div>
+
+      {/* Sections: each result type on its own row, hidden if empty */}
+      <div className="divide-y divide-slate-100">
+        {sections.map((sec) => {
+          if (sec.entries.length === 0) return null;
+          return (
+            <div key={sec.key} className="px-3 py-2 flex items-start gap-3">
+              {/* Icon + label */}
+              <div className="flex items-center gap-1.5 shrink-0 w-14">
+                <span className="text-[10px] leading-none" style={{ color: sec.iconColor }}>
+                  {sec.icon}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  {sec.label}
+                </span>
+              </div>
+              {/* Team name(s) — stack vertically for ties */}
+              <div className="flex-1 min-w-0">
+                {sec.entries.map((e, i) => (
+                  <div key={i} className="text-sm font-semibold leading-snug" style={{ color: "var(--forest-deep)" }}>
+                    {e.nickname}
+                  </div>
+                ))}
+              </div>
+              {/* Points (right-aligned; first entry's points; T marker if tied) */}
+              <div className="text-xs font-mono tabular-nums text-slate-500 shrink-0 text-right leading-snug pt-0.5">
+                {sec.entries[0]?.points != null && (
+                  <>
+                    {sec.entries[0].points} pts
+                    {sec.entries.length > 1 && (
+                      <span className="ml-1 font-bold" style={{ color: "var(--gold)" }}>(T)</span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ChasingMajorsView() {
   const { data = [], isLoading } = useChasingMajors();
   const [sortKey, setSortKey] = useState<ChasingMajorsSortKey>("rank");
@@ -527,7 +606,8 @@ function HallOfFamePage() {
       {/* Sticky All Results table */}
       {view === "results" && (
       <div className="relative">
-        <div className="overflow-x-auto overflow-y-visible">
+        {/* Desktop: full table with sticky Year + Tournament columns. */}
+        <div className="hidden md:block overflow-x-auto overflow-y-visible">
           <div className="min-w-[860px] pr-16 md:pr-0">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20 bg-white">
@@ -565,11 +645,16 @@ function HallOfFamePage() {
             </table>
           </div>
         </div>
-        {/* Right-edge scroll affordance gradient */}
+        {/* Right-edge scroll affordance gradient (desktop only) */}
         <div
-          className="pointer-events-none absolute top-0 right-0 h-full w-16"
+          className="hidden md:block pointer-events-none absolute top-0 right-0 h-full w-16"
           style={{ background: "linear-gradient(to left, white, transparent)" }}
         />
+
+        {/* Mobile: one card per tournament, vertical sections inside each card. */}
+        <div className="md:hidden space-y-3 px-4">
+          {data?.map((r) => <MobileResultCard key={r.id} row={r} />)}
+        </div>
       </div>
       )}
 
