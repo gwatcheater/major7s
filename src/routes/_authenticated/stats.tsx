@@ -25,6 +25,7 @@ interface Tournament {
   name: string;
   end_date: string;
   status: string;
+  location: string | null;
 }
 
 interface ScoreRow {
@@ -95,7 +96,7 @@ function AllTimeStatsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name, end_date, status");
+        .select("id, name, end_date, status, location");
       if (error) throw error;
       return (data ?? []) as Tournament[];
     },
@@ -104,10 +105,14 @@ function AllTimeStatsPage() {
   // -----------------------------------------------------------
   // Filter state. Defaults to active team / all time / all tournaments.
   // -----------------------------------------------------------
+  // null = uninitialised (will default to active team), "all" = aggregate across every team,
+  // otherwise a specific team UUID.
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const teamId = selectedTeamId ?? activeTeam?.id ?? null;
+  const isAll = teamId === "all";
   const [year, setYear] = useState<"all" | string>("all");
   const [tournamentFilter, setTournamentFilter] = useState<string>("all");
+  const [courseFilter, setCourseFilter] = useState<string>("all");
 
   // Available years derived from tournaments (descending). Only years that have at least
   // one tournament show up in the dropdown.
@@ -119,6 +124,14 @@ function AllTimeStatsPage() {
     return Array.from(ys).sort((a, b) => Number(b) - Number(a));
   }, [tournaments]);
 
+  const availableCourses = useMemo(() => {
+    const cs = new Set<string>();
+    for (const t of tournaments) {
+      if (t.location) cs.add(t.location);
+    }
+    return Array.from(cs).sort((a, b) => a.localeCompare(b));
+  }, [tournaments]);
+
   // -----------------------------------------------------------
   // Big query — every tournament_scores row for the selected team.
   // Filtered client-side by year / tournament selection (cheap; data is small).
@@ -127,10 +140,11 @@ function AllTimeStatsPage() {
     queryKey: ["team-scores-all", teamId],
     enabled: !!teamId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("tournament_scores")
-        .select("tournament_id, team_id, total_points, thru_cut, position_numeric")
-        .eq("team_id", teamId!);
+        .select("tournament_id, team_id, total_points, thru_cut, position_numeric");
+      if (!isAll) q = q.eq("team_id", teamId!);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ScoreRow[];
     },
@@ -141,10 +155,11 @@ function AllTimeStatsPage() {
     queryKey: ["team-results-all", teamId],
     enabled: !!teamId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("tournament_results")
-        .select("tournament_id, team_id, result_type, position")
-        .eq("team_id", teamId!);
+        .select("tournament_id, team_id, result_type, position");
+      if (!isAll) q = q.eq("team_id", teamId!);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ResultRow[];
     },
@@ -159,10 +174,11 @@ function AllTimeStatsPage() {
     queryKey: ["team-score-ids", teamId],
     enabled: !!teamId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("tournament_scores")
-        .select("id, tournament_id")
-        .eq("team_id", teamId!);
+        .select("id, tournament_id");
+      if (!isAll) q = q.eq("team_id", teamId!);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as Array<{ id: string; tournament_id: string }>;
     },
@@ -202,10 +218,12 @@ function AllTimeStatsPage() {
       }
       // tournament/major filter
       if (majorMatchName && t.name !== majorMatchName) continue;
+      // course filter
+      if (courseFilter !== "all" && t.location !== courseFilter) continue;
       ids.add(t.id);
     }
     return ids;
-  }, [tournaments, year, tournamentFilter]);
+  }, [tournaments, year, tournamentFilter, courseFilter]);
 
   // -----------------------------------------------------------
   // Scores filtered by scope
@@ -352,12 +370,13 @@ function AllTimeStatsPage() {
       </header>
 
       {/* Filter row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <FilterSelect
           label="Player"
           value={teamId ?? ""}
           onChange={(v) => setSelectedTeamId(v || null)}
         >
+          <option value="all">ALL</option>
           {teams.map((t) => (
             <option key={t.id} value={t.id}>
               {t.nickname}
@@ -379,13 +398,23 @@ function AllTimeStatsPage() {
             <option key={f.value} value={f.value}>{f.label}</option>
           ))}
         </FilterSelect>
+        <FilterSelect
+          label="Course"
+          value={courseFilter}
+          onChange={(v) => setCourseFilter(v)}
+        >
+          <option value="all">All courses</option>
+          {availableCourses.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </FilterSelect>
       </div>
 
       {/* Top summary card */}
       <div className="border border-border bg-card rounded-md p-5 mb-4 grid grid-cols-3 gap-4">
         <SummaryStat label="Tournaments Played" value={tournamentsPlayed} />
         <PodiumStat breakdown={podiumBreakdown} />
-        <SummaryStat label="Wooden Spoons 🪵🥄" value={woodenSpoons} />
+        <SummaryStat label="Last Place" value={woodenSpoons} />
       </div>
 
       {/* KPI grid */}
