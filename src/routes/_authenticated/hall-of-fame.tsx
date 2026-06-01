@@ -373,13 +373,19 @@ function ChasingMajorsView() {
 
 function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?: boolean } }) {
   const rankLabel = row.tied ? `T${row.rank}` : row.rank;
+  const majors: Array<{ label: string; value: number | null }> = [
+    { label: "M",   value: row.bestByMajor["Masters Tournament"] },
+    { label: "PGA", value: row.bestByMajor["PGA Championship"] },
+    { label: "US",  value: row.bestByMajor["U.S. Open"] },
+    { label: "OPEN", value: row.bestByMajor["The Open Championship"] },
+  ];
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      {/* Header: rank + team on left, slam on right */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      {/* Header: rank close to team name on left, slam top-right */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-baseline gap-2 min-w-0 flex-1">
           <span
-            className="font-mono font-bold text-sm tabular-nums shrink-0 w-10"
+            className="font-mono font-bold text-sm tabular-nums shrink-0"
             style={{ color: "var(--gold)" }}
           >
             {rankLabel}
@@ -388,10 +394,10 @@ function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?
             {row.nickname}
           </span>
         </div>
-        <div className="text-xs font-mono tabular-nums shrink-0">
+        <div className="text-sm font-mono tabular-nums shrink-0">
           <span
-            className={row.slamDistinctMajorsWon === 4 ? "font-bold" : ""}
-            style={row.slamDistinctMajorsWon === 4 ? { color: "var(--gold)" } : undefined}
+            className={row.slamDistinctMajorsWon === 4 ? "font-bold" : "font-semibold"}
+            style={row.slamDistinctMajorsWon === 4 ? { color: "var(--gold)" } : { color: "var(--forest-deep)" }}
           >
             {row.slamDistinctMajorsWon}
           </span>
@@ -399,29 +405,28 @@ function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?
         </div>
       </div>
 
-      {/* Four majors in a 4-column grid below */}
-      <div className="mt-2 grid grid-cols-4 gap-2 pl-[52px]">
-        <MobileMajorCell label="Masters"  value={row.bestByMajor["Masters Tournament"]} />
-        <MobileMajorCell label="PGA"      value={row.bestByMajor["PGA Championship"]} />
-        <MobileMajorCell label="U.S."     value={row.bestByMajor["U.S. Open"]} />
-        <MobileMajorCell label="The Open" value={row.bestByMajor["The Open Championship"]} />
-      </div>
-    </div>
-  );
-}
-
-function MobileMajorCell({ label, value }: { label: string; value: number | null }) {
-  const color =
-    value === 1 ? "var(--gold)" :
-    value === 2 ? "#7d7d7d" :
-    value === 3 ? "#c98447" : undefined;
-  return (
-    <div className="text-center">
-      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">
-        {label}
-      </div>
-      <div className="text-sm font-mono font-bold tabular-nums mt-0.5" style={value === null ? { color: "#cbd5e1" } : { color }}>
-        {value === null ? "—" : value}
+      {/* Major positions: labels row + values row, tightly stacked */}
+      <div className="grid grid-cols-4 gap-1 text-center">
+        {majors.map((m) => (
+          <div key={m.label} className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">
+            {m.label}
+          </div>
+        ))}
+        {majors.map((m) => {
+          const color =
+            m.value === 1 ? "var(--gold)" :
+            m.value === 2 ? "#7d7d7d" :
+            m.value === 3 ? "#c98447" : "#cbd5e1";
+          return (
+            <div
+              key={`${m.label}-v`}
+              className="text-base font-mono font-bold tabular-nums leading-none mt-1"
+              style={{ color }}
+            >
+              {m.value === null ? "—" : m.value}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
