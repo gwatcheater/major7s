@@ -525,6 +525,7 @@ function AllTimeStatsPage() {
         </button>
       )}
     </div>
+    </>
   );
 }
 
