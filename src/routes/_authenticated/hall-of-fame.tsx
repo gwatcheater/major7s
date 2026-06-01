@@ -374,10 +374,10 @@ function ChasingMajorsView() {
 function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?: boolean } }) {
   const rankLabel = row.tied ? `T${row.rank}` : row.rank;
   const majors: Array<{ label: string; value: number | null }> = [
-    { label: "M",   value: row.bestByMajor["Masters Tournament"] },
-    { label: "PGA", value: row.bestByMajor["PGA Championship"] },
-    { label: "US",  value: row.bestByMajor["U.S. Open"] },
-    { label: "OPEN", value: row.bestByMajor["The Open Championship"] },
+    { label: "MASTERS",   value: row.bestByMajor["Masters Tournament"] },
+    { label: "PGA",       value: row.bestByMajor["PGA Championship"] },
+    { label: "U.S. OPEN", value: row.bestByMajor["U.S. Open"] },
+    { label: "THE OPEN",  value: row.bestByMajor["The Open Championship"] },
   ];
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
@@ -408,7 +408,7 @@ function MobileTeamCard({ row }: { row: ChasingMajorsRow & { rank: number; tied?
       {/* Major positions: labels row + values row, tightly stacked */}
       <div className="grid grid-cols-4 gap-1 text-center">
         {majors.map((m) => (
-          <div key={m.label} className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">
+          <div key={m.label} className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
             {m.label}
           </div>
         ))}
