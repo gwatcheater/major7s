@@ -355,13 +355,6 @@ function AllTimeStatsPage() {
   // Render
   // -----------------------------------------------------------
   return (
-    <div className="p-4 md:p-12 max-w-5xl mx-auto">
-      <Link
-        to="/home"
-        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Feed
-      </Link>
 
       <header className="mt-4 mb-6">
         <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>
