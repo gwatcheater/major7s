@@ -768,7 +768,7 @@ function useGolferStats() {
         totalPoints: number;
         bestPoints: number;
         worstRealPoints: number;   // tracks worst NON-cut score (< 100); -Infinity if no non-cut picks
-        cuts: number;              // count of picks scoring exactly 100 (CUT/WD/DQ penalty)
+        cutTournaments: Set<string>;  // distinct tournaments where this golfer was cut
         bucketCounts: Record<number, number>;
         deltaSum: number;
         tournamentSet: Set<string>;
@@ -779,16 +779,18 @@ function useGolferStats() {
         if (!name) continue;
         let a = byGolfer.get(name);
         if (!a) {
-          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstRealPoints: -Infinity, cuts: 0, bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
+          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstRealPoints: -Infinity, cutTournaments: new Set(), bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
           byGolfer.set(name, a);
         }
         a.picks++;
         a.totalPoints += p.points;
         if (p.points < a.bestPoints) a.bestPoints = p.points;
         // The CUT/WD/DQ penalty is exactly 100 points. Anything < 100 is a real (weekend-played)
-        // finishing score. Worst (real) tracks only those; CUT count tracks the 100s.
+        // finishing score. Worst (real) tracks only the real scores; CUT counts the DISTINCT
+        // tournaments where this golfer was cut (not the number of teams who picked him then).
         if (p.points >= 100) {
-          a.cuts++;
+          const cutTid = tournamentByScoreId.get(p.tournament_score_id);
+          if (cutTid) a.cutTournaments.add(cutTid);
         } else if (p.points > a.worstRealPoints) {
           a.worstRealPoints = p.points;
         }
@@ -814,7 +816,7 @@ function useGolferStats() {
           bestPoints: a.bestPoints === Infinity ? 0 : a.bestPoints,
           // Worst (real): if no non-cut picks exist, fall back to 100 (the cut value).
           worstPoints: a.worstRealPoints === -Infinity ? 100 : a.worstRealPoints,
-          cuts: a.cuts,
+          cuts: a.cutTournaments.size,
           modalBucket: modal,
           avgPoints: a.totalPoints / a.picks,
           vsBucketDelta: a.deltaSum / a.picks,
@@ -900,7 +902,7 @@ function GolferStatsView() {
         <p>
           Every golfer ever picked across completed tournaments, aggregated across all teams that picked them.
           <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Avg Points</span> is the average points scored when picked.
-          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> CUT</span> is how often the golfer missed the cut (or WD/DQ), incurring the 100-point penalty.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> CUT</span> is the number of distinct tournaments this golfer missed the cut in (or WD/DQ).
           <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Worst</span> is the worst non-cut finish.
           <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> vs Bucket</span> compares the golfer's actual points against the average score for picks in the same bucket — a negative value (gold) means they outperformed expectation; positive (red) means they underperformed. The bucket baseline below shows the average points per pick at each bucket level.
         </p>
@@ -947,17 +949,17 @@ function GolferStatsView() {
               <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
             ) : sorted.map((r) => (
               <tr key={r.golfer_name} className="hover:bg-slate-50">
-                <td className="px-3 py-2 text-left">
+                <td className="px-2 py-2 text-left">
                   <div className="text-xs font-semibold" style={{ color: "var(--forest-deep)" }}>{r.golfer_name}</div>
                   <div className="text-[10px] text-slate-500">Mostly B{r.modalBucket}</div>
                 </td>
-                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.picks}</td>
-                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.appearances}</td>
-                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.avgPoints.toFixed(1)}</td>
-                <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.bestPoints}</td>
-                <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.worstPoints}</td>
-                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: r.cuts > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>{r.cuts}</td>
-                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-xs" style={{ color: r.vsBucketDelta < 0 ? "var(--gold)" : r.vsBucketDelta > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>
+                <td className="px-2 py-2 text-center font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: "var(--forest-deep)" }}>{r.picks}</td>
+                <td className="px-2 py-2 text-center font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: "var(--forest-deep)" }}>{r.appearances}</td>
+                <td className="px-2 py-2 text-center font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: "var(--forest-deep)" }}>{r.avgPoints.toFixed(1)}</td>
+                <td className="px-2 py-2 text-center font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">{r.bestPoints}</td>
+                <td className="px-2 py-2 text-center font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">{r.worstPoints}</td>
+                <td className="px-2 py-2 text-center font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: r.cuts > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>{r.cuts}</td>
+                <td className="px-2 py-2 text-right font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: r.vsBucketDelta < 0 ? "var(--gold)" : r.vsBucketDelta > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>
                   {r.vsBucketDelta > 0 ? "+" : ""}{r.vsBucketDelta.toFixed(1)}
                 </td>
               </tr>
@@ -1026,6 +1028,19 @@ function MobileGolferCard({ row }: { row: GolferPickStat }) {
           </div>
         ))}
       </div>
+
+      {/* Best/Worst footer strip — small, neutral, so they're available on mobile
+          without crowding the main grid above. */}
+      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+        <span>
+          <span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best</span>
+          <span className="font-mono font-semibold tabular-nums">{row.bestPoints}</span>
+        </span>
+        <span>
+          <span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Worst</span>
+          <span className="font-mono font-semibold tabular-nums">{row.worstPoints}</span>
+        </span>
+      </div>
     </div>
   );
 }
@@ -1043,7 +1058,7 @@ function GolferSortHeader({
   const active = sortKey === k;
   const arrow = active ? (sortDir === "asc" ? "▲" : "▼") : "";
   return (
-    <th className={`px-3 py-2 ${align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"}`}>
+    <th className={`px-2 py-2 ${align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"} whitespace-nowrap`}>
       <button
         type="button"
         onClick={() => onClick(k)}
