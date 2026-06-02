@@ -425,16 +425,16 @@ function TournamentStatsPage() {
               style={{ borderColor: "rgba(255,255,255,0.08)" }}
             >
               <KpiBlock
-                label="Total Entries"
+                label="Teams"
                 value={totalTeams.toString()}
                 suffix="teams"
               />
               <KpiBlock
-                label="Golfers Picked"
+                label="Picked"
                 value={`${distinctGolfers}/${fieldSize}`}
               />
               <KpiBlock
-                label="% of Field Picked"
+                label="% Field"
                 value={`${pctField}%`}
                 gold
               />
@@ -625,19 +625,15 @@ function TournamentStatsPage() {
                   <div className="space-y-3">
                     {entries.map((e, idx) => (
                       <div key={idx} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3">
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3">
+                        <p
+                          className="text-sm font-medium leading-relaxed mb-3"
+                          style={{ color: "var(--forest-deep)" }}
+                        >
                           {[...e.golferIds]
                             .sort((a, b) => (golferPickCounts.get(b) ?? 0) - (golferPickCounts.get(a) ?? 0))
-                            .map((gid) => (
-                              <span
-                                key={gid}
-                                className="text-sm font-medium"
-                                style={{ color: "var(--forest-deep)" }}
-                              >
-                                {golferById.get(gid)?.golfer_name ?? "Unknown"}
-                              </span>
-                            ))}
-                        </div>
+                            .map((gid) => golferById.get(gid)?.golfer_name ?? "Unknown")
+                            .join(" · ")}
+                        </p>
                         <div className="flex flex-wrap gap-1.5">
                           {[...e.teamIds]
                             .sort((a, b) =>
@@ -678,19 +674,14 @@ function TournamentStatsPage() {
               <div key={i} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3 space-y-3">
                 {/* Golfers first — plain dark forest text, sorted by global pick count desc.
                     Matches the visual treatment used in Popular Combinations. */}
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {[...group.picks]
-                    .sort((a, b) => (golferPickCounts.get(b.golfer_id) ?? 0) - (golferPickCounts.get(a.golfer_id) ?? 0))
-                    .map((p) => (
-                      <span
-                        key={p.golfer_id}
-                        className="text-sm font-medium"
-                        style={{ color: "var(--forest-deep)" }}
-                      >
-                        {golferById.get(p.golfer_id)?.golfer_name ?? "Unknown"}
-                      </span>
-                    ))}
-                </div>
+                <p
+                  className="text-sm font-medium leading-relaxed"
+                  style={{ color: "var(--forest-deep)" }}
+                >
+                  {group.picks
+                    .map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown")
+                    .join(" · ")}
+                </p>
                 {/* Teams below — unified forest pill, alphabetical. */}
                 <div className="flex flex-wrap gap-1.5">
                   {[...group.teamIds]
