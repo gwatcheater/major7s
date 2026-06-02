@@ -2,6 +2,18 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+
+// Normalise a golfer name so case/whitespace/diacritic variants merge. ESPN
+// inconsistently uses accented vs unaccented forms across imports (e.g. "Sergio
+// García" vs "Sergio Garcia"), and this is the cheapest defensive fix.
+function normaliseGolferName(s: string): string {
+  return (s ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
@@ -774,13 +786,18 @@ function useGolferStats() {
         tournamentSet: Set<string>;
       }
       const byGolfer = new Map<string, Acc>();
+      // Store display name on the Acc so we can render the original-cased value;
+      // key the Map by normalised name so accent variants merge into one row.
+      const displayByKey = new Map<string, string>();
       for (const p of picks) {
-        const name = (p.golfer_name ?? "").trim();
-        if (!name) continue;
-        let a = byGolfer.get(name);
+        const rawName = (p.golfer_name ?? "").trim();
+        if (!rawName) continue;
+        const nameKey = normaliseGolferName(rawName);
+        if (!displayByKey.has(nameKey)) displayByKey.set(nameKey, rawName);
+        let a = byGolfer.get(nameKey);
         if (!a) {
           a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstRealPoints: -Infinity, cutTournaments: new Set(), bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
-          byGolfer.set(name, a);
+          byGolfer.set(nameKey, a);
         }
         a.picks++;
         a.totalPoints += p.points;
@@ -801,7 +818,8 @@ function useGolferStats() {
       }
 
       const rows: GolferPickStat[] = [];
-      for (const [name, a] of byGolfer) {
+      for (const [key, a] of byGolfer) {
+        const name = displayByKey.get(key) ?? key;
         // Modal bucket — most-common bucket this golfer was placed in.
         let modal = 0, modalCount = 0;
         for (const b of Object.keys(a.bucketCounts)) {
@@ -941,21 +959,18 @@ function useAllGolferStats() {
         picksTotal: number;              // sum of picks across all per-tournament golfer rows
       }
       const byName = new Map<string, Acc>();
-      // Also accumulate global bucket averages: every (golfer-tournament) row that has a
-      // leaderboard score contributes to its bucket's average.
       const bucketSum: Record<number, number> = {};
       const bucketCount: Record<number, number> = {};
 
       for (const g of golfers) {
-        const name = (g.golfer_name ?? "").trim();
-        if (!name) continue;
+        const rawName = (g.golfer_name ?? "").trim();
+        if (!rawName) continue;
+        const nameKey = normaliseGolferName(rawName);
         const lbRow = lbByKey.get(`${g.tournament_id}::${g.id}`);
-        // If no leaderboard row, the golfer was in the field as listed but we have no
-        // score for them — skip from scoring/baseline but still count as appearance.
-        let a = byName.get(name);
+        let a = byName.get(nameKey);
         if (!a) {
           a = {
-            name,
+            name: rawName,
             bucketCounts: {},
             appearances: new Set(),
             cuts: new Set(),
@@ -967,9 +982,8 @@ function useAllGolferStats() {
             deltaCount: 0,
             picksTotal: pickCountByGolferId.get(g.id) ?? 0,
           };
-          byName.set(name, a);
+          byName.set(nameKey, a);
         } else {
-          // Add this tournament's pick count to the running total.
           a.picksTotal += pickCountByGolferId.get(g.id) ?? 0;
         }
         a.appearances.add(g.tournament_id);
@@ -1003,11 +1017,10 @@ function useAllGolferStats() {
       }
 
       // Second pass: compute per-golfer delta vs their bucket-assigned baseline.
-      // We need a (tournament,golfer) loop again to attribute each score to its bucket.
       for (const g of golfers) {
-        const name = (g.golfer_name ?? "").trim();
-        if (!name) continue;
-        const a = byName.get(name);
+        const rawName = (g.golfer_name ?? "").trim();
+        if (!rawName) continue;
+        const a = byName.get(normaliseGolferName(rawName));
         if (!a) continue;
         const lbRow = lbByKey.get(`${g.tournament_id}::${g.id}`);
         if (!lbRow) continue;
