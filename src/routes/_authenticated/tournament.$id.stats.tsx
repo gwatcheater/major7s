@@ -675,7 +675,23 @@ function TournamentStatsPage() {
         ) : (
           <div className="space-y-2">
             {identicalTeams.map((group, i) => (
-              <div key={i} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3 space-y-2">
+              <div key={i} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3 space-y-3">
+                {/* Golfers first — plain dark forest text, sorted by global pick count desc.
+                    Matches the visual treatment used in Popular Combinations. */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {[...group.picks]
+                    .sort((a, b) => (golferPickCounts.get(b.golfer_id) ?? 0) - (golferPickCounts.get(a.golfer_id) ?? 0))
+                    .map((p) => (
+                      <span
+                        key={p.golfer_id}
+                        className="text-sm font-medium"
+                        style={{ color: "var(--forest-deep)" }}
+                      >
+                        {golferById.get(p.golfer_id)?.golfer_name ?? "Unknown"}
+                      </span>
+                    ))}
+                </div>
+                {/* Teams below — unified forest pill, alphabetical. */}
                 <div className="flex flex-wrap gap-1.5">
                   {[...group.teamIds]
                     .sort((a, b) =>
@@ -690,9 +706,6 @@ function TournamentStatsPage() {
                         {teamById.get(tid)?.nickname ?? "Unknown"}
                       </span>
                     ))}
-                </div>
-                <div className="text-sm">
-                  {group.picks.map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown").join(", ")}
                 </div>
               </div>
             ))}
