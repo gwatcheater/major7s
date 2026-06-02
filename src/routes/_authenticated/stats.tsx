@@ -14,6 +14,28 @@ function normaliseGolferName(s: string): string {
     .trim()
     .toLowerCase();
 }
+
+// Title-case a golfer's name for display. Splits on whitespace AND hyphens so
+// double-barrelled surnames work ("Ryder Smith-Jones" → "Ryder Smith-Jones",
+// not "Ryder Smith-jones"). Single-letter tokens like initials are left
+// upper-cased ("J.J." stays "J.J.").
+function titleCaseGolferName(s: string): string {
+  if (!s) return s;
+  return s
+    .split(/(\s+|-)/)
+    .map((token) => {
+      if (/^\s+$/.test(token) || token === "-") return token;
+      // Preserve dot-separated initials like "j.j." → "J.J."
+      if (/\./.test(token)) {
+        return token
+          .split(".")
+          .map((part) => part.length === 0 ? part : part[0].toUpperCase() + part.slice(1).toLowerCase())
+          .join(".");
+      }
+      return token.length === 0 ? token : token[0].toUpperCase() + token.slice(1).toLowerCase();
+    })
+    .join("");
+}
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
@@ -819,7 +841,7 @@ function useGolferStats() {
 
       const rows: GolferPickStat[] = [];
       for (const [key, a] of byGolfer) {
-        const name = displayByKey.get(key) ?? key;
+        const name = titleCaseGolferName(displayByKey.get(key) ?? key);
         // Modal bucket — most-common bucket this golfer was placed in.
         let modal = 0, modalCount = 0;
         for (const b of Object.keys(a.bucketCounts)) {
@@ -827,7 +849,7 @@ function useGolferStats() {
           if (c > modalCount) { modalCount = c; modal = Number(b); }
         }
         rows.push({
-          golfer_name: name,
+          golfer_name: titleCaseGolferName(a.name),
           picks: a.picks,
           appearances: a.tournamentSet.size,
           totalPoints: a.totalPoints,
@@ -948,15 +970,16 @@ function useAllGolferStats() {
       interface Acc {
         name: string;
         bucketCounts: Record<number, number>;
-        appearances: Set<string>;        // tournament_ids in field
-        cuts: Set<string>;               // tournament_ids cut
+        appearances: Set<string>;
+        cuts: Set<string>;
         totalPoints: number;
-        scoredCount: number;             // count of tournaments where they have a leaderboard row
+        scoredCount: number;
         best: number;
-        worst: number;
+        worst: number;                   // includes CUT 100s — kept for completeness
+        worstReal: number;               // worst non-CUT (< 100); -Infinity if every score was a CUT
         deltaSum: number;
         deltaCount: number;
-        picksTotal: number;              // sum of picks across all per-tournament golfer rows
+        picksTotal: number;
       }
       const byName = new Map<string, Acc>();
       const bucketSum: Record<number, number> = {};
@@ -978,6 +1001,7 @@ function useAllGolferStats() {
             scoredCount: 0,
             best: Infinity,
             worst: -Infinity,
+            worstReal: -Infinity,
             deltaSum: 0,
             deltaCount: 0,
             picksTotal: pickCountByGolferId.get(g.id) ?? 0,
@@ -999,6 +1023,9 @@ function useAllGolferStats() {
           a.scoredCount += 1;
           if (points < a.best) a.best = points;
           if (points > a.worst) a.worst = points;
+          // Worst NON-cut: filter out the 100 penalty so this reflects floor
+          // performance when the golfer actually played the weekend.
+          if (!isCutFlag && points > a.worstReal) a.worstReal = points;
           if (isCutFlag) a.cuts.add(g.tournament_id);
 
           // Contribute to global bucket average.
@@ -1046,7 +1073,9 @@ function useAllGolferStats() {
           appearances: a.appearances.size,
           totalPoints: a.totalPoints,
           bestPoints: a.best === Infinity ? 0 : a.best,
-          worstPoints: a.worst === -Infinity ? 0 : a.worst,
+          // Worst displays non-CUT floor — falls back to 100 only if every pick
+          // was a CUT (matches PICKED mode and the rule we agreed on).
+          worstPoints: a.worstReal === -Infinity ? 100 : a.worstReal,
           cuts: a.cuts.size,
           modalBucket: modal,
           avgPoints: a.scoredCount > 0 ? a.totalPoints / a.scoredCount : 0,
@@ -1074,18 +1103,21 @@ function GolferStatsView() {
 
   const [sortKey, setSortKey] = useState<GolferSortKey>("delta");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  // Min Picks doesn't really apply in ALL mode (most golfers will have 0 picks);
-  // use a separate Min Appearances threshold for ALL, Min Picks for PICKED.
   const [minPicks, setMinPicks] = useState<number>(5);
   const [minAppearances, setMinAppearances] = useState<number>(1);
+  // Search filter — free-text substring match on golfer name.
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const filtered = useMemo(() => {
     if (!data) return [];
+    const q = normaliseGolferName(searchQuery);
+    const matchesSearch = (name: string) =>
+      q.length === 0 || normaliseGolferName(name).includes(q);
     if (mode === "all") {
-      return data.rows.filter((r) => r.appearances >= minAppearances);
+      return data.rows.filter((r) => r.appearances >= minAppearances && matchesSearch(r.golfer_name));
     }
-    return data.rows.filter((r) => r.picks >= minPicks);
-  }, [data, minPicks, minAppearances, mode]);
+    return data.rows.filter((r) => r.picks >= minPicks && matchesSearch(r.golfer_name));
+  }, [data, minPicks, minAppearances, mode, searchQuery]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -1125,6 +1157,18 @@ function GolferStatsView() {
 
   return (
     <div>
+      {/* Search bar */}
+      <div className="mb-3">
+        <input
+          type="text"
+          placeholder="Search golfers…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full h-9 px-3 border border-slate-200 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+          style={{ color: "var(--forest-deep)" }}
+        />
+      </div>
+
       {/* Mode toggle + filter row */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="inline-flex rounded-full border border-slate-200 p-0.5">
