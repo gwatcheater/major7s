@@ -907,8 +907,8 @@ function GolferStatsView() {
         </p>
       </div>
 
-      {/* Sortable table */}
-      <div className="border border-slate-200 rounded-md overflow-hidden">
+      {/* Sortable table — desktop */}
+      <div className="hidden md:block border border-slate-200 rounded-md overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
             <tr>
@@ -942,6 +942,67 @@ function GolferStatsView() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {sorted.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</div>
+        ) : sorted.map((r) => (
+          <MobileGolferCard key={r.golfer_name} row={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileGolferCard({ row }: { row: GolferPickStat }) {
+  // Header: name + "Mostly B?" on the left; vs Bucket delta as the headline number top-right.
+  // Below: 4-column grid (PICKS / APPS / AVG / BEST) with values underneath. Worst hidden
+  // on mobile to keep the grid balanced — desktop still shows it; mobile already has the
+  // headline insight on the right of the header.
+  const deltaColor =
+    row.vsBucketDelta < 0 ? "var(--gold)" :
+    row.vsBucketDelta > 0 ? "var(--alert,#ef4444)" :
+    "var(--forest-deep)";
+  const cells: Array<{ label: string; value: string }> = [
+    { label: "PICKS",  value: row.picks.toString() },
+    { label: "APPS",   value: row.appearances.toString() },
+    { label: "AVG",    value: row.avgPoints.toFixed(1) },
+    { label: "BEST",   value: row.bestPoints.toString() },
+  ];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>
+            {row.golfer_name}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Mostly B{row.modalBucket}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">vs Bucket</div>
+          <div className="text-lg font-mono font-bold tabular-nums leading-tight mt-0.5" style={{ color: deltaColor }}>
+            {row.vsBucketDelta > 0 ? "+" : ""}{row.vsBucketDelta.toFixed(1)}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1 text-center">
+        {cells.map((c) => (
+          <div key={c.label} className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">
+            {c.label}
+          </div>
+        ))}
+        {cells.map((c) => (
+          <div
+            key={`${c.label}-v`}
+            className="text-sm font-mono font-bold tabular-nums leading-none mt-1"
+            style={{ color: "var(--forest-deep)" }}
+          >
+            {c.value}
+          </div>
+        ))}
       </div>
     </div>
   );
