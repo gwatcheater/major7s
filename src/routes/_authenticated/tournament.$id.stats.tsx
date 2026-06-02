@@ -106,12 +106,25 @@ function TournamentStatsPage() {
   const picksQ = useQuery({
     queryKey: ["t-stats", "picks", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("picks")
-        .select("team_id, bucket, golfer_id, submitted_at, last_edited_at, tweak_count")
-        .eq("tournament_id", id);
-      if (error) throw error;
-      return (data ?? []) as Pick[];
+      // Paginate — at 144 teams × 7 picks we sit right at Supabase's default
+      // 1000-row cap. Without paging we silently truncate, which corrupts every
+      // memo downstream (Unique Picks, Identical Teams, etc.).
+      const all: Pick[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      for (let page = 0; page < 50; page++) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select("team_id, bucket, golfer_id, submitted_at, last_edited_at, tweak_count")
+          .eq("tournament_id", id)
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = (data ?? []) as Pick[];
+        all.push(...chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      }
+      return all;
     },
   });
 
@@ -127,10 +140,23 @@ function TournamentStatsPage() {
     },
   });
 
+  // Teams query scoped to only the teams entering THIS tournament. Previously
+  // pulled every team in the database which scales poorly. Depends on picksQ
+  // being loaded so we can derive the team-id list to filter on.
+  const teamIdsInTournament = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of (picksQ.data ?? [])) ids.add(p.team_id);
+    return Array.from(ids);
+  }, [picksQ.data]);
+
   const teamsQ = useQuery({
-    queryKey: ["t-stats", "teams"],
+    queryKey: ["t-stats", "teams", id, teamIdsInTournament.length],
+    enabled: teamIdsInTournament.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase.from("teams").select("id, nickname");
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, nickname")
+        .in("id", teamIdsInTournament);
       if (error) throw error;
       return (data ?? []) as Team[];
     },
@@ -427,7 +453,6 @@ function TournamentStatsPage() {
               <KpiBlock
                 label="Teams"
                 value={totalTeams.toString()}
-                suffix="teams"
               />
               <KpiBlock
                 label="Picked"
