@@ -131,8 +131,23 @@ function SubChipButton({ label, active, onClick }: { label: string; active: bool
   );
 }
 
-type VaultCategory = "chasing_majors";
-type ChasingMajorsSortKey = "rank" | "team" | "masters" | "pga" | "usopen" | "theopen" | "slam";
+type VaultCategory = "chasing_majors" | "oom";
+type VaultSortKey =
+  | "rank"
+  | "team"
+  // Chasing Majors
+  | "masters"
+  | "pga"
+  | "usopen"
+  | "theopen"
+  | "slam"
+  // OOM
+  | "firsts"
+  | "seconds"
+  | "thirds"
+  | "top10"
+  | "last"
+  | "points";
 
 interface ChasingMajorsRow {
   team_id: string;
@@ -309,9 +324,298 @@ function MobileResultCard({ row }: { row: AggRow }) {
   );
 }
 
+interface OomRow {
+  team_id: string;
+  nickname: string;
+  firsts: number;
+  seconds: number;
+  thirds: number;
+  top10: number;          // count of top-10 finishes from tournament_scores (includes 1/2/3)
+  last: number;           // wooden_spoon rows
+  points: number;         // OOM points
+}
+
+// OOM points: 10 pts for 1st, 5 pts for 2nd, 2 pts for 3rd, 1 pt for top-10 (positions 4-10),
+// minus 10 for last place. Top-10 and podium are *separate* in the points calc — a 1st-place
+// finish earns 10 (not 10+1), so we count Top-10 as positions 4-10 ONLY for the points sum,
+// but display the full "top 10 incl. podium" count in the Top 10 column per the spec wording.
+function calcOomPoints(r: { firsts: number; seconds: number; thirds: number; top10IncludingPodium: number; last: number }) {
+  // Positions 4-10 only contribute the 1pt-each tier, since podium is already paid out at 10/5/2.
+  const topNonPodium = Math.max(0, r.top10IncludingPodium - r.firsts - r.seconds - r.thirds);
+  return r.firsts * 10 + r.seconds * 5 + r.thirds * 2 + topNonPodium * 1 - r.last * 10;
+}
+
+function useOom() {
+  return useQuery({
+    queryKey: ["oom"],
+    queryFn: async (): Promise<OomRow[]> => {
+      // We need three things:
+      //   1) tournament_results rows (podium + wooden_spoon) for COMPLETED tournaments only,
+      //      joined to teams for nickname.
+      //   2) tournament_scores rows for the same tournaments to count top-10 finishes
+      //      (position_numeric <= 10).
+      //   3) The list of completed tournament ids to filter both queries.
+
+      const [{ data: completedTours }] = await Promise.all([
+        supabase.from("tournaments").select("id").eq("status", "completed"),
+      ]);
+      const completedIds = new Set(((completedTours ?? []) as Array<{ id: string }>).map((t) => t.id));
+      if (completedIds.size === 0) return [];
+
+      const [{ data: results }, { data: scores }] = await Promise.all([
+        supabase
+          .from("tournament_results")
+          .select("tournament_id,team_id,result_type,position,teams(nickname)")
+          .in("result_type", ["podium", "wooden_spoon"]),
+        supabase
+          .from("tournament_scores")
+          .select("tournament_id,team_id,position_numeric,teams(nickname)"),
+      ]);
+
+      interface Acc {
+        nickname: string;
+        firsts: number;
+        seconds: number;
+        thirds: number;
+        top10IncludingPodium: number;
+        last: number;
+      }
+      const byTeam = new Map<string, Acc>();
+
+      const ensure = (team_id: string, nickname: string) => {
+        let a = byTeam.get(team_id);
+        if (!a) {
+          a = { nickname, firsts: 0, seconds: 0, thirds: 0, top10IncludingPodium: 0, last: 0 };
+          byTeam.set(team_id, a);
+        }
+        return a;
+      };
+
+      // Pass 1: podium + wooden_spoon counts from tournament_results
+      for (const r of (results ?? []) as unknown as Array<{
+        tournament_id: string;
+        team_id: string;
+        result_type: string;
+        position: number;
+        teams: { nickname: string } | null;
+      }>) {
+        if (!completedIds.has(r.tournament_id)) continue;
+        const a = ensure(r.team_id, r.teams?.nickname ?? "—");
+        if (r.result_type === "podium") {
+          if (r.position === 1) a.firsts++;
+          else if (r.position === 2) a.seconds++;
+          else if (r.position === 3) a.thirds++;
+        } else if (r.result_type === "wooden_spoon") {
+          a.last++;
+        }
+      }
+
+      // Pass 2: top-10 finishes (position_numeric 1..10) from tournament_scores
+      for (const s of (scores ?? []) as unknown as Array<{
+        tournament_id: string;
+        team_id: string;
+        position_numeric: number;
+        teams: { nickname: string } | null;
+      }>) {
+        if (!completedIds.has(s.tournament_id)) continue;
+        if (s.position_numeric <= 10) {
+          const a = ensure(s.team_id, s.teams?.nickname ?? "—");
+          a.top10IncludingPodium++;
+        }
+      }
+
+      const out: OomRow[] = [];
+      for (const [team_id, a] of byTeam) {
+        out.push({
+          team_id,
+          nickname: a.nickname,
+          firsts: a.firsts,
+          seconds: a.seconds,
+          thirds: a.thirds,
+          top10: a.top10IncludingPodium,
+          last: a.last,
+          points: calcOomPoints({
+            firsts: a.firsts,
+            seconds: a.seconds,
+            thirds: a.thirds,
+            top10IncludingPodium: a.top10IncludingPodium,
+            last: a.last,
+          }),
+        });
+      }
+      return out;
+    },
+  });
+}
+
+function OomView() {
+  const { data = [], isLoading } = useOom();
+  const [sortKey, setSortKey] = useState<VaultSortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Spec sort: Points desc, then 1sts desc, then 2nds desc, then 3rds desc.
+  const ranked = useMemo(() => {
+    const baseSorted = [...data].sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.firsts !== a.firsts) return b.firsts - a.firsts;
+      if (b.seconds !== a.seconds) return b.seconds - a.seconds;
+      if (b.thirds !== a.thirds) return b.thirds - a.thirds;
+      return a.nickname.localeCompare(b.nickname);
+    });
+    let lastKey = "";
+    let lastRank = 0;
+    const withRanks = baseSorted.map((r, i) => {
+      const key = `${r.points}|${r.firsts}|${r.seconds}|${r.thirds}`;
+      const rank = key === lastKey ? lastRank : i + 1;
+      lastKey = key;
+      lastRank = rank;
+      return { ...r, rank };
+    });
+    const rankCounts = new Map<number, number>();
+    for (const r of withRanks) rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
+    return withRanks.map((r) => ({ ...r, tied: (rankCounts.get(r.rank) ?? 0) > 1 }));
+  }, [data]);
+
+  const sorted = useMemo(() => {
+    const arr = [...ranked];
+    const dir = sortDir === "asc" ? 1 : -1;
+    switch (sortKey) {
+      case "rank":   arr.sort((a, b) => dir * (a.rank - b.rank)); break;
+      case "team":   arr.sort((a, b) => dir * a.nickname.localeCompare(b.nickname)); break;
+      case "firsts": arr.sort((a, b) => dir * (a.firsts - b.firsts)); break;
+      case "seconds":arr.sort((a, b) => dir * (a.seconds - b.seconds)); break;
+      case "thirds": arr.sort((a, b) => dir * (a.thirds - b.thirds)); break;
+      case "top10":  arr.sort((a, b) => dir * (a.top10 - b.top10)); break;
+      case "last":   arr.sort((a, b) => dir * (a.last - b.last)); break;
+      case "points": arr.sort((a, b) => dir * (a.points - b.points)); break;
+    }
+    return arr;
+  }, [ranked, sortKey, sortDir]);
+
+  function toggleSort(k: VaultSortKey) {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir("asc"); }
+  }
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>;
+  if (sorted.length === 0) return <div className="text-center py-12 text-slate-400 text-sm">No completed tournaments yet.</div>;
+
+  return (
+    <div className="relative max-w-3xl mx-auto px-4 md:px-12">
+      {/* Desktop sortable table */}
+      <div className="hidden md:block overflow-x-auto overflow-y-visible">
+        <div className="min-w-[620px]">
+          <table className="border-collapse" style={{ tableLayout: "fixed" }}>
+            <thead className="sticky top-0 z-20 bg-white">
+              <tr className="border-y border-slate-200">
+                <SortHeader label="Rank"    k="rank"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0"  widthClass="w-14" />
+                <SortHeader label="Team"    k="team"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="w-40" />
+                <SortHeader label="1st"     k="firsts"  sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-14 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="2nd"     k="seconds" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-14 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="3rd"     k="thirds"  sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-14 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="Top 10"  k="top10"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="Last"    k="last"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-14 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="Points"  k="points"  sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-16 text-center whitespace-nowrap" align="center" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.team_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-white" style={{ color: "var(--gold)" }}>
+                    {r.tied ? `T${r.rank}` : r.rank}
+                  </td>
+                  <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold bg-white truncate" style={{ color: "var(--forest-deep)" }}>
+                    {r.nickname}
+                  </td>
+                  <OomCountCell value={r.firsts}  color="var(--gold)" />
+                  <OomCountCell value={r.seconds} color="#7d7d7d" />
+                  <OomCountCell value={r.thirds}  color="#c98447" />
+                  <OomCountCell value={r.top10}   color="var(--forest-deep)" />
+                  <OomCountCell value={r.last}    color="var(--alert,#ef4444)" />
+                  <td className="px-2 py-3 text-center text-sm font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>
+                    {r.points}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {sorted.map((r) => (
+          <MobileOomCard key={r.team_id} row={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OomCountCell({ value, color }: { value: number; color: string }) {
+  // Zero values are de-emphasised (slate-300 dash-like feel) so the eye focuses on
+  // the teams that actually have something to show.
+  if (value === 0) {
+    return <td className="px-2 py-3 text-center text-xs text-slate-300">0</td>;
+  }
+  return (
+    <td className="px-2 py-3 text-center text-xs font-mono font-bold tabular-nums" style={{ color }}>
+      {value}
+    </td>
+  );
+}
+
+function MobileOomCard({ row }: { row: OomRow & { rank: number; tied?: boolean } }) {
+  const rankLabel = row.tied ? `T${row.rank}` : row.rank;
+  const cells: Array<{ label: string; value: number; color: string }> = [
+    { label: "1ST",    value: row.firsts,  color: "var(--gold)" },
+    { label: "2ND",    value: row.seconds, color: "#7d7d7d" },
+    { label: "3RD",    value: row.thirds,  color: "#c98447" },
+    { label: "TOP 10", value: row.top10,   color: "var(--forest-deep)" },
+    { label: "LAST",   value: row.last,    color: "var(--alert,#ef4444)" },
+  ];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      {/* Header: rank + team on left, points top-right */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-baseline gap-2 min-w-0 flex-1">
+          <span className="font-mono font-bold text-sm tabular-nums shrink-0" style={{ color: "var(--gold)" }}>
+            {rankLabel}
+          </span>
+          <span className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>
+            {row.nickname}
+          </span>
+        </div>
+        <div className="text-base font-mono font-bold tabular-nums shrink-0" style={{ color: "var(--forest-deep)" }}>
+          {row.points}
+          <span className="text-[10px] font-semibold text-slate-400 ml-1">pts</span>
+        </div>
+      </div>
+
+      {/* 5-column counts grid: labels row, then values row */}
+      <div className="grid grid-cols-5 gap-1 text-center">
+        {cells.map((c) => (
+          <div key={c.label} className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+            {c.label}
+          </div>
+        ))}
+        {cells.map((c) => (
+          <div
+            key={`${c.label}-v`}
+            className="text-base font-mono font-bold tabular-nums leading-none mt-1"
+            style={{ color: c.value === 0 ? "#cbd5e1" : c.color }}
+          >
+            {c.value}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ChasingMajorsView() {
   const { data = [], isLoading } = useChasingMajors();
-  const [sortKey, setSortKey] = useState<ChasingMajorsSortKey>("rank");
+  const [sortKey, setSortKey] = useState<VaultSortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Base sort follows the spec: Slam desc, totalWins desc, totalPodiums desc.
@@ -377,7 +681,7 @@ function ChasingMajorsView() {
     return arr;
   }, [ranked, sortKey, sortDir]);
 
-  function toggleSort(k: ChasingMajorsSortKey) {
+  function toggleSort(k: VaultSortKey) {
     if (sortKey === k) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
@@ -516,10 +820,10 @@ function SortHeader({
   label, k, sortKey, sortDir, onClick, sticky, widthClass, align = "left",
 }: {
   label: string;
-  k: ChasingMajorsSortKey;
-  sortKey: ChasingMajorsSortKey;
+  k: VaultSortKey;
+  sortKey: VaultSortKey;
   sortDir: "asc" | "desc";
-  onClick: (k: ChasingMajorsSortKey) => void;
+  onClick: (k: VaultSortKey) => void;
   sticky?: string;
   widthClass?: string;
   align?: "left" | "center";
@@ -600,6 +904,11 @@ function HallOfFamePage() {
               active={vaultCategory === "chasing_majors"}
               onClick={() => setVaultCategory("chasing_majors")}
             />
+            <SubChipButton
+              label="OOM"
+              active={vaultCategory === "oom"}
+              onClick={() => setVaultCategory("oom")}
+            />
           </div>
         )}
       </div>
@@ -663,6 +972,7 @@ function HallOfFamePage() {
       {view === "vault" && (
         <div className="px-4 md:px-12 pt-4 pb-12">
           {vaultCategory === "chasing_majors" && <ChasingMajorsView />}
+          {vaultCategory === "oom" && <OomView />}
         </div>
       )}
     </div>
