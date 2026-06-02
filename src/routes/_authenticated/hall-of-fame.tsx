@@ -529,11 +529,18 @@ function PointsView() {
   const { data = [], isLoading } = usePointsView();
   const [sortKey, setSortKey] = useState<VaultSortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Minimum-tournaments filter — "None" (0) lets every team through.
+  const [minTournaments, setMinTournaments] = useState<number>(0);
 
   // Spec sort: lowest avgPoints first (best), tie-break by lower avgPosition,
   // then by tournament count descending (more tournaments => more reliable).
+  // The filter is applied BEFORE ranking so ranks reflect the visible cohort.
+  const filtered = useMemo(
+    () => data.filter((r) => r.tournaments >= minTournaments),
+    [data, minTournaments],
+  );
   const ranked = useMemo(() => {
-    const baseSorted = [...data].sort((a, b) => {
+    const baseSorted = [...filtered].sort((a, b) => {
       if (a.avgPoints !== b.avgPoints) return a.avgPoints - b.avgPoints;
       if (a.avgPosition !== b.avgPosition) return a.avgPosition - b.avgPosition;
       if (b.tournaments !== a.tournaments) return b.tournaments - a.tournaments;
@@ -551,7 +558,7 @@ function PointsView() {
     const rankCounts = new Map<number, number>();
     for (const r of withRanks) rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
     return withRanks.map((r) => ({ ...r, tied: (rankCounts.get(r.rank) ?? 0) > 1 }));
-  }, [data]);
+  }, [filtered]);
 
   const sorted = useMemo(() => {
     const arr = [...ranked];
@@ -572,10 +579,33 @@ function PointsView() {
   }
 
   if (isLoading) return <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>;
-  if (sorted.length === 0) return <div className="text-center py-12 text-slate-400 text-sm">No completed tournaments yet.</div>;
+  if (sorted.length === 0) return (
+    <div className="text-center py-12 text-slate-400 text-sm">
+      {minTournaments > 0 ? `No teams with ${minTournaments}+ tournaments yet.` : "No completed tournaments yet."}
+    </div>
+  );
 
   return (
     <div className="relative max-w-3xl mx-auto px-4 md:px-12">
+      {/* Minimum-tournaments filter */}
+      <div className="flex items-center justify-end gap-2 mb-3">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+          Min Tournaments
+        </label>
+        <select
+          value={minTournaments}
+          onChange={(e) => setMinTournaments(Number(e.target.value))}
+          className="h-8 px-2 border border-slate-200 rounded-md bg-white text-xs font-semibold"
+          style={{ color: "var(--forest-deep)" }}
+        >
+          <option value={0}>None</option>
+          <option value={5}>5</option>
+          <option value={10}>10</option>
+          <option value={15}>15</option>
+          <option value={20}>20</option>
+        </select>
+      </div>
+
       {/* Desktop sortable table */}
       <div className="hidden md:block overflow-x-auto overflow-y-visible">
         <div className="min-w-[560px]">
