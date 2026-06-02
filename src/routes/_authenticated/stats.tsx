@@ -685,6 +685,7 @@ function TabChip({
 interface GolferPickStat {
   golfer_name: string;
   picks: number;
+  appearances: number;           // count of distinct tournaments this golfer appeared in (any team's pick)
   totalPoints: number;
   bestPoints: number;
   worstPoints: number;
@@ -710,39 +711,41 @@ function useGolferStats() {
       //    Then pull all picks via the paginated fetcher (the file has its own,
       //    but stats.tsx doesn't, so inline a small loop).
       const tourIds = tourList.map((t) => t.id);
-      const scoreIds: string[] = [];
+      const scoreRows: Array<{ id: string; tournament_id: string }> = [];
       {
         let from = 0;
         const pageSize = 1000;
         for (let page = 0; page < 100; page++) {
           const { data, error } = await supabase
             .from("tournament_scores")
-            .select("id")
+            .select("id,tournament_id")
             .in("tournament_id", tourIds)
             .range(from, from + pageSize - 1);
           if (error) throw new Error(error.message);
-          const chunk = (data ?? []) as Array<{ id: string }>;
-          scoreIds.push(...chunk.map((c) => c.id));
+          const chunk = (data ?? []) as Array<{ id: string; tournament_id: string }>;
+          scoreRows.push(...chunk);
           if (chunk.length < pageSize) break;
           from += pageSize;
         }
       }
-      if (scoreIds.length === 0) return { rows: [], bucketAvg: {} };
+      if (scoreRows.length === 0) return { rows: [], bucketAvg: {} };
+      const scoreIds = scoreRows.map((r) => r.id);
+      const tournamentByScoreId = new Map(scoreRows.map((r) => [r.id, r.tournament_id]));
 
       // 3) Pull all pick rows for those scores. tournament_score_picks already
       //    carries golfer_name + bucket + points, so no join needed.
       //    Chunked at 100 score-ids per query (~700 picks per query, well under
       //    Supabase's 1000-row cap so no inner pagination needed).
-      const picks: Array<{ bucket: number; golfer_name: string; points: number }> = [];
+      const picks: Array<{ tournament_score_id: string; bucket: number; golfer_name: string; points: number }> = [];
       const CHUNK = 100;
       for (let i = 0; i < scoreIds.length; i += CHUNK) {
         const idChunk = scoreIds.slice(i, i + CHUNK);
         const { data, error } = await supabase
           .from("tournament_score_picks")
-          .select("bucket,golfer_name,points")
+          .select("tournament_score_id,bucket,golfer_name,points")
           .in("tournament_score_id", idChunk);
         if (error) throw new Error(`picks query failed: ${error.message}`);
-        picks.push(...((data ?? []) as Array<{ bucket: number; golfer_name: string; points: number }>));
+        picks.push(...((data ?? []) as Array<{ tournament_score_id: string; bucket: number; golfer_name: string; points: number }>));
       }
 
       // 4) Bucket averages — the baseline expectation per bucket across all picks.
@@ -766,15 +769,15 @@ function useGolferStats() {
         worstPoints: number;
         bucketCounts: Record<number, number>;
         deltaSum: number;          // sum of (pick.points - bucketAvg[pick.bucket])
+        tournamentSet: Set<string>;
       }
       const byGolfer = new Map<string, Acc>();
       for (const p of picks) {
-        // Normalise nickname to trimmed canonical form
         const name = (p.golfer_name ?? "").trim();
         if (!name) continue;
         let a = byGolfer.get(name);
         if (!a) {
-          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstPoints: -Infinity, bucketCounts: {}, deltaSum: 0 };
+          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstPoints: -Infinity, bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
           byGolfer.set(name, a);
         }
         a.picks++;
@@ -783,6 +786,8 @@ function useGolferStats() {
         if (p.points > a.worstPoints) a.worstPoints = p.points;
         a.bucketCounts[p.bucket] = (a.bucketCounts[p.bucket] ?? 0) + 1;
         a.deltaSum += (p.points - (bucketAvg[p.bucket] ?? 0));
+        const tid = tournamentByScoreId.get(p.tournament_score_id);
+        if (tid) a.tournamentSet.add(tid);
       }
 
       const rows: GolferPickStat[] = [];
@@ -796,6 +801,7 @@ function useGolferStats() {
         rows.push({
           golfer_name: name,
           picks: a.picks,
+          appearances: a.tournamentSet.size,
           totalPoints: a.totalPoints,
           bestPoints: a.bestPoints === Infinity ? 0 : a.bestPoints,
           worstPoints: a.worstPoints === -Infinity ? 0 : a.worstPoints,
@@ -809,7 +815,7 @@ function useGolferStats() {
   });
 }
 
-type GolferSortKey = "name" | "picks" | "avgPoints" | "best" | "worst" | "delta";
+type GolferSortKey = "name" | "picks" | "appearances" | "avgPoints" | "best" | "worst" | "delta";
 
 function GolferStatsView() {
   const { data, isLoading, error } = useGolferStats();
@@ -826,12 +832,13 @@ function GolferStatsView() {
     const arr = [...filtered];
     const dir = sortDir === "asc" ? 1 : -1;
     switch (sortKey) {
-      case "name":      arr.sort((a, b) => dir * a.golfer_name.localeCompare(b.golfer_name)); break;
-      case "picks":     arr.sort((a, b) => dir * (a.picks - b.picks)); break;
-      case "avgPoints": arr.sort((a, b) => dir * (a.avgPoints - b.avgPoints)); break;
-      case "best":      arr.sort((a, b) => dir * (a.bestPoints - b.bestPoints)); break;
-      case "worst":     arr.sort((a, b) => dir * (a.worstPoints - b.worstPoints)); break;
-      case "delta":     arr.sort((a, b) => dir * (a.vsBucketDelta - b.vsBucketDelta)); break;
+      case "name":         arr.sort((a, b) => dir * a.golfer_name.localeCompare(b.golfer_name)); break;
+      case "picks":        arr.sort((a, b) => dir * (a.picks - b.picks)); break;
+      case "appearances":  arr.sort((a, b) => dir * (a.appearances - b.appearances)); break;
+      case "avgPoints":    arr.sort((a, b) => dir * (a.avgPoints - b.avgPoints)); break;
+      case "best":         arr.sort((a, b) => dir * (a.bestPoints - b.bestPoints)); break;
+      case "worst":        arr.sort((a, b) => dir * (a.worstPoints - b.worstPoints)); break;
+      case "delta":        arr.sort((a, b) => dir * (a.vsBucketDelta - b.vsBucketDelta)); break;
     }
     return arr;
   }, [filtered, sortKey, sortDir]);
@@ -906,8 +913,9 @@ function GolferStatsView() {
           <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
             <tr>
               <GolferSortHeader label="Golfer"      k="name"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
-              <GolferSortHeader label="Picks"       k="picks"     sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
-              <GolferSortHeader label="Avg Points"  k="avgPoints" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
+              <GolferSortHeader label="Picks"        k="picks"        sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
+              <GolferSortHeader label="Appearances"  k="appearances"  sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
+              <GolferSortHeader label="Avg Points"   k="avgPoints"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="Best"        k="best"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="Worst"       k="worst"     sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="vs Bucket"   k="delta"     sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="right" />
@@ -915,7 +923,7 @@ function GolferStatsView() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sorted.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
+              <tr><td colSpan={7} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
             ) : sorted.map((r) => (
               <tr key={r.golfer_name} className="hover:bg-slate-50">
                 <td className="px-3 py-2 text-left">
@@ -923,6 +931,7 @@ function GolferStatsView() {
                   <div className="text-[10px] text-slate-500">Mostly B{r.modalBucket}</div>
                 </td>
                 <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.picks}</td>
+                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.appearances}</td>
                 <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.avgPoints.toFixed(1)}</td>
                 <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.bestPoints}</td>
                 <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.worstPoints}</td>
