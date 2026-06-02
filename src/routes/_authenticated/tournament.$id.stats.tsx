@@ -27,6 +27,8 @@ interface Tournament {
   name: string;
   status: string;
   submission_deadline: string;
+  start_date: string | null;
+  location: string | null;
 }
 interface Pick {
   team_id: string;
@@ -93,7 +95,7 @@ function TournamentStatsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name, status, submission_deadline")
+        .select("id, name, status, submission_deadline, start_date, location")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -161,6 +163,15 @@ function TournamentStatsPage() {
       map.get(p.team_id)!.push(p);
     }
     return map;
+  }, [picks]);
+
+  // ----- Helper: global golfer pick counts (used by hero KPI + Popular
+  //               Combinations chip ordering). Hoisted to component scope so
+  //               both call sites can read from the same memo. -----
+  const golferPickCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of picks) m.set(p.golfer_id, (m.get(p.golfer_id) ?? 0) + 1);
+    return m;
   }, [picks]);
 
   // ----- Section 1: Most Popular Picks -----
@@ -372,11 +383,9 @@ function TournamentStatsPage() {
         ).size;
         const pctField = fieldSize ? Math.round((distinctGolfers / fieldSize) * 100) : 0;
 
-        // Most picked golfer (single name + count + %).
-        const golferPickCounts = new Map<string, number>();
-        for (const p of picks) {
-          golferPickCounts.set(p.golfer_id, (golferPickCounts.get(p.golfer_id) ?? 0) + 1);
-        }
+        // Most-picked golfer info (kept around in case the KPI strip ever wants
+        // it back; consumed nowhere right now since the hero now shows
+        // "% of Field Picked" instead of "Most Picked").
         let topGolferId: string | null = null;
         let topGolferCount = 0;
         for (const [gid, n] of golferPickCounts) {
@@ -385,14 +394,15 @@ function TournamentStatsPage() {
         const topGolferName =
           topGolferId ? golferById.get(topGolferId)?.golfer_name ?? "—" : "—";
         const topPct = totalTeams > 0 ? Math.round((topGolferCount / totalTeams) * 100) : 0;
+        // Silence unused-var lint until the KPI strip uses these again.
+        void topGolferName; void topPct;
 
+        const year = t.start_date ? new Date(t.start_date).getFullYear() : null;
+        const titleWithYear = year ? `${t.name} ${year}` : t.name;
         return (
           <header
-            className="rounded-xl overflow-hidden mb-8 shadow-sm"
-            style={{
-              background:
-                "linear-gradient(135deg, var(--forest-deep) 0%, #0a3a25 100%)",
-            }}
+            className="rounded-xl overflow-hidden mb-8"
+            style={{ backgroundColor: "var(--forest-deep)" }}
           >
             {/* Title strip */}
             <div className="px-5 md:px-8 pt-6 pb-5">
@@ -403,8 +413,11 @@ function TournamentStatsPage() {
                 Tournament Statistics
               </p>
               <h1 className="font-display text-3xl md:text-4xl text-white leading-tight">
-                {t.name}
+                {titleWithYear}
               </h1>
+              {t.location && (
+                <p className="text-sm text-white/60 mt-1">{t.location}</p>
+              )}
             </div>
             {/* KPI strip */}
             <div
@@ -417,14 +430,12 @@ function TournamentStatsPage() {
                 suffix="teams"
               />
               <KpiBlock
-                label="Field Coverage"
+                label="Golfers Picked"
                 value={`${distinctGolfers}/${fieldSize}`}
-                meta={`${pctField}% of field`}
               />
               <KpiBlock
-                label="Most Picked"
-                value={topGolferName}
-                meta={topGolferCount > 0 ? `${topGolferCount} picks · ${topPct}%` : "—"}
+                label="% of Field Picked"
+                value={`${pctField}%`}
                 gold
               />
             </div>
@@ -529,7 +540,7 @@ function TournamentStatsPage() {
       </Card>
 
       {/* ============ SECTION 2: Unique Picks ============ */}
-      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+      <Card className="p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Unique Picks</h2>
@@ -540,33 +551,54 @@ function TournamentStatsPage() {
         {uniquePicks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No unique picks — every golfer is shared.</p>
         ) : (
-          <div className="space-y-2">
-            {uniquePicks.map((u, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <span className="font-medium truncate">{u.golfer}</span>
-                  {u.owgr != null && (
-                    <span className="text-xs text-muted-foreground">#{u.owgr}</span>
-                  )}
-                  <span className="text-xs text-muted-foreground">Bucket {u.bucket}</span>
+          <div className="space-y-5">
+            {[1,2,3,4,5,6,7].map((b) => {
+              // Within-bucket: order by OWGR ascending. Un-ranked golfers go to the end.
+              const inBucket = uniquePicks
+                .filter((u) => u.bucket === b)
+                .sort((a, c) => {
+                  const ao = a.owgr ?? Number.POSITIVE_INFINITY;
+                  const co = c.owgr ?? Number.POSITIVE_INFINITY;
+                  if (ao !== co) return ao - co;
+                  return a.golfer.localeCompare(c.golfer);
+                });
+              if (inBucket.length === 0) return null;
+              return (
+                <div key={b}>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                    B{b}
+                    <span className="text-slate-400 font-semibold ml-2">{inBucket.length}</span>
+                  </h3>
+                  <div className="space-y-1.5">
+                    {inBucket.map((u, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-white px-3 py-2"
+                      >
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate" style={{ color: "var(--forest-deep)" }}>{u.golfer}</span>
+                          {u.owgr != null && (
+                            <span className="text-[10px] text-slate-400 font-mono">#{u.owgr}</span>
+                          )}
+                        </div>
+                        <span
+                          className="shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
+                          style={{ color: "var(--forest-deep)" }}
+                        >
+                          {u.team}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <span
-                  className="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
-                  style={{ backgroundColor: "var(--forest-deep, #166534)" }}
-                >
-                  {u.team}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
 
       {/* ============ SECTION 3: Popular Combinations ============ */}
-      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+      <Card className="p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Popular Combinations</h2>
@@ -594,11 +626,13 @@ function TournamentStatsPage() {
                     {entries.map((e, idx) => (
                       <div key={idx} className="border border-border rounded-md p-3">
                         <div className="flex flex-wrap gap-1.5 mb-3">
-                          {e.golferIds.map((gid) => (
-                            <Badge key={gid} variant="secondary" className="text-xs">
-                              {golferById.get(gid)?.golfer_name ?? "Unknown"}
-                            </Badge>
-                          ))}
+                          {[...e.golferIds]
+                            .sort((a, b) => (golferPickCounts.get(b) ?? 0) - (golferPickCounts.get(a) ?? 0))
+                            .map((gid) => (
+                              <Badge key={gid} variant="secondary" className="text-xs">
+                                {golferById.get(gid)?.golfer_name ?? "Unknown"}
+                              </Badge>
+                            ))}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {e.teamIds.map((tid) => (
@@ -623,7 +657,7 @@ function TournamentStatsPage() {
 
 
       {/* ============ SECTION 4: Identical Teams ============ */}
-      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+      <Card className="p-5 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Identical Teams</h2>
@@ -656,7 +690,7 @@ function TournamentStatsPage() {
 
       {/* ============ SECTION 5: Fun Facts ============ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+        <Card className="p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Fastest entry</h3>
@@ -675,7 +709,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+        <Card className="p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Leaving it late</h3>
@@ -701,7 +735,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+        <Card className="p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Repeat className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Tweaker</h3>
