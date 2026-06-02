@@ -27,6 +27,7 @@ import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_a
 import { Route as AuthenticatedTournamentIdLeaderboardRouteImport } from './routes/_authenticated/tournament.$id.leaderboard'
 import { Route as AuthenticatedTournamentIdBlogNewRouteImport } from './routes/_authenticated/tournament.$id.blog.new'
 import { Route as AuthenticatedAdminTournamentIdFieldRouteImport } from './routes/_authenticated/admin.tournament.$id.field'
+import { Route as AuthenticatedTournamentIdBlogPostIdIndexRouteImport } from './routes/_authenticated/tournament.$id.blog.$postId.index'
 import { Route as AuthenticatedTournamentIdBlogPostIdEditRouteImport } from './routes/_authenticated/tournament.$id.blog.$postId.edit'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -124,6 +125,12 @@ const AuthenticatedAdminTournamentIdFieldRoute =
     path: '/tournament/$id/field',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedTournamentIdBlogPostIdIndexRoute =
+  AuthenticatedTournamentIdBlogPostIdIndexRouteImport.update({
+    id: '/blog/$postId/',
+    path: '/blog/$postId/',
+    getParentRoute: () => AuthenticatedTournamentIdRoute,
+  } as any)
 const AuthenticatedTournamentIdBlogPostIdEditRoute =
   AuthenticatedTournamentIdBlogPostIdEditRouteImport.update({
     id: '/blog/$postId/edit',
@@ -150,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
+  '/tournament/$id/blog/$postId/': typeof AuthenticatedTournamentIdBlogPostIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -169,6 +177,7 @@ export interface FileRoutesByTo {
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
+  '/tournament/$id/blog/$postId': typeof AuthenticatedTournamentIdBlogPostIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -191,6 +200,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/_authenticated/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/_authenticated/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
+  '/_authenticated/tournament/$id/blog/$postId/': typeof AuthenticatedTournamentIdBlogPostIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
+    | '/tournament/$id/blog/$postId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -232,6 +243,7 @@ export interface FileRouteTypes {
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
+    | '/tournament/$id/blog/$postId'
   id:
     | '__root__'
     | '/'
@@ -253,6 +265,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/tournament/$id/field'
     | '/_authenticated/tournament/$id/blog/new'
     | '/_authenticated/tournament/$id/blog/$postId/edit'
+    | '/_authenticated/tournament/$id/blog/$postId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -390,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminTournamentIdFieldRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/tournament/$id/blog/$postId/': {
+      id: '/_authenticated/tournament/$id/blog/$postId/'
+      path: '/blog/$postId'
+      fullPath: '/tournament/$id/blog/$postId/'
+      preLoaderRoute: typeof AuthenticatedTournamentIdBlogPostIdIndexRouteImport
+      parentRoute: typeof AuthenticatedTournamentIdRoute
+    }
     '/_authenticated/tournament/$id/blog/$postId/edit': {
       id: '/_authenticated/tournament/$id/blog/$postId/edit'
       path: '/blog/$postId/edit'
@@ -422,6 +442,7 @@ interface AuthenticatedTournamentIdRouteChildren {
   AuthenticatedTournamentIdStatsRoute: typeof AuthenticatedTournamentIdStatsRoute
   AuthenticatedTournamentIdBlogNewRoute: typeof AuthenticatedTournamentIdBlogNewRoute
   AuthenticatedTournamentIdBlogPostIdEditRoute: typeof AuthenticatedTournamentIdBlogPostIdEditRoute
+  AuthenticatedTournamentIdBlogPostIdIndexRoute: typeof AuthenticatedTournamentIdBlogPostIdIndexRoute
 }
 
 const AuthenticatedTournamentIdRouteChildren: AuthenticatedTournamentIdRouteChildren =
@@ -434,6 +455,8 @@ const AuthenticatedTournamentIdRouteChildren: AuthenticatedTournamentIdRouteChil
       AuthenticatedTournamentIdBlogNewRoute,
     AuthenticatedTournamentIdBlogPostIdEditRoute:
       AuthenticatedTournamentIdBlogPostIdEditRoute,
+    AuthenticatedTournamentIdBlogPostIdIndexRoute:
+      AuthenticatedTournamentIdBlogPostIdIndexRoute,
   }
 
 const AuthenticatedTournamentIdRouteWithChildren =

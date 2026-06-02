@@ -84,6 +84,19 @@ function TournamentHub() {
     },
   });
 
+  const { data: blogPosts = [] } = useQuery({
+    queryKey: ["blog_posts", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("id, title, body, image_url, created_at")
+        .eq("tournament_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const { data: profile } = useQuery({
     queryKey: ["profile", effectiveId],
     enabled: !!effectiveId,
@@ -276,14 +289,65 @@ function TournamentHub() {
             <FileText className="h-5 w-5 text-primary" />
             <div className="flex-1 text-left">
               <div className="font-display text-sm uppercase">Blog</div>
-              <div className="text-xs text-muted-foreground">Tournament recap & notes</div>
+              <div className="text-xs text-muted-foreground">
+                {blogPosts.length > 0
+                  ? `${blogPosts.length} post${blogPosts.length === 1 ? "" : "s"}`
+                  : "Tournament recap & notes"}
+              </div>
             </div>
             <ChevronRight
               className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
             />
           </CollapsibleTrigger>
-          <CollapsibleContent className="border border-t-0 border-border bg-card p-5 text-sm text-muted-foreground whitespace-pre-wrap">
-            {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
+          <CollapsibleContent className="border border-t-0 border-border bg-card">
+            {blogPosts.length === 0 ? (
+              <div className="p-5 text-sm text-muted-foreground whitespace-pre-wrap">
+                {t.recap_blog ?? "No posts yet. Check back after the tournament concludes."}
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {blogPosts.map((post: any) => {
+                  const excerpt = (post.body ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+                  return (
+                    <li key={post.id}>
+                      <Link
+                        to="/tournament/$id/blog/$postId"
+                        params={{ id, postId: post.id }}
+                        className="flex gap-4 p-4 hover:bg-accent transition-colors"
+                      >
+                        {post.image_url ? (
+                          <img
+                            src={post.image_url}
+                            alt=""
+                            className="w-20 h-20 object-cover border border-border shrink-0"
+                          />
+                        ) : (
+                          <div className="w-20 h-20 bg-muted border border-border shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-display text-sm uppercase truncate">
+                            {post.title}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            {new Date(post.created_at).toLocaleDateString(undefined, {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </div>
+                          {excerpt && (
+                            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+                              {excerpt}
+                              {(post.body ?? "").length > 160 ? "…" : ""}
+                            </p>
+                          )}
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CollapsibleContent>
         </Collapsible>
       </div>
