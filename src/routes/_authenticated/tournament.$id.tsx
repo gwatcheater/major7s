@@ -1,356 +1,782 @@
-import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import {
-  MapPin,
-  Calendar,
-  Clipboard,
-  CheckCircle2,
-  Trophy,
-  BarChart3,
-  FileText,
-  ChevronRight,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, BarChart3, Users, Zap, Clock, Repeat } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useTeams } from "@/hooks/use-teams";
-import { useAuth } from "@/hooks/use-auth";
-import { useImpersonation } from "@/context/impersonation-context";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { tournamentDateRange } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const Route = createFileRoute("/_authenticated/tournament/$id")({
-  component: TournamentHub,
+
+export const Route = createFileRoute("/_authenticated/tournament/$id/stats")({
+  component: TournamentStatsPage,
 });
 
-const STATUS_META: Record<string, { label: string; className: string }> = {
-  upcoming: { label: "Upcoming", className: "bg-muted text-muted-foreground" },
-  open_for_picks: { label: "Open for Picks", className: "bg-primary text-primary-foreground" },
-  picks_closed: { label: "Picks Closed", className: "bg-destructive text-destructive-foreground" },
-  live: { label: "Live", className: "bg-primary/15 text-primary border border-primary/30" },
-  completed: { label: "Completed", className: "bg-secondary text-secondary-foreground" },
-};
-
-function statusMeta(status: string) {
-  return STATUS_META[status] ?? { label: status, className: "bg-muted text-muted-foreground" };
+// =============================================================
+// Types — column names sourced from existing schema:
+//   picks: team_id, tournament_id, bucket, golfer_id,
+//          submitted_at, last_edited_at, tweak_count
+//   golfers: id, golfer_name, owgr_rank, tournament_id
+//   teams: id, nickname
+//   tournaments: id, name, status, submission_deadline, start_date, end_date
+// If your column names differ, adjust the select() strings below.
+// =============================================================
+interface Tournament {
+  id: string;
+  name: string;
+  status: string;
+  submission_deadline: string;
+  start_date: string | null;
+  location: string | null;
+}
+interface Pick {
+  team_id: string;
+  bucket: number;
+  golfer_id: string;
+  submitted_at: string;
+  last_edited_at: string;
+  tweak_count: number | null;
+}
+interface Golfer {
+  id: string;
+  golfer_name: string;
+  owgr_rank: number | null;
+}
+interface Team {
+  id: string;
+  nickname: string;
 }
 
-function TournamentHub() {
-  const { id } = Route.useParams();
-  const { user } = useAuth();
-  const { getEffectiveUserId } = useImpersonation();
-  const effectiveId = getEffectiveUserId(user?.id);
-  const { activeTeam } = useTeams();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [blogOpen, setBlogOpen] = useState(false);
+const VISIBLE_STATUSES = ["picks_closed", "live", "completed"];
 
-  const { data: t, isLoading } = useQuery({
-    queryKey: ["tournament", id],
+// =============================================================
+// Helpers
+// =============================================================
+function formatDuration(ms: number): string {
+  if (ms < 0) return "—";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function combinations<T>(arr: T[], k: number): T[][] {
+  const out: T[][] = [];
+  const n = arr.length;
+  if (k > n || k <= 0) return out;
+  const idx = Array.from({ length: k }, (_, i) => i);
+  while (true) {
+    out.push(idx.map((i) => arr[i]));
+    let i = k - 1;
+    while (i >= 0 && idx[i] === n - k + i) i--;
+    if (i < 0) break;
+    idx[i]++;
+    for (let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1;
+  }
+  return out;
+}
+
+// =============================================================
+// Component
+// =============================================================
+function TournamentStatsPage() {
+  const { id } = Route.useParams();
+  const [sortMode, setSortMode] = useState<"picks" | "ranking">("picks");
+  const [showAll, setShowAll] = useState(false);
+
+  const tournamentQ = useQuery({
+    queryKey: ["t-stats", "tournament", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("tournaments").select("*").eq("id", id).single();
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, status, submission_deadline, start_date, location")
+        .eq("id", id)
+        .single();
       if (error) throw error;
-      return data;
+      return data as Tournament;
     },
   });
 
-  const { data: picks = [] } = useQuery({
-    queryKey: ["picks", activeTeam?.id, id],
-    enabled: !!activeTeam,
+  const picksQ = useQuery({
+    queryKey: ["t-stats", "picks", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("id, bucket, golfer_id, last_edited_at, submitted_at, tweak_count")
-        .eq("team_id", activeTeam!.id)
+        .select("team_id, bucket, golfer_id, submitted_at, last_edited_at, tweak_count")
         .eq("tournament_id", id);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as Pick[];
     },
   });
 
-  const { data: golfers = [] } = useQuery({
-    queryKey: ["golfers", id],
+  const golfersQ = useQuery({
+    queryKey: ["t-stats", "golfers", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("golfers")
-        .select("id, golfer_name")
+        .select("id, golfer_name, owgr_rank")
         .eq("tournament_id", id);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as Golfer[];
     },
   });
 
-  const { data: blogPosts = [] } = useQuery({
-    queryKey: ["blog_posts", id],
+  const teamsQ = useQuery({
+    queryKey: ["t-stats", "teams"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("blog_posts")
-        .select("id, title, body, image_url, created_at")
-        .eq("tournament_id", id)
-        .order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("teams").select("id, nickname");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as Team[];
     },
   });
 
-  const { data: profile } = useQuery({
-    queryKey: ["profile", effectiveId],
-    enabled: !!effectiveId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("nickname")
-        .eq("id", effectiveId!)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-  });
+  const isLoading =
+    tournamentQ.isLoading || picksQ.isLoading || golfersQ.isLoading || teamsQ.isLoading;
+  const error =
+    tournamentQ.error || picksQ.error || golfersQ.error || teamsQ.error;
 
-  if (isLoading) return <div className="p-12">Loading…</div>;
-  if (!t) return <div className="p-12">Tournament not found.</div>;
-  if (
-    pathname.endsWith(`/tournament/${id}/lineup`) ||
-    pathname.endsWith(`/tournament/${id}/leaderboard`) ||
-    pathname.endsWith(`/tournament/${id}/stats`) ||
-    pathname.includes(`/tournament/${id}/blog`)
-  ) return <Outlet />;
+  const t = tournamentQ.data;
+  const picks = picksQ.data ?? [];
+  const golfers = golfersQ.data ?? [];
+  const teams = teamsQ.data ?? [];
 
-  const meta = statusMeta(t.status);
-  const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
-  const canSubmit = t.status === "open_for_picks" && !lockExpired;
-
-  const golferNameById = new Map<string, string>(
-    golfers.map((g: any) => [g.id, g.golfer_name]),
+  const golferById = useMemo(
+    () => new Map(golfers.map((g) => [g.id, g])),
+    [golfers],
+  );
+  const teamById = useMemo(
+    () => new Map(teams.map((tm) => [tm.id, tm])),
+    [teams],
   );
 
-  const picksByBucket = new Map<number, { name: string }>();
-  let lastEdited = 0;
-  for (const p of picks) {
-    const name = golferNameById.get((p as any).golfer_id) ?? "—";
-    picksByBucket.set(p.bucket as number, { name });
-    const ts = new Date(p.last_edited_at as string).getTime();
-    if (ts > lastEdited) lastEdited = ts;
+  // Group picks by team
+  const picksByTeam = useMemo(() => {
+    const map = new Map<string, Pick[]>();
+    for (const p of picks) {
+      if (!map.has(p.team_id)) map.set(p.team_id, []);
+      map.get(p.team_id)!.push(p);
+    }
+    return map;
+  }, [picks]);
+
+  // ----- Section 1: Most Popular Picks -----
+  const mostPopular = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of picks) counts.set(p.golfer_id, (counts.get(p.golfer_id) ?? 0) + 1);
+    const totalTeams = picksByTeam.size;
+    const rows = Array.from(counts.entries()).map(([gid, count]) => {
+      const g = golferById.get(gid);
+      return {
+        id: gid,
+        name: g?.golfer_name ?? "Unknown",
+        owgr: g?.owgr_rank ?? null,
+        count,
+        pct: totalTeams ? (count / totalTeams) * 100 : 0,
+      };
+    });
+    if (sortMode === "picks") {
+      rows.sort((a, b) => b.count - a.count || (a.owgr ?? 9999) - (b.owgr ?? 9999));
+    } else {
+      rows.sort((a, b) => (a.owgr ?? 9999) - (b.owgr ?? 9999));
+    }
+    return rows;
+  }, [picks, golferById, picksByTeam, sortMode]);
+
+  const topCount = mostPopular[0]?.count ?? 1;
+  const visiblePopular = showAll ? mostPopular : mostPopular.slice(0, 10);
+
+  // ----- Section 2: Unique Picks -----
+  const uniquePicks = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of picks) counts.set(p.golfer_id, (counts.get(p.golfer_id) ?? 0) + 1);
+    return picks
+      .filter((p) => counts.get(p.golfer_id) === 1)
+      .map((p) => ({
+        golfer: golferById.get(p.golfer_id)?.golfer_name ?? "Unknown",
+        owgr: golferById.get(p.golfer_id)?.owgr_rank ?? null,
+        team: teamById.get(p.team_id)?.nickname ?? "Unknown team",
+        bucket: p.bucket,
+      }))
+      .sort((a, b) => a.bucket - b.bucket || a.golfer.localeCompare(b.golfer));
+  }, [picks, golferById, teamById]);
+
+  // ----- Section 3: Popular Combinations -----
+  const comboSections = useMemo(() => {
+    const teamGolferLists: { teamId: string; ids: string[] }[] = [];
+    for (const [teamId, ps] of picksByTeam.entries()) {
+      const ids = Array.from(new Set(ps.map((p) => p.golfer_id))).sort();
+      if (ids.length >= 2) teamGolferLists.push({ teamId, ids });
+    }
+    const result: Record<number, { golferIds: string[]; teamIds: string[] }[]> = {};
+    for (const k of [2, 3, 4, 5]) {
+      const counts = new Map<string, { ids: string[]; teamIds: string[] }>();
+      for (const { teamId, ids } of teamGolferLists) {
+        if (ids.length < k) continue;
+        for (const combo of combinations(ids, k)) {
+          const key = combo.join("|");
+          if (!counts.has(key)) counts.set(key, { ids: combo, teamIds: [] });
+          counts.get(key)!.teamIds.push(teamId);
+        }
+      }
+      const entries = Array.from(counts.values())
+        .filter((c) => c.teamIds.length >= 2)
+        .sort((a, b) => b.teamIds.length - a.teamIds.length);
+      if (entries.length === 0) {
+        result[k] = [];
+        continue;
+      }
+      const top = entries[0].teamIds.length;
+      result[k] = entries
+        .filter((e) => e.teamIds.length === top)
+        .slice(0, 3)
+        .map((e) => ({ golferIds: e.ids, teamIds: e.teamIds }));
+    }
+    return result;
+  }, [picksByTeam]);
+
+  // ----- Section 4: Identical Teams -----
+  const identicalTeams = useMemo(() => {
+    const groups = new Map<string, { teamIds: string[]; picks: Pick[] }>();
+    for (const [teamId, ps] of picksByTeam.entries()) {
+      if (ps.length !== 7) continue;
+      const sortedPicks = [...ps].sort((a, b) => a.bucket - b.bucket);
+      const key = sortedPicks.map((p) => p.golfer_id).join("|");
+      if (!groups.has(key)) groups.set(key, { teamIds: [], picks: sortedPicks });
+      groups.get(key)!.teamIds.push(teamId);
+    }
+    return Array.from(groups.values()).filter((g) => g.teamIds.length >= 2);
+  }, [picksByTeam]);
+
+  // ----- Section 5: Fun Facts -----
+  const funFacts = useMemo(() => {
+    const perTeam: {
+      teamId: string;
+      firstSubmitted: number;
+      lastSubmitted: number;
+      maxTweaks: number;
+    }[] = [];
+    for (const [teamId, ps] of picksByTeam.entries()) {
+      let first = Infinity;
+      let last = -Infinity;
+      let maxT = 0;
+      for (const p of ps) {
+        const s = new Date(p.submitted_at).getTime();
+        const e = new Date(p.last_edited_at).getTime();
+        if (s < first) first = s;
+        if (e > last) last = e;
+        if ((p.tweak_count ?? 0) > maxT) maxT = p.tweak_count ?? 0;
+      }
+      perTeam.push({ teamId, firstSubmitted: first, lastSubmitted: last, maxTweaks: maxT });
+    }
+    const deadline = t ? new Date(t.submission_deadline).getTime() : null;
+
+    const fastest = perTeam.length
+      ? perTeam.reduce((a, b) => (a.firstSubmitted < b.firstSubmitted ? a : b))
+      : null;
+    // "Leaving it late" = max last_edited_at before deadline
+    const latePool = deadline
+      ? perTeam.filter((p) => p.lastSubmitted <= deadline)
+      : perTeam;
+    const late = latePool.length
+      ? latePool.reduce((a, b) => (a.lastSubmitted > b.lastSubmitted ? a : b))
+      : null;
+    const tweaker = perTeam.length
+      ? perTeam.reduce((a, b) => (a.maxTweaks > b.maxTweaks ? a : b))
+      : null;
+
+    return { fastest, late, tweaker, deadline };
+  }, [picksByTeam, t]);
+
+  // =============================================================
+  // Render
+  // =============================================================
+  if (isLoading) {
+    return (
+      <div className="p-4 md:p-12 max-w-5xl mx-auto space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
   }
-  const hasPicks = picks.length > 0;
-  const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
-  const teamHandle = activeTeam?.nickname || profile?.nickname || "Your Team";
+
+  if (error || !t) {
+    return (
+      <div className="p-4 md:p-12 max-w-5xl mx-auto">
+        <Card className="p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Failed to load statistics. Please try again.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => {
+              tournamentQ.refetch();
+              picksQ.refetch();
+              golfersQ.refetch();
+              teamsQ.refetch();
+            }}
+          >
+            Retry
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!VISIBLE_STATUSES.includes(t.status)) {
+    return (
+      <div className="p-4 md:p-12 max-w-5xl mx-auto">
+        <Link
+          to="/tournament/$id"
+          params={{ id }}
+          className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        >
+          ← Back
+        </Link>
+        <Card className="p-6 mt-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Statistics become available once picks close.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  const totalTeams = picksByTeam.size;
 
   return (
     <div className="p-4 md:p-12 max-w-5xl mx-auto">
       <Link
-        to={t.status === "completed" ? "/archive" : "/home"}
-        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        to="/tournament/$id"
+        params={{ id }}
+        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
       >
-        ← {t.status === "completed" ? "Archive" : "Live & Upcoming"}
+        <ArrowLeft className="h-3 w-3" /> Back
       </Link>
 
-      {/* HEADER */}
-      <header className="mt-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="flex items-start gap-4 min-w-0">
-          {t.logo_url ? (
-            <img
-              src={t.logo_url}
-              alt={`${t.name} logo`}
-              className="w-16 h-16 sm:w-20 sm:h-20 object-contain border border-border bg-card shrink-0"
-            />
-          ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 border border-border bg-muted shrink-0" />
-          )}
-          <div className="min-w-0">
-            <h1 className="font-display text-3xl md:text-5xl uppercase leading-tight">{t.name}</h1>
-            <div className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" /> {t.location}
-              </span>
-              <span className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                {tournamentDateRange(t.start_date, t.end_date)}
-              </span>
-            </div>
-          </div>
-        </div>
-        <span
-          className={`inline-flex items-center px-3 py-1 text-[10px] font-bold uppercase tracking-widest shrink-0 ${meta.className}`}
-        >
-          {meta.label}
-        </span>
-      </header>
+      {/* ============ HERO: tournament title + headline KPIs ============ */}
+      {(() => {
+        const fieldSize = golfers.length;
+        // Distinct golfers picked (by trimmed lowercase name — robust to duplicate
+        // golfer rows across casings).
+        const distinctGolfers = new Set(
+          picks
+            .map((p) => golferById.get(p.golfer_id)?.golfer_name?.trim().toLowerCase())
+            .filter((name): name is string => !!name)
+        ).size;
+        const pctField = fieldSize ? Math.round((distinctGolfers / fieldSize) * 100) : 0;
 
-      {/* PICKS CARD */}
-      <Card className="mt-8 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Clipboard className="h-5 w-5" />
-              <span className="font-display text-lg uppercase">Picks</span>
-            </div>
-            {hasPicks ? (
-              <Badge className="bg-green-600 text-white hover:bg-green-600">Picks Submitted</Badge>
-            ) : (
-              <Badge variant="destructive">Not Entered</Badge>
-            )}
-          </div>
-          {hasPicks && lastEdited > 0 && (
-            <div className="text-xs text-muted-foreground">
-              Submitted: {new Date(lastEdited).toLocaleString()}
-            </div>
-          )}
-        </div>
+        // Most picked golfer (single name + count + %).
+        const golferPickCounts = new Map<string, number>();
+        for (const p of picks) {
+          golferPickCounts.set(p.golfer_id, (golferPickCounts.get(p.golfer_id) ?? 0) + 1);
+        }
+        let topGolferId: string | null = null;
+        let topGolferCount = 0;
+        for (const [gid, n] of golferPickCounts) {
+          if (n > topGolferCount) { topGolferCount = n; topGolferId = gid; }
+        }
+        const topGolferName =
+          topGolferId ? golferById.get(topGolferId)?.golfer_name ?? "—" : "—";
+        const topPct = totalTeams > 0 ? Math.round((topGolferCount / totalTeams) * 100) : 0;
 
-        <div className="mt-4">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-display uppercase text-base">{teamHandle}</span>
-            {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-          </div>
-          {hasPicks && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Tweaks: {maxTweaks}
-            </div>
-          )}
-        </div>
-
-        {hasPicks ? (
-          <>
-            <div className="mt-4 divide-y divide-border border border-border">
-              {[1, 2, 3, 4, 5, 6, 7].map((b) => {
-                const pick = picksByBucket.get(b);
-                return (
-                  <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Bucket {b}
-                    </span>
-                    <span className="text-sm font-medium text-right truncate">
-                      {pick?.name ?? <span className="text-muted-foreground">—</span>}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {canSubmit && (
-              <Link
-                to="/tournament/$id/lineup"
-                params={{ id }}
-                className="mt-5 block w-full text-center py-3 font-display text-xs uppercase tracking-widest border border-border bg-background hover:bg-accent transition-colors"
+        const year = t.start_date ? new Date(t.start_date).getFullYear() : null;
+        const titleWithYear = year ? `${t.name} ${year}` : t.name;
+        return (
+          <header
+            className="rounded-xl overflow-hidden mb-8"
+            style={{ backgroundColor: "var(--forest-deep)" }}
+          >
+            {/* Title strip */}
+            <div className="px-5 md:px-8 pt-6 pb-5">
+              <p
+                className="text-[10px] font-bold uppercase tracking-widest mb-1.5"
+                style={{ color: "var(--gold, #b08a3e)" }}
               >
-                Edit Picks
-              </Link>
+                Tournament Statistics
+              </p>
+              <h1 className="font-display text-3xl md:text-4xl text-white leading-tight">
+                {titleWithYear}
+              </h1>
+              {t.location && (
+                <p className="text-sm text-white/60 mt-1">{t.location}</p>
+              )}
+            </div>
+            {/* KPI strip */}
+            <div
+              className="grid grid-cols-3 divide-x border-t"
+              style={{ borderColor: "rgba(255,255,255,0.08)" }}
+            >
+              <KpiBlock
+                label="Total Entries"
+                value={totalTeams.toString()}
+                suffix="teams"
+              />
+              <KpiBlock
+                label="Golfers Picked"
+                value={`${distinctGolfers}/${fieldSize}`}
+              />
+              <KpiBlock
+                label="% of Field Picked"
+                value={`${pctField}%`}
+                gold
+              />
+            </div>
+          </header>
+        );
+      })()}
+
+      {/* ============ SECTION 1: Most Popular Picks ============ */}
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <h2 className="font-display text-lg uppercase">Most Popular Picks</h2>
+          </div>
+          <div className="inline-flex rounded-full bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setSortMode("picks")}
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-colors ${
+                sortMode === "picks"
+                  ? "shadow-sm"
+                  : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+              }`}
+              style={
+                sortMode === "picks"
+                  ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" }
+                  : undefined
+              }
+            >
+              By picks
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortMode("ranking")}
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-colors ${
+                sortMode === "ranking"
+                  ? "shadow-sm"
+                  : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+              }`}
+              style={
+                sortMode === "ranking"
+                  ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" }
+                  : undefined
+              }
+            >
+              By ranking
+            </button>
+          </div>
+        </div>
+
+        {mostPopular.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No picks yet.</p>
+        ) : (
+          <>
+            <ol className="space-y-3">
+              {visiblePopular.map((row, i) => (
+                <li key={row.id} className="flex items-start gap-3">
+                  <span className="text-xs text-muted-foreground w-6 tabular-nums pt-0.5">
+                    {i + 1}.
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium truncate">{row.name}</span>
+                        {row.owgr != null && (
+                          <Badge variant="secondary" className="text-[10px] shrink-0">
+                            #{row.owgr}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                        {row.count} ({row.pct.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div
+                      className="mt-1.5 w-full bg-muted rounded-full overflow-hidden"
+                      style={{ height: 5 }}
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, row.pct)}%`,
+                          backgroundColor: "var(--forest-deep, #166534)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {mostPopular.length > 10 && (
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="mt-4 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showAll ? "Show top 10" : `Show all ${mostPopular.length} golfers`}
+              </button>
             )}
           </>
-        ) : (
-          <Link
-            to="/tournament/$id/lineup"
-            params={{ id }}
-            className="mt-5 block w-full text-center py-4 font-display text-xs uppercase tracking-widest text-white"
-            style={{ backgroundColor: "var(--forest-deep)" }}
-            aria-disabled={!canSubmit}
-          >
-            {canSubmit ? "Submit Team Lineup →" : "View Lineup →"}
-          </Link>
         )}
       </Card>
 
-      {/* NAV ROWS (stacked) */}
-      <div className="mt-6 flex flex-col gap-3">
-        <Link
-          to="/tournament/$id/leaderboard"
-          params={{ id }}
-          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
-        >
-          <Trophy className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <div className="font-display text-sm uppercase">Leaderboard</div>
-            <div className="text-xs text-muted-foreground">Final standings</div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </Link>
-
-        {(["picks_closed", "live", "completed"].includes(t.status)) && (
-          <Link
-            to="/tournament/$id/stats"
-            params={{ id }}
-            className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
-          >
-            <BarChart3 className="h-5 w-5 text-primary" />
-            <div className="flex-1">
-              <div className="font-display text-sm uppercase">Statistics</div>
-              <div className="text-xs text-muted-foreground">Pick stats & fun facts — Tap to view</div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-        )}
-
-        <Collapsible open={blogOpen} onOpenChange={setBlogOpen}>
-          <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors">
-            <FileText className="h-5 w-5 text-primary" />
-            <div className="flex-1 text-left">
-              <div className="font-display text-sm uppercase">Blog</div>
-              <div className="text-xs text-muted-foreground">
-                {blogPosts.length > 0
-                  ? `${blogPosts.length} post${blogPosts.length === 1 ? "" : "s"}`
-                  : "Tournament recap & notes"}
-              </div>
-            </div>
-            <ChevronRight
-              className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="border border-t-0 border-border bg-card">
-            {blogPosts.length === 0 ? (
-              <div className="p-5 text-sm text-muted-foreground whitespace-pre-wrap">
-                {t.recap_blog ?? "No posts yet. Check back after the tournament concludes."}
-              </div>
-            ) : (
-              <ul className="divide-y divide-border">
-                {blogPosts.map((post: any) => {
-                  const excerpt = (post.body ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-                  return (
-                    <li key={post.id}>
-                      <Link
-                        to="/tournament/$id/blog/$postId"
-                        params={{ id, postId: post.id }}
-                        className="flex gap-4 p-4 hover:bg-accent transition-colors"
+      {/* ============ SECTION 2: Unique Picks ============ */}
+      <Card className="p-5 mb-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-5 w-5 text-primary" />
+          <h2 className="font-display text-lg uppercase">Unique Picks</h2>
+          <Badge variant="secondary" className="rounded-full text-xs">
+            {uniquePicks.length}
+          </Badge>
+        </div>
+        {uniquePicks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No unique picks — every golfer is shared.</p>
+        ) : (
+          <div className="space-y-5">
+            {[1,2,3,4,5,6,7].map((b) => {
+              // Within-bucket: order by OWGR ascending. Un-ranked golfers go to the end.
+              const inBucket = uniquePicks
+                .filter((u) => u.bucket === b)
+                .sort((a, c) => {
+                  const ao = a.owgr ?? Number.POSITIVE_INFINITY;
+                  const co = c.owgr ?? Number.POSITIVE_INFINITY;
+                  if (ao !== co) return ao - co;
+                  return a.golfer.localeCompare(c.golfer);
+                });
+              if (inBucket.length === 0) return null;
+              return (
+                <div key={b}>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                    B{b}
+                    <span className="text-slate-400 font-semibold ml-2">{inBucket.length}</span>
+                  </h3>
+                  <div className="space-y-1.5">
+                    {inBucket.map((u, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-white px-3 py-2"
                       >
-                        {post.image_url ? (
-                          <img
-                            src={post.image_url}
-                            alt=""
-                            className="w-20 h-20 object-cover border border-border shrink-0"
-                          />
-                        ) : (
-                          <div className="w-20 h-20 bg-muted border border-border shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="font-display text-sm uppercase truncate">
-                            {post.title}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
-                            {new Date(post.created_at).toLocaleDateString(undefined, {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </div>
-                          {excerpt && (
-                            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-                              {excerpt}
-                              {(post.body ?? "").length > 160 ? "…" : ""}
-                            </p>
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate" style={{ color: "var(--forest-deep)" }}>{u.golfer}</span>
+                          {u.owgr != null && (
+                            <span className="text-[10px] text-slate-400 font-mono">#{u.owgr}</span>
                           )}
                         </div>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
+                        <span
+                          className="shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
+                          style={{ color: "var(--forest-deep)" }}
+                        >
+                          {u.team}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* ============ SECTION 3: Popular Combinations ============ */}
+      <Card className="p-5 mb-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="h-5 w-5 text-primary" />
+          <h2 className="font-display text-lg uppercase">Popular Combinations</h2>
+        </div>
+        <div className="space-y-5">
+          {[2, 3, 4, 5].map((k) => {
+            const entries = comboSections[k] ?? [];
+            const teamCount = entries[0]?.teamIds.length ?? 0;
+            return (
+              <div key={k}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Top {k}-pick combination
+                  </h3>
+                  {entries.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      · {teamCount} {teamCount === 1 ? "team" : "teams"}
+                    </span>
+                  )}
+                </div>
+                {entries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No shared {k}-pick combinations.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {entries.map((e, idx) => (
+                      <div key={idx} className="border border-border rounded-md p-3">
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {[...e.golferIds]
+                            .sort((a, b) => (golferPickCounts.get(b) ?? 0) - (golferPickCounts.get(a) ?? 0))
+                            .map((gid) => (
+                              <Badge key={gid} variant="secondary" className="text-xs">
+                                {golferById.get(gid)?.golfer_name ?? "Unknown"}
+                              </Badge>
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {e.teamIds.map((tid) => (
+                            <span
+                              key={tid}
+                              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
+                              style={{ backgroundColor: "var(--forest-deep, #166534)" }}
+                            >
+                              {teamById.get(tid)?.nickname ?? "Unknown"}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+
+      {/* ============ SECTION 4: Identical Teams ============ */}
+      <Card className="p-5 mb-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-5 w-5 text-primary" />
+          <h2 className="font-display text-lg uppercase">Identical Teams</h2>
+        </div>
+        {identicalTeams.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No identical teams — every entry is unique.</p>
+        ) : (
+          <div className="space-y-2">
+            {identicalTeams.map((group, i) => (
+              <div key={i} className="border border-border rounded-md p-3 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {group.teamIds.map((tid) => (
+                    <span
+                      key={tid}
+                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
+                      style={{ backgroundColor: "var(--forest-deep, #166534)" }}
+                    >
+                      {teamById.get(tid)?.nickname ?? "Unknown"}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-sm">
+                  {group.picks.map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown").join(", ")}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ============ SECTION 5: Fun Facts ============ */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card className="p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Fastest entry</h3>
+          </div>
+          {funFacts.fastest ? (
+            <>
+              <p className="font-display text-lg leading-tight">
+                {teamById.get(funFacts.fastest.teamId)?.nickname ?? "Unknown"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {new Date(funFacts.fastest.firstSubmitted).toLocaleString()}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">—</p>
+          )}
+        </Card>
+
+        <Card className="p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Leaving it late</h3>
+          </div>
+          {funFacts.late ? (
+            <>
+              <p className="font-display text-lg leading-tight">
+                {teamById.get(funFacts.late.teamId)?.nickname ?? "Unknown"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {new Date(funFacts.late.lastSubmitted).toLocaleString()}
+                {funFacts.deadline && (
+                  <>
+                    {" "}
+                    ({formatDuration(funFacts.deadline - funFacts.late.lastSubmitted)} before
+                    deadline)
+                  </>
+                )}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">—</p>
+          )}
+        </Card>
+
+        <Card className="p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Repeat className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-bold uppercase tracking-widest">Tweaker</h3>
+          </div>
+          {funFacts.tweaker && funFacts.tweaker.maxTweaks > 0 ? (
+            <>
+              <p className="font-display text-lg leading-tight">
+                {teamById.get(funFacts.tweaker.teamId)?.nickname ?? "Unknown"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {funFacts.tweaker.maxTweaks} tweak
+                {funFacts.tweaker.maxTweaks === 1 ? "" : "s"}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No tweaks recorded.</p>
+          )}
+        </Card>
       </div>
     </div>
   );
 }
+
+function KpiBlock({
+  label, value, suffix, meta, gold,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+  meta?: string;
+  gold?: boolean;
+}) {
+  return (
+    <div className="px-4 md:px-6 py-4 border-white/10">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+        {label}
+      </p>
+      <p
+        className="font-display text-2xl md:text-3xl mt-1 leading-tight truncate"
+        style={{ color: gold ? "var(--gold, #b08a3e)" : "#fff" }}
+      >
+        {value}
+        {suffix && (
+          <span className="text-sm font-normal text-white/40 ml-1.5">{suffix}</span>
+        )}
+      </p>
+      {meta && (
+        <p className="text-[11px] text-white/50 mt-1 tabular-nums">{meta}</p>
+      )}
+    </div>
+  );
+}
+
