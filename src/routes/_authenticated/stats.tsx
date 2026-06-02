@@ -829,16 +829,250 @@ function useGolferStats() {
 
 type GolferSortKey = "name" | "picks" | "appearances" | "avgPoints" | "best" | "worst" | "cuts" | "delta";
 
+interface AllGolferStat {
+  golfer_name: string;
+  picks: number;                     // count of picks this golfer received across all tournaments
+  appearances: number;               // distinct tournaments this golfer was in the field of
+  totalPoints: number;
+  bestPoints: number;
+  worstPoints: number;
+  cuts: number;                      // distinct tournaments cut/WD/DQ
+  modalBucket: number;               // most-common bucket assignment
+  avgPoints: number;
+  vsBucketDelta: number;             // negative = beat expectation, positive = underperformed
+}
+
+function useAllGolferStats() {
+  return useQuery({
+    queryKey: ["all-golfer-stats"],
+    queryFn: async (): Promise<{ rows: AllGolferStat[]; bucketAvg: Record<number, number> }> => {
+      // 1) Completed tournaments.
+      const { data: tours } = await supabase
+        .from("tournaments").select("id").eq("status", "completed");
+      const tourIds = ((tours ?? []) as Array<{ id: string }>).map((t) => t.id);
+      if (tourIds.length === 0) return { rows: [], bucketAvg: {} };
+
+      // 2) Paginated fetch of golfers (one row per golfer per tournament with bucket assignment).
+      //    Schema: golfers.tournament_id + golfers.golfer_name + golfers.bucket_number.
+      interface GolferRow { id: string; tournament_id: string; golfer_name: string; bucket_number: number | null; }
+      const golfers: GolferRow[] = [];
+      {
+        let from = 0; const pageSize = 1000;
+        for (let page = 0; page < 100; page++) {
+          const { data, error } = await supabase
+            .from("golfers")
+            .select("id,tournament_id,golfer_name,bucket_number")
+            .in("tournament_id", tourIds)
+            .range(from, from + pageSize - 1);
+          if (error) throw new Error(`golfers query failed: ${error.message}`);
+          const chunk = (data ?? []) as GolferRow[];
+          golfers.push(...chunk);
+          if (chunk.length < pageSize) break;
+          from += pageSize;
+        }
+      }
+
+      // 3) Paginated fetch of leaderboard rows for completed tournaments.
+      interface LbRow { tournament_id: string; golfer_id: string | null; position_numeric: number | null; status_type: string | null; }
+      const lb: LbRow[] = [];
+      {
+        let from = 0; const pageSize = 1000;
+        for (let page = 0; page < 100; page++) {
+          const { data, error } = await supabase
+            .from("tournament_leaderboard")
+            .select("tournament_id,golfer_id,position_numeric,status_type")
+            .in("tournament_id", tourIds)
+            .range(from, from + pageSize - 1);
+          if (error) throw new Error(`leaderboard query failed: ${error.message}`);
+          const chunk = (data ?? []) as LbRow[];
+          lb.push(...chunk);
+          if (chunk.length < pageSize) break;
+          from += pageSize;
+        }
+      }
+
+      // 4) Paginated fetch of picks — used to populate the "Picks" column.
+      //    Picks rows count how many teams picked each golfer.
+      interface PickRow { golfer_id: string; }
+      const picks: PickRow[] = [];
+      {
+        let from = 0; const pageSize = 1000;
+        for (let page = 0; page < 100; page++) {
+          const { data, error } = await supabase
+            .from("picks")
+            .select("golfer_id,tournament_id")
+            .in("tournament_id", tourIds)
+            .range(from, from + pageSize - 1);
+          if (error) throw new Error(`picks query failed: ${error.message}`);
+          const chunk = (data ?? []) as PickRow[];
+          picks.push(...chunk);
+          if (chunk.length < pageSize) break;
+          from += pageSize;
+        }
+      }
+      const pickCountByGolferId = new Map<string, number>();
+      for (const p of picks) pickCountByGolferId.set(p.golfer_id, (pickCountByGolferId.get(p.golfer_id) ?? 0) + 1);
+
+      // 5) Build a (tournament_id, golfer_id) -> { points, bucket, name } map.
+      //    Major7s scoring: position_numeric for completers, 100 for CUT/WD/DQ.
+      function isCut(s: string | null): boolean {
+        return s === "STATUS_CUT" || s === "STATUS_WITHDRAWN" || s === "STATUS_DISQUALIFIED";
+      }
+      // Index the leaderboard by (tournament_id, golfer_id).
+      const lbByKey = new Map<string, LbRow>();
+      for (const r of lb) {
+        if (!r.golfer_id) continue;
+        lbByKey.set(`${r.tournament_id}::${r.golfer_id}`, r);
+      }
+
+      // 6) Aggregate per golfer_name (since the same golfer appears under different
+      //    UUIDs across tournaments — we key by name to merge tournaments).
+      interface Acc {
+        name: string;
+        bucketCounts: Record<number, number>;
+        appearances: Set<string>;        // tournament_ids in field
+        cuts: Set<string>;               // tournament_ids cut
+        totalPoints: number;
+        scoredCount: number;             // count of tournaments where they have a leaderboard row
+        best: number;
+        worst: number;
+        deltaSum: number;
+        deltaCount: number;
+        picksTotal: number;              // sum of picks across all per-tournament golfer rows
+      }
+      const byName = new Map<string, Acc>();
+      // Also accumulate global bucket averages: every (golfer-tournament) row that has a
+      // leaderboard score contributes to its bucket's average.
+      const bucketSum: Record<number, number> = {};
+      const bucketCount: Record<number, number> = {};
+
+      for (const g of golfers) {
+        const name = (g.golfer_name ?? "").trim();
+        if (!name) continue;
+        const lbRow = lbByKey.get(`${g.tournament_id}::${g.id}`);
+        // If no leaderboard row, the golfer was in the field as listed but we have no
+        // score for them — skip from scoring/baseline but still count as appearance.
+        let a = byName.get(name);
+        if (!a) {
+          a = {
+            name,
+            bucketCounts: {},
+            appearances: new Set(),
+            cuts: new Set(),
+            totalPoints: 0,
+            scoredCount: 0,
+            best: Infinity,
+            worst: -Infinity,
+            deltaSum: 0,
+            deltaCount: 0,
+            picksTotal: pickCountByGolferId.get(g.id) ?? 0,
+          };
+          byName.set(name, a);
+        } else {
+          // Add this tournament's pick count to the running total.
+          a.picksTotal += pickCountByGolferId.get(g.id) ?? 0;
+        }
+        a.appearances.add(g.tournament_id);
+        if (g.bucket_number != null) {
+          a.bucketCounts[g.bucket_number] = (a.bucketCounts[g.bucket_number] ?? 0) + 1;
+        }
+
+        if (lbRow) {
+          const isCutFlag = isCut(lbRow.status_type);
+          // Major7s scoring rule.
+          const points = isCutFlag ? 100 : (lbRow.position_numeric ?? 100);
+          a.totalPoints += points;
+          a.scoredCount += 1;
+          if (points < a.best) a.best = points;
+          if (points > a.worst) a.worst = points;
+          if (isCutFlag) a.cuts.add(g.tournament_id);
+
+          // Contribute to global bucket average.
+          if (g.bucket_number != null) {
+            bucketSum[g.bucket_number] = (bucketSum[g.bucket_number] ?? 0) + points;
+            bucketCount[g.bucket_number] = (bucketCount[g.bucket_number] ?? 0) + 1;
+          }
+        }
+      }
+
+      // Bucket averages (ALL mode baseline).
+      const bucketAvg: Record<number, number> = {};
+      for (const b of Object.keys(bucketSum)) {
+        const k = Number(b);
+        bucketAvg[k] = bucketSum[k] / bucketCount[k];
+      }
+
+      // Second pass: compute per-golfer delta vs their bucket-assigned baseline.
+      // We need a (tournament,golfer) loop again to attribute each score to its bucket.
+      for (const g of golfers) {
+        const name = (g.golfer_name ?? "").trim();
+        if (!name) continue;
+        const a = byName.get(name);
+        if (!a) continue;
+        const lbRow = lbByKey.get(`${g.tournament_id}::${g.id}`);
+        if (!lbRow) continue;
+        const isCutFlag = isCut(lbRow.status_type);
+        const points = isCutFlag ? 100 : (lbRow.position_numeric ?? 100);
+        if (g.bucket_number != null && bucketAvg[g.bucket_number] != null) {
+          a.deltaSum += (points - bucketAvg[g.bucket_number]);
+          a.deltaCount += 1;
+        }
+      }
+
+      // Build final rows.
+      const rows: AllGolferStat[] = [];
+      for (const [name, a] of byName) {
+        let modal = 0, modalCount = 0;
+        for (const b of Object.keys(a.bucketCounts)) {
+          const c = a.bucketCounts[Number(b)];
+          if (c > modalCount) { modalCount = c; modal = Number(b); }
+        }
+        rows.push({
+          golfer_name: name,
+          picks: a.picksTotal,
+          appearances: a.appearances.size,
+          totalPoints: a.totalPoints,
+          bestPoints: a.best === Infinity ? 0 : a.best,
+          worstPoints: a.worst === -Infinity ? 0 : a.worst,
+          cuts: a.cuts.size,
+          modalBucket: modal,
+          avgPoints: a.scoredCount > 0 ? a.totalPoints / a.scoredCount : 0,
+          vsBucketDelta: a.deltaCount > 0 ? a.deltaSum / a.deltaCount : 0,
+        });
+      }
+      return { rows, bucketAvg };
+    },
+  });
+}
+
 function GolferStatsView() {
-  const { data, isLoading, error } = useGolferStats();
+  // Mode toggle: ALL by default (every golfer who has appeared in any completed
+  // tournament field, scored via Major7s rules from the leaderboard); PICKED
+  // restricts to only the golfers our community has actually picked.
+  const [mode, setMode] = useState<"all" | "picked">("all");
+  const pickedQuery = useGolferStats();
+  const allQuery = useAllGolferStats();
+  const isLoading = mode === "all" ? allQuery.isLoading : pickedQuery.isLoading;
+  const error = mode === "all" ? allQuery.error : pickedQuery.error;
+  // Both modes return the same row shape (golfer_name, picks, appearances,
+  // totalPoints, bestPoints, worstPoints, cuts, modalBucket, avgPoints,
+  // vsBucketDelta), so a single typed view layer below handles both.
+  const data = mode === "all" ? allQuery.data : pickedQuery.data;
+
   const [sortKey, setSortKey] = useState<GolferSortKey>("delta");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Min Picks doesn't really apply in ALL mode (most golfers will have 0 picks);
+  // use a separate Min Appearances threshold for ALL, Min Picks for PICKED.
   const [minPicks, setMinPicks] = useState<number>(5);
+  const [minAppearances, setMinAppearances] = useState<number>(1);
 
   const filtered = useMemo(() => {
     if (!data) return [];
+    if (mode === "all") {
+      return data.rows.filter((r) => r.appearances >= minAppearances);
+    }
     return data.rows.filter((r) => r.picks >= minPicks);
-  }, [data, minPicks]);
+  }, [data, minPicks, minAppearances, mode]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -878,23 +1112,68 @@ function GolferStatsView() {
 
   return (
     <div>
-      {/* Filter row */}
-      <div className="flex items-center justify-end gap-2 mb-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-          Min Picks
-        </label>
-        <select
-          value={minPicks}
-          onChange={(e) => setMinPicks(Number(e.target.value))}
-          className="h-8 px-2 border border-slate-200 rounded-md bg-white text-xs font-semibold"
-          style={{ color: "var(--forest-deep)" }}
-        >
-          <option value={1}>None</option>
-          <option value={3}>3</option>
-          <option value={5}>5</option>
-          <option value={10}>10</option>
-          <option value={20}>20</option>
-        </select>
+      {/* Mode toggle + filter row */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="inline-flex rounded-full border border-slate-200 p-0.5">
+          <button
+            type="button"
+            onClick={() => setMode("all")}
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${
+              mode === "all" ? "shadow-sm" : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+            }`}
+            style={mode === "all" ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("picked")}
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${
+              mode === "picked" ? "shadow-sm" : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+            }`}
+            style={mode === "picked" ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+          >
+            Picked
+          </button>
+        </div>
+
+        {mode === "all" ? (
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Min Appearances
+            </label>
+            <select
+              value={minAppearances}
+              onChange={(e) => setMinAppearances(Number(e.target.value))}
+              className="h-8 px-2 border border-slate-200 rounded-md bg-white text-xs font-semibold"
+              style={{ color: "var(--forest-deep)" }}
+            >
+              <option value={1}>None</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+            </select>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Min Picks
+            </label>
+            <select
+              value={minPicks}
+              onChange={(e) => setMinPicks(Number(e.target.value))}
+              className="h-8 px-2 border border-slate-200 rounded-md bg-white text-xs font-semibold"
+              style={{ color: "var(--forest-deep)" }}
+            >
+              <option value={1}>None</option>
+              <option value={3}>3</option>
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Intro: explain what the table is showing */}
@@ -946,7 +1225,11 @@ function GolferStatsView() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sorted.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
+              <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-xs italic">
+                {mode === "all"
+                  ? `No golfers with ${minAppearances}+ appearance${minAppearances === 1 ? "" : "s"}.`
+                  : `No golfers with ${minPicks}+ picks.`}
+              </td></tr>
             ) : sorted.map((r) => (
               <tr key={r.golfer_name} className="hover:bg-slate-50">
                 <td className="px-2 py-2 text-left">
@@ -971,7 +1254,11 @@ function GolferStatsView() {
       {/* Mobile card list */}
       <div className="md:hidden space-y-2">
         {sorted.length === 0 ? (
-          <div className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</div>
+          <div className="text-center py-6 text-slate-400 text-xs italic">
+            {mode === "all"
+              ? `No golfers with ${minAppearances}+ appearance${minAppearances === 1 ? "" : "s"}.`
+              : `No golfers with ${minPicks}+ picks.`}
+          </div>
         ) : sorted.map((r) => (
           <MobileGolferCard key={r.golfer_name} row={r} />
         ))}
