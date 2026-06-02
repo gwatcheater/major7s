@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { useTeams } from "@/hooks/use-teams";
 // =============================================================
 // Paginated fetcher — wraps a Supabase query builder so we can fetch arbitrary
 // numbers of rows without hitting PostgREST's default 1000-row cap. The cap was
@@ -166,7 +168,7 @@ function SubChipButton({ label, active, onClick }: { label: string; active: bool
   );
 }
 
-type VaultCategory = "chasing_majors" | "oom" | "points";
+type VaultCategory = "chasing_majors" | "oom" | "points" | "head_to_head";
 type VaultSortKey =
   | "rank"
   | "team"
@@ -901,6 +903,297 @@ function MobileOomCard({ row }: { row: OomRow & { rank: number; tied?: boolean }
   );
 }
 
+interface TeamLite {
+  id: string;
+  nickname: string;
+}
+
+interface H2HScore {
+  tournament_id: string;
+  team_id: string;
+  total_points: number;
+  position_numeric: number;
+}
+
+function useTeamsList() {
+  return useQuery({
+    queryKey: ["h2h-teams-list"],
+    queryFn: async (): Promise<TeamLite[]> => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id,nickname")
+        .order("nickname", { ascending: true });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as TeamLite[];
+    },
+  });
+}
+
+function useH2HData(teamAId: string | null, teamBId: string | null) {
+  return useQuery({
+    queryKey: ["h2h-data", teamAId, teamBId],
+    enabled: !!teamAId && !!teamBId && teamAId !== teamBId,
+    queryFn: async () => {
+      // Fetch tournament_scores rows for both teams across all completed tournaments,
+      // then intersect on tournament_id to get the head-to-head set.
+      const { data: completedTours } = await supabase
+        .from("tournaments")
+        .select("id,name,end_date,location")
+        .eq("status", "completed")
+        .order("end_date", { ascending: false });
+      const tours = (completedTours ?? []) as Array<{
+        id: string; name: string; end_date: string; location: string | null;
+      }>;
+      const tourById = new Map(tours.map((t) => [t.id, t]));
+      const completedIdList = tours.map((t) => t.id);
+      if (completedIdList.length === 0) return { tours: [], rows: [] as Array<any> };
+
+      // Two simple queries — one per team. Each returns at most ~15 rows so we
+      // don't need the paginated fetcher for this one.
+      const [{ data: a }, { data: b }] = await Promise.all([
+        supabase
+          .from("tournament_scores")
+          .select("tournament_id,team_id,total_points,position_numeric")
+          .eq("team_id", teamAId!)
+          .in("tournament_id", completedIdList),
+        supabase
+          .from("tournament_scores")
+          .select("tournament_id,team_id,total_points,position_numeric")
+          .eq("team_id", teamBId!)
+          .in("tournament_id", completedIdList),
+      ]);
+      const aById = new Map((a ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
+      const bById = new Map((b ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
+
+      // Shared tournaments: both teams have a tournament_scores row.
+      const shared: Array<{
+        tournament: { id: string; name: string; end_date: string; location: string | null };
+        a: H2HScore;
+        b: H2HScore;
+      }> = [];
+      for (const tid of aById.keys()) {
+        const aRow = aById.get(tid);
+        const bRow = bById.get(tid);
+        const t = tourById.get(tid);
+        if (aRow && bRow && t) shared.push({ tournament: t, a: aRow, b: bRow });
+      }
+      // Sorted newest-first.
+      shared.sort((x, y) => y.tournament.end_date.localeCompare(x.tournament.end_date));
+      return { tours, rows: shared };
+    },
+  });
+}
+
+function HeadToHeadView() {
+  const { user } = useAuth();
+  const { activeTeam } = useTeams();
+  const { data: teams = [] } = useTeamsList();
+  const [teamAId, setTeamAId] = useState<string | null>(null);
+  const [teamBId, setTeamBId] = useState<string | null>(null);
+
+  // Default A to active team once it loads. B starts empty.
+  useMemo(() => {
+    if (teamAId === null && activeTeam?.id) setTeamAId(activeTeam.id);
+    return null;
+  }, [teamAId, activeTeam?.id]);
+
+  const { data, isLoading } = useH2HData(teamAId, teamBId);
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
+  const teamA = teamAId ? teamById.get(teamAId) : null;
+  const teamB = teamBId ? teamById.get(teamBId) : null;
+
+  const summary = useMemo(() => {
+    if (!data?.rows.length) {
+      return { played: 0, aWins: 0, bWins: 0, ties: 0, avgGap: 0, biggestForA: null as null | { gap: number; tName: string; year: string }, biggestForB: null as null | { gap: number; tName: string; year: string } };
+    }
+    let aWins = 0, bWins = 0, ties = 0;
+    let sumGap = 0;
+    let biggestForA: { gap: number; tName: string; year: string } | null = null;
+    let biggestForB: { gap: number; tName: string; year: string } | null = null;
+    for (const r of data.rows) {
+      const gap = r.b.position_numeric - r.a.position_numeric; // positive means A finished better
+      sumGap += gap;
+      if (r.a.position_numeric < r.b.position_numeric) {
+        aWins++;
+        const sizeOfGap = gap;
+        const year = r.tournament.end_date.slice(0, 4);
+        if (!biggestForA || sizeOfGap > biggestForA.gap) {
+          biggestForA = { gap: sizeOfGap, tName: r.tournament.name, year };
+        }
+      } else if (r.b.position_numeric < r.a.position_numeric) {
+        bWins++;
+        const sizeOfGap = -gap;
+        const year = r.tournament.end_date.slice(0, 4);
+        if (!biggestForB || sizeOfGap > biggestForB.gap) {
+          biggestForB = { gap: sizeOfGap, tName: r.tournament.name, year };
+        }
+      } else {
+        ties++;
+      }
+    }
+    return {
+      played: data.rows.length,
+      aWins, bWins, ties,
+      avgGap: sumGap / data.rows.length,  // positive => A averages better
+      biggestForA, biggestForB,
+    };
+  }, [data]);
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 md:px-12">
+      {/* Team pickers */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1">Team A</label>
+          <select
+            value={teamAId ?? ""}
+            onChange={(e) => setTeamAId(e.target.value || null)}
+            className="w-full h-9 px-2 border border-slate-200 rounded-md bg-white text-sm font-semibold"
+            style={{ color: "var(--forest-deep)" }}
+          >
+            <option value="">— pick —</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id} disabled={t.id === teamBId}>{t.nickname}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1">Team B</label>
+          <select
+            value={teamBId ?? ""}
+            onChange={(e) => setTeamBId(e.target.value || null)}
+            className="w-full h-9 px-2 border border-slate-200 rounded-md bg-white text-sm font-semibold"
+            style={{ color: "var(--forest-deep)" }}
+          >
+            <option value="">— pick —</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id} disabled={t.id === teamAId}>{t.nickname}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Empty state when one or both not chosen */}
+      {(!teamA || !teamB) && (
+        <div className="text-center py-12 text-slate-400 text-sm">
+          Pick two different teams to compare their tournament results head-to-head.
+        </div>
+      )}
+
+      {teamA && teamB && isLoading && (
+        <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+      )}
+
+      {teamA && teamB && !isLoading && summary.played === 0 && (
+        <div className="text-center py-12 text-slate-400 text-sm">
+          {teamA.nickname} and {teamB.nickname} haven't both entered the same completed tournament yet.
+        </div>
+      )}
+
+      {teamA && teamB && !isLoading && summary.played > 0 && (
+        <>
+          {/* Headline: who's ahead */}
+          <div className="rounded-xl overflow-hidden mb-5 shadow-sm" style={{ background: "linear-gradient(135deg, var(--forest-deep) 0%, #0a3a25 100%)" }}>
+            <div className="grid grid-cols-3 text-center py-5 px-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Team A</div>
+                <div className="font-display text-xl md:text-2xl text-white truncate">{teamA.nickname}</div>
+                <div className="font-mono text-3xl font-bold mt-2" style={{ color: summary.aWins > summary.bWins ? "var(--gold)" : "#fff" }}>{summary.aWins}</div>
+                <div className="text-[10px] uppercase tracking-widest text-white/40">wins</div>
+              </div>
+              <div className="flex flex-col items-center justify-center">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Played</div>
+                <div className="font-display text-3xl text-white">{summary.played}</div>
+                {summary.ties > 0 && (
+                  <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">{summary.ties} tied</div>
+                )}
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Team B</div>
+                <div className="font-display text-xl md:text-2xl text-white truncate">{teamB.nickname}</div>
+                <div className="font-mono text-3xl font-bold mt-2" style={{ color: summary.bWins > summary.aWins ? "var(--gold)" : "#fff" }}>{summary.bWins}</div>
+                <div className="text-[10px] uppercase tracking-widest text-white/40">wins</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary KPIs */}
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="border border-slate-200 rounded-md p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Avg Position Gap</div>
+              <div className="font-display text-2xl mt-1" style={{ color: "var(--forest-deep)" }}>
+                {Math.abs(summary.avgGap).toFixed(1)}
+                <span className="text-xs font-normal text-slate-500 ml-2">
+                  {summary.avgGap > 0 ? `in ${teamA.nickname}'s favour` : summary.avgGap < 0 ? `in ${teamB.nickname}'s favour` : "even"}
+                </span>
+              </div>
+            </div>
+            <div className="border border-slate-200 rounded-md p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Biggest Margin</div>
+              <div className="font-display text-2xl mt-1" style={{ color: "var(--forest-deep)" }}>
+                {Math.max(summary.biggestForA?.gap ?? 0, summary.biggestForB?.gap ?? 0)}
+                <span className="text-xs font-normal text-slate-500 ml-2">
+                  {(summary.biggestForA?.gap ?? 0) >= (summary.biggestForB?.gap ?? 0)
+                    ? (summary.biggestForA ? `${teamA.nickname}, ${summary.biggestForA.tName} '${summary.biggestForA.year.slice(-2)}` : "—")
+                    : (summary.biggestForB ? `${teamB.nickname}, ${summary.biggestForB.tName} '${summary.biggestForB.year.slice(-2)}` : "—")}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Match-by-match table */}
+          <div className="border border-slate-200 rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
+                <tr>
+                  <th className="text-left px-3 py-2 w-24">Tournament</th>
+                  <th className="text-center px-3 py-2">{teamA.nickname}</th>
+                  <th className="text-center px-3 py-2">{teamB.nickname}</th>
+                  <th className="text-right px-3 py-2 w-16">Gap</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data!.rows.map((r) => {
+                  const aWon = r.a.position_numeric < r.b.position_numeric;
+                  const bWon = r.b.position_numeric < r.a.position_numeric;
+                  const gap = Math.abs(r.a.position_numeric - r.b.position_numeric);
+                  return (
+                    <tr key={r.tournament.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2">
+                        <div className="text-xs font-semibold" style={{ color: "var(--forest-deep)" }}>
+                          {r.tournament.name}
+                        </div>
+                        <div className="text-[10px] text-slate-500">'{r.tournament.end_date.slice(2, 4)}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <div className="text-sm font-mono font-bold tabular-nums" style={{ color: aWon ? "var(--gold)" : "var(--forest-deep)" }}>
+                          {r.a.position_numeric}
+                        </div>
+                        <div className="text-[10px] text-slate-500 tabular-nums">{r.a.total_points} pts</div>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <div className="text-sm font-mono font-bold tabular-nums" style={{ color: bWon ? "var(--gold)" : "var(--forest-deep)" }}>
+                          {r.b.position_numeric}
+                        </div>
+                        <div className="text-[10px] text-slate-500 tabular-nums">{r.b.total_points} pts</div>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="text-xs font-mono font-bold tabular-nums" style={{ color: aWon ? "var(--gold)" : bWon ? "var(--forest-deep)" : "#94a3b8" }}>
+                          {aWon ? `+${gap}` : bWon ? `−${gap}` : "tie"}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ChasingMajorsView() {
   const { data = [], isLoading } = useChasingMajors();
   const [sortKey, setSortKey] = useState<VaultSortKey>("rank");
@@ -1202,6 +1495,11 @@ function HallOfFamePage() {
               active={vaultCategory === "points"}
               onClick={() => setVaultCategory("points")}
             />
+            <SubChipButton
+              label="Head to Head"
+              active={vaultCategory === "head_to_head"}
+              onClick={() => setVaultCategory("head_to_head")}
+            />
           </div>
         )}
       </div>
@@ -1267,6 +1565,7 @@ function HallOfFamePage() {
           {vaultCategory === "chasing_majors" && <ChasingMajorsView />}
           {vaultCategory === "oom" && <OomView />}
           {vaultCategory === "points" && <PointsView />}
+          {vaultCategory === "head_to_head" && <HeadToHeadView />}
         </div>
       )}
     </div>
