@@ -444,7 +444,7 @@ function TournamentStatsPage() {
       })()}
 
       {/* ============ SECTION 1: Most Popular Picks ============ */}
-      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] shadow-sm">
+      <Card className="p-5 mb-6 border-l-4 border-l-[color:var(--gold)] bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
@@ -540,7 +540,7 @@ function TournamentStatsPage() {
       </Card>
 
       {/* ============ SECTION 2: Unique Picks ============ */}
-      <Card className="p-5 mb-6 shadow-sm">
+      <Card className="p-5 mb-6 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Unique Picks</h2>
@@ -573,17 +573,17 @@ function TournamentStatsPage() {
                     {inBucket.map((u, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-white px-3 py-2"
+                        className="flex items-center justify-between gap-3 rounded-md border border-[#e8dfbe] bg-[#fdfaee] px-3 py-2"
                       >
                         <div className="flex items-baseline gap-2 min-w-0">
                           <span className="text-sm font-medium truncate" style={{ color: "var(--forest-deep)" }}>{u.golfer}</span>
                           {u.owgr != null && (
-                            <span className="text-[10px] text-slate-400 font-mono">#{u.owgr}</span>
+                            <span className="text-[10px] font-mono" style={{ color: "#a89464" }}>#{u.owgr}</span>
                           )}
                         </div>
                         <span
-                          className="shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
-                          style={{ color: "var(--forest-deep)" }}
+                          className="shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                          style={{ backgroundColor: "var(--forest-deep)", color: "#e8dfbe" }}
                         >
                           {u.team}
                         </span>
@@ -598,7 +598,7 @@ function TournamentStatsPage() {
       </Card>
 
       {/* ============ SECTION 3: Popular Combinations ============ */}
-      <Card className="p-5 mb-6 shadow-sm">
+      <Card className="p-5 mb-6 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Popular Combinations</h2>
@@ -624,14 +624,18 @@ function TournamentStatsPage() {
                 ) : (
                   <div className="space-y-3">
                     {entries.map((e, idx) => (
-                      <div key={idx} className="border border-border rounded-md p-3">
-                        <div className="flex flex-wrap gap-1.5 mb-3">
+                      <div key={idx} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3">
                           {[...e.golferIds]
                             .sort((a, b) => (golferPickCounts.get(b) ?? 0) - (golferPickCounts.get(a) ?? 0))
                             .map((gid) => (
-                              <Badge key={gid} variant="secondary" className="text-xs">
+                              <span
+                                key={gid}
+                                className="text-sm font-medium"
+                                style={{ color: "var(--forest-deep)" }}
+                              >
                                 {golferById.get(gid)?.golfer_name ?? "Unknown"}
-                              </Badge>
+                              </span>
                             ))}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
@@ -642,8 +646,8 @@ function TournamentStatsPage() {
                             .map((tid) => (
                               <span
                                 key={tid}
-                                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
-                                style={{ color: "var(--forest-deep)" }}
+                                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                                style={{ backgroundColor: "var(--forest-deep)", color: "#e8dfbe" }}
                               >
                                 {teamById.get(tid)?.nickname ?? "Unknown"}
                               </span>
@@ -661,7 +665,7 @@ function TournamentStatsPage() {
 
 
       {/* ============ SECTION 4: Identical Teams ============ */}
-      <Card className="p-5 mb-6 shadow-sm">
+      <Card className="p-5 mb-6 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-display text-lg uppercase">Identical Teams</h2>
@@ -671,7 +675,7 @@ function TournamentStatsPage() {
         ) : (
           <div className="space-y-2">
             {identicalTeams.map((group, i) => (
-              <div key={i} className="border border-border rounded-md p-3 space-y-2">
+              <div key={i} className="border border-[#e8dfbe] bg-[#fdfaee] rounded-md p-3 space-y-2">
                 <div className="flex flex-wrap gap-1.5">
                   {[...group.teamIds]
                     .sort((a, b) =>
@@ -680,8 +684,8 @@ function TournamentStatsPage() {
                     .map((tid) => (
                       <span
                         key={tid}
-                        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
-                        style={{ color: "var(--forest-deep)" }}
+                        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: "var(--forest-deep)", color: "#e8dfbe" }}
                       >
                         {teamById.get(tid)?.nickname ?? "Unknown"}
                       </span>
@@ -698,7 +702,7 @@ function TournamentStatsPage() {
 
       {/* ============ SECTION 5: Fun Facts ============ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5 shadow-sm">
+        <Card className="p-5 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Fastest entry</h3>
@@ -717,7 +721,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5 shadow-sm">
+        <Card className="p-5 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Leaving it late</h3>
@@ -743,7 +747,7 @@ function TournamentStatsPage() {
           )}
         </Card>
 
-        <Card className="p-5 shadow-sm">
+        <Card className="p-5 bg-[#fbf7e9] border-[#e8dfbe] shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Repeat className="h-4 w-4 text-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest">Tweaker</h3>
