@@ -635,15 +635,19 @@ function TournamentStatsPage() {
                             ))}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {e.teamIds.map((tid) => (
-                            <span
-                              key={tid}
-                              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
-                              style={{ backgroundColor: "var(--forest-deep, #166534)" }}
-                            >
-                              {teamById.get(tid)?.nickname ?? "Unknown"}
-                            </span>
-                          ))}
+                          {[...e.teamIds]
+                            .sort((a, b) =>
+                              (teamById.get(a)?.nickname ?? "").localeCompare(teamById.get(b)?.nickname ?? "")
+                            )
+                            .map((tid) => (
+                              <span
+                                key={tid}
+                                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
+                                style={{ color: "var(--forest-deep)" }}
+                              >
+                                {teamById.get(tid)?.nickname ?? "Unknown"}
+                              </span>
+                            ))}
                         </div>
                       </div>
                     ))}
@@ -669,15 +673,19 @@ function TournamentStatsPage() {
             {identicalTeams.map((group, i) => (
               <div key={i} className="border border-border rounded-md p-3 space-y-2">
                 <div className="flex flex-wrap gap-1.5">
-                  {group.teamIds.map((tid) => (
-                    <span
-                      key={tid}
-                      className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium text-white"
-                      style={{ backgroundColor: "var(--forest-deep, #166534)" }}
-                    >
-                      {teamById.get(tid)?.nickname ?? "Unknown"}
-                    </span>
-                  ))}
+                  {[...group.teamIds]
+                    .sort((a, b) =>
+                      (teamById.get(a)?.nickname ?? "").localeCompare(teamById.get(b)?.nickname ?? "")
+                    )
+                    .map((tid) => (
+                      <span
+                        key={tid}
+                        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-slate-200 bg-slate-100"
+                        style={{ color: "var(--forest-deep)" }}
+                      >
+                        {teamById.get(tid)?.nickname ?? "Unknown"}
+                      </span>
+                    ))}
                 </div>
                 <div className="text-sm">
                   {group.picks.map((p) => golferById.get(p.golfer_id)?.golfer_name ?? "Unknown").join(", ")}
