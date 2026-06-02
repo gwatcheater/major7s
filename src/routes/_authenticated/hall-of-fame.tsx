@@ -2,6 +2,37 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+// =============================================================
+// Paginated fetcher — wraps a Supabase query builder so we can fetch arbitrary
+// numbers of rows without hitting PostgREST's default 1000-row cap. The cap was
+// silently truncating results across Hall of Fame views (Rob Parker's 12th
+// tournament_scores row was being dropped, etc.).
+//
+// Usage:
+//   const rows = await fetchAll(
+//     () => supabase.from("tournament_scores").select("..."),
+//   );
+// =============================================================
+async function fetchAll<T>(
+  buildQuery: () => { range: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }> },
+  pageSize = 1000,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  // Safety: hard cap at 100 pages (100k rows) to avoid runaway loops.
+  for (let page = 0; page < 100; page++) {
+    const to = from + pageSize - 1;
+    const { data, error } = await buildQuery().range(from, to);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    all.push(...(data as T[]));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+
 import { Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,9 +68,13 @@ function useHallOfFame() {
   return useQuery({
     queryKey: ["hall-of-fame"],
     queryFn: async (): Promise<AggRow[]> => {
-      const [{ data: tours }, { data: results }] = await Promise.all([
+      const [{ data: tours }, results] = await Promise.all([
         supabase.from("tournaments").select("id,name,location,start_date").eq("status", "completed").order("start_date", { ascending: false }),
-        supabase.from("tournament_results").select("tournament_id,result_type,position,context,teams(nickname)"),
+        fetchAll<Row>(() =>
+          supabase
+            .from("tournament_results")
+            .select("tournament_id,result_type,position,context,teams(nickname)") as any,
+        ),
       ]);
       const rs = (results ?? []) as unknown as Row[];
       const byT = new Map<string, Row[]>();
@@ -187,11 +222,19 @@ function useChasingMajors() {
       const completedIdList = tourList.map((t) => t.id);
       // Filter podium results server-side by the completed tournament list to
       // keep the payload small on mobile connections.
-      const { data: results } = await supabase
-        .from("tournament_results")
-        .select("tournament_id,team_id,result_type,position,teams(nickname)")
-        .eq("result_type", "podium")
-        .in("tournament_id", completedIdList);
+      const results = await fetchAll<{
+        tournament_id: string;
+        team_id: string;
+        result_type: string;
+        position: number;
+        teams: { nickname: string } | null;
+      }>(() =>
+        supabase
+          .from("tournament_results")
+          .select("tournament_id,team_id,result_type,position,teams(nickname)")
+          .eq("result_type", "podium")
+          .in("tournament_id", completedIdList) as any,
+      );
       const tourNameById = new Map<string, string>();
       for (const t of (tours ?? []) as Array<{ id: string; name: string }>) {
         tourNameById.set(t.id, t.name);
@@ -206,12 +249,7 @@ function useChasingMajors() {
       }
       const byTeam = new Map<string, Acc>();
 
-      for (const r of (results ?? []) as unknown as Array<{
-        tournament_id: string;
-        team_id: string;
-        position: number;
-        teams: { nickname: string } | null;
-      }>) {
+      for (const r of results) {
         const majorName = tourNameById.get(r.tournament_id);
         if (!majorName || !MAJOR_FULL_NAMES.includes(majorName as any)) continue;
         const nickname = r.teams?.nickname ?? "—";
@@ -371,20 +409,33 @@ function useOom() {
       if (completedIdList.length === 0) return [];
       const completedIds = new Set(completedIdList);
 
-      // Filter both queries server-side by the completed tournament list. Without
-      // this, tournament_scores can return many thousands of rows (one per team
-      // per tournament) and either timeout or hit Supabase's default 1000-row cap
-      // on slower (mobile) connections.
-      const [{ data: results }, { data: scores }] = await Promise.all([
-        supabase
-          .from("tournament_results")
-          .select("tournament_id,team_id,result_type,position,teams(nickname)")
-          .in("result_type", ["podium", "wooden_spoon"])
-          .in("tournament_id", completedIdList),
-        supabase
-          .from("tournament_scores")
-          .select("tournament_id,team_id,position_numeric,teams(nickname)")
-          .in("tournament_id", completedIdList),
+      // Both queries pull through fetchAll to bypass PostgREST's default
+      // 1000-row cap, which was silently dropping rows in larger payloads.
+      const [results, scores] = await Promise.all([
+        fetchAll<{
+          tournament_id: string;
+          team_id: string;
+          result_type: string;
+          position: number;
+          teams: { nickname: string } | null;
+        }>(() =>
+          supabase
+            .from("tournament_results")
+            .select("tournament_id,team_id,result_type,position,teams(nickname)")
+            .in("result_type", ["podium", "wooden_spoon"])
+            .in("tournament_id", completedIdList) as any,
+        ),
+        fetchAll<{
+          tournament_id: string;
+          team_id: string;
+          position_numeric: number;
+          teams: { nickname: string } | null;
+        }>(() =>
+          supabase
+            .from("tournament_scores")
+            .select("tournament_id,team_id,position_numeric,teams(nickname)")
+            .in("tournament_id", completedIdList) as any,
+        ),
       ]);
 
       interface Acc {
@@ -407,13 +458,7 @@ function useOom() {
       };
 
       // Pass 1: podium + wooden_spoon counts from tournament_results
-      for (const r of (results ?? []) as unknown as Array<{
-        tournament_id: string;
-        team_id: string;
-        result_type: string;
-        position: number;
-        teams: { nickname: string } | null;
-      }>) {
+      for (const r of results) {
         if (!completedIds.has(r.tournament_id)) continue;
         const a = ensure(r.team_id, r.teams?.nickname ?? "—");
         if (r.result_type === "podium") {
@@ -426,12 +471,7 @@ function useOom() {
       }
 
       // Pass 2: top-10 finishes (position_numeric 1..10) from tournament_scores
-      for (const s of (scores ?? []) as unknown as Array<{
-        tournament_id: string;
-        team_id: string;
-        position_numeric: number;
-        teams: { nickname: string } | null;
-      }>) {
+      for (const s of scores) {
         if (!completedIds.has(s.tournament_id)) continue;
         if (s.position_numeric <= 10) {
           const a = ensure(s.team_id, s.teams?.nickname ?? "—");
@@ -482,10 +522,17 @@ function usePointsView() {
       const completedIdList = ((completedTours ?? []) as Array<{ id: string }>).map((t) => t.id);
       if (completedIdList.length === 0) return [];
 
-      const { data: scores } = await supabase
-        .from("tournament_scores")
-        .select("team_id,total_points,position_numeric,teams(nickname)")
-        .in("tournament_id", completedIdList);
+      const scores = await fetchAll<{
+        team_id: string;
+        total_points: number;
+        position_numeric: number;
+        teams: { nickname: string } | null;
+      }>(() =>
+        supabase
+          .from("tournament_scores")
+          .select("team_id,total_points,position_numeric,teams(nickname)")
+          .in("tournament_id", completedIdList) as any,
+      );
 
       interface Acc {
         nickname: string;
@@ -494,12 +541,7 @@ function usePointsView() {
         sumPosition: number;
       }
       const byTeam = new Map<string, Acc>();
-      for (const r of (scores ?? []) as unknown as Array<{
-        team_id: string;
-        total_points: number;
-        position_numeric: number;
-        teams: { nickname: string } | null;
-      }>) {
+      for (const r of scores) {
         let a = byTeam.get(r.team_id);
         if (!a) {
           a = { nickname: r.teams?.nickname ?? "—", tournaments: 0, sumPoints: 0, sumPosition: 0 };
