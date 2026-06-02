@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Trophy, Medal, Award } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
@@ -406,7 +406,7 @@ function AllTimeStatsPage() {
 
       {/* Top summary card */}
       <div className="border border-border bg-card rounded-md p-5 mb-4 grid grid-cols-3 gap-4">
-        <SummaryStat label="Tournaments Played" value={tournamentsPlayed} />
+        <SummaryStat label="Tournaments" value={tournamentsPlayed} />
         <PodiumStat breakdown={podiumBreakdown} />
         <SummaryStat label="Last Place" value={woodenSpoons} />
       </div>
@@ -565,11 +565,9 @@ function SummaryStat({ label, value }: { label: string; value: number }) {
 }
 
 function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; bronze: number; total: number } }) {
-  // Olympic-style podium layout: gold tallest in the middle, silver left, bronze right.
-  // Above each pillar: the team's count of finishes at that position.
-  // On each pillar: the position number (1/2/3).
-  // Above each pillar count: a small medal icon hinting at the rank.
-  // The whole thing always renders even when all counts are zero (graceful empty).
+  // Olympic-style podium: gold dominant in the middle, silver left and bronze right
+  // at distinctly lower heights so the three tiers read at a glance. Each pillar shows
+  // the team's count above it and a medal emoji inside.
   const goldStyle: React.CSSProperties = {
     background: "radial-gradient(circle at 30% 25%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
   };
@@ -586,63 +584,35 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
       </div>
       <div className="font-display text-3xl md:text-4xl mt-1 mb-2">{breakdown.total}</div>
 
-      {/* The podium itself: three columns sharing a baseline. */}
+      {/* The podium itself: three columns sharing a baseline. Bigger height gaps
+          between gold/silver/bronze for clearer tier differentiation. */}
       <div className="flex items-end justify-center gap-1.5 h-[120px] mt-2">
-        {/* Silver — left, mid height */}
-        <PodiumPillar
-          rank={2}
-          count={breakdown.silver}
-          heightClass="h-[60%]"
-          style={silverStyle}
-          textColor="#222"
-          icon={<Medal className="w-4 h-4" style={{ color: "#7d7d7d" }} />}
-        />
-        {/* Gold — middle, tallest */}
-        <PodiumPillar
-          rank={1}
-          count={breakdown.gold}
-          heightClass="h-[85%]"
-          style={goldStyle}
-          textColor="#3a2a00"
-          icon={<Trophy className="w-4 h-4" style={{ color: "#b8860b" }} />}
-        />
-        {/* Bronze — right, shortest */}
-        <PodiumPillar
-          rank={3}
-          count={breakdown.bronze}
-          heightClass="h-[45%]"
-          style={bronzeStyle}
-          textColor="#2a1500"
-          icon={<Award className="w-4 h-4" style={{ color: "#c98447" }} />}
-        />
+        <PodiumPillar count={breakdown.silver} heightClass="h-[50%]" style={silverStyle} emoji="🥈" />
+        <PodiumPillar count={breakdown.gold}   heightClass="h-[90%]" style={goldStyle}   emoji="🥇" />
+        <PodiumPillar count={breakdown.bronze} heightClass="h-[30%]" style={bronzeStyle} emoji="🥉" />
       </div>
     </div>
   );
 }
 
 function PodiumPillar({
-  rank, count, heightClass, style, textColor, icon,
+  count, heightClass, style, emoji,
 }: {
-  rank: 1 | 2 | 3;
   count: number;
   heightClass: string;
   style: React.CSSProperties;
-  textColor: string;
-  icon: React.ReactNode;
+  emoji: string;
 }) {
   return (
     <div className="flex flex-col items-center justify-end w-12 md:w-14 h-full">
-      {/* Stack above the pillar: medal icon, then count */}
-      <div className="flex flex-col items-center mb-1">
-        {icon}
-        <span className="text-sm font-bold font-mono leading-none mt-0.5">{count}</span>
-      </div>
-      {/* The pillar itself, with the position number centred inside */}
+      {/* Count above the pillar. No icon row — the emoji inside the pillar carries the tier. */}
+      <span className="text-sm font-bold font-mono leading-none mb-1">{count}</span>
+      {/* The pillar itself, with a medal emoji centred inside */}
       <div
-        className={`w-full ${heightClass} rounded-t-md flex items-center justify-center font-display text-lg font-bold`}
-        style={{ ...style, color: textColor, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
+        className={`w-full ${heightClass} rounded-t-md flex items-center justify-center text-xl`}
+        style={{ ...style, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
       >
-        {rank}
+        {emoji}
       </div>
     </div>
   );
