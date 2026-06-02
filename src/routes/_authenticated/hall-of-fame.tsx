@@ -131,7 +131,7 @@ function SubChipButton({ label, active, onClick }: { label: string; active: bool
   );
 }
 
-type VaultCategory = "chasing_majors" | "oom";
+type VaultCategory = "chasing_majors" | "oom" | "points";
 type VaultSortKey =
   | "rank"
   | "team"
@@ -147,7 +147,11 @@ type VaultSortKey =
   | "thirds"
   | "top10"
   | "last"
-  | "points";
+  | "points"
+  // Points view
+  | "tournaments"
+  | "avgPoints"
+  | "avgPosition";
 
 interface ChasingMajorsRow {
   team_id: string;
@@ -457,6 +461,207 @@ function useOom() {
       return out;
     },
   });
+}
+
+interface PointsRow {
+  team_id: string;
+  nickname: string;
+  tournaments: number;     // count of tournament_scores rows for this team (completed only)
+  avgPoints: number;
+  avgPosition: number;
+}
+
+function usePointsView() {
+  return useQuery({
+    queryKey: ["points-view"],
+    queryFn: async (): Promise<PointsRow[]> => {
+      // Same completed-only filter pattern as OOM — server-side .in() keeps
+      // payloads manageable on mobile.
+      const { data: completedTours } = await supabase
+        .from("tournaments").select("id").eq("status", "completed");
+      const completedIdList = ((completedTours ?? []) as Array<{ id: string }>).map((t) => t.id);
+      if (completedIdList.length === 0) return [];
+
+      const { data: scores } = await supabase
+        .from("tournament_scores")
+        .select("team_id,total_points,position_numeric,teams(nickname)")
+        .in("tournament_id", completedIdList);
+
+      interface Acc {
+        nickname: string;
+        tournaments: number;
+        sumPoints: number;
+        sumPosition: number;
+      }
+      const byTeam = new Map<string, Acc>();
+      for (const r of (scores ?? []) as unknown as Array<{
+        team_id: string;
+        total_points: number;
+        position_numeric: number;
+        teams: { nickname: string } | null;
+      }>) {
+        let a = byTeam.get(r.team_id);
+        if (!a) {
+          a = { nickname: r.teams?.nickname ?? "—", tournaments: 0, sumPoints: 0, sumPosition: 0 };
+          byTeam.set(r.team_id, a);
+        }
+        a.tournaments++;
+        a.sumPoints += r.total_points;
+        a.sumPosition += r.position_numeric;
+      }
+
+      const out: PointsRow[] = [];
+      for (const [team_id, a] of byTeam) {
+        out.push({
+          team_id,
+          nickname: a.nickname,
+          tournaments: a.tournaments,
+          avgPoints: a.tournaments > 0 ? a.sumPoints / a.tournaments : 0,
+          avgPosition: a.tournaments > 0 ? a.sumPosition / a.tournaments : 0,
+        });
+      }
+      return out;
+    },
+  });
+}
+
+function PointsView() {
+  const { data = [], isLoading } = usePointsView();
+  const [sortKey, setSortKey] = useState<VaultSortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Spec sort: lowest avgPoints first (best), tie-break by lower avgPosition,
+  // then by tournament count descending (more tournaments => more reliable).
+  const ranked = useMemo(() => {
+    const baseSorted = [...data].sort((a, b) => {
+      if (a.avgPoints !== b.avgPoints) return a.avgPoints - b.avgPoints;
+      if (a.avgPosition !== b.avgPosition) return a.avgPosition - b.avgPosition;
+      if (b.tournaments !== a.tournaments) return b.tournaments - a.tournaments;
+      return a.nickname.localeCompare(b.nickname);
+    });
+    let lastKey = "";
+    let lastRank = 0;
+    const withRanks = baseSorted.map((r, i) => {
+      const key = `${r.avgPoints.toFixed(4)}|${r.avgPosition.toFixed(4)}|${r.tournaments}`;
+      const rank = key === lastKey ? lastRank : i + 1;
+      lastKey = key;
+      lastRank = rank;
+      return { ...r, rank };
+    });
+    const rankCounts = new Map<number, number>();
+    for (const r of withRanks) rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
+    return withRanks.map((r) => ({ ...r, tied: (rankCounts.get(r.rank) ?? 0) > 1 }));
+  }, [data]);
+
+  const sorted = useMemo(() => {
+    const arr = [...ranked];
+    const dir = sortDir === "asc" ? 1 : -1;
+    switch (sortKey) {
+      case "rank":         arr.sort((a, b) => dir * (a.rank - b.rank)); break;
+      case "team":         arr.sort((a, b) => dir * a.nickname.localeCompare(b.nickname)); break;
+      case "tournaments":  arr.sort((a, b) => dir * (a.tournaments - b.tournaments)); break;
+      case "avgPoints":    arr.sort((a, b) => dir * (a.avgPoints - b.avgPoints)); break;
+      case "avgPosition":  arr.sort((a, b) => dir * (a.avgPosition - b.avgPosition)); break;
+    }
+    return arr;
+  }, [ranked, sortKey, sortDir]);
+
+  function toggleSort(k: VaultSortKey) {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir("asc"); }
+  }
+
+  if (isLoading) return <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>;
+  if (sorted.length === 0) return <div className="text-center py-12 text-slate-400 text-sm">No completed tournaments yet.</div>;
+
+  return (
+    <div className="relative max-w-3xl mx-auto px-4 md:px-12">
+      {/* Desktop sortable table */}
+      <div className="hidden md:block overflow-x-auto overflow-y-visible">
+        <div className="min-w-[560px]">
+          <table className="border-collapse" style={{ tableLayout: "fixed" }}>
+            <thead className="sticky top-0 z-20 bg-white">
+              <tr className="border-y border-slate-200">
+                <SortHeader label="Rank"          k="rank"        sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-0"  widthClass="w-14" />
+                <SortHeader label="Team"          k="team"        sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} sticky="left-14" widthClass="w-40" />
+                <SortHeader label="Tournaments"   k="tournaments" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="Avg Points"    k="avgPoints"   sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 text-center whitespace-nowrap" align="center" />
+                <SortHeader label="Avg Position"  k="avgPosition" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} widthClass="w-24 text-center whitespace-nowrap" align="center" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.team_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="sticky left-0 z-10 px-2 py-3 text-left text-xs font-mono font-bold tabular-nums bg-white" style={{ color: "var(--gold)" }}>
+                    {r.tied ? `T${r.rank}` : r.rank}
+                  </td>
+                  <td className="sticky left-14 z-10 px-2 py-3 text-left text-xs font-semibold bg-white truncate" style={{ color: "var(--forest-deep)" }}>
+                    {r.nickname}
+                  </td>
+                  <td className="px-2 py-3 text-center text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>
+                    {r.tournaments}
+                  </td>
+                  <td className="px-2 py-3 text-center text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>
+                    {r.avgPoints.toFixed(1)}
+                  </td>
+                  <td className="px-2 py-3 text-center text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>
+                    {r.avgPosition.toFixed(1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {sorted.map((r) => (
+          <MobilePointsCard key={r.team_id} row={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobilePointsCard({ row }: { row: PointsRow & { rank: number; tied?: boolean } }) {
+  const rankLabel = row.tied ? `T${row.rank}` : row.rank;
+  const cells: Array<{ label: string; value: string }> = [
+    { label: "TOURNAMENTS",  value: row.tournaments.toString() },
+    { label: "AVG POINTS",   value: row.avgPoints.toFixed(1) },
+    { label: "AVG POSITION", value: row.avgPosition.toFixed(1) },
+  ];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      {/* Header: rank + team on left */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="font-mono font-bold text-sm tabular-nums shrink-0" style={{ color: "var(--gold)" }}>
+          {rankLabel}
+        </span>
+        <span className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>
+          {row.nickname}
+        </span>
+      </div>
+
+      {/* 3-column grid: labels row, then values row */}
+      <div className="grid grid-cols-3 gap-1 text-center">
+        {cells.map((c) => (
+          <div key={c.label} className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+            {c.label}
+          </div>
+        ))}
+        {cells.map((c) => (
+          <div
+            key={`${c.label}-v`}
+            className="text-base font-mono font-bold tabular-nums leading-none mt-1"
+            style={{ color: "var(--forest-deep)" }}
+          >
+            {c.value}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function OomView() {
@@ -920,6 +1125,11 @@ function HallOfFamePage() {
               active={vaultCategory === "oom"}
               onClick={() => setVaultCategory("oom")}
             />
+            <SubChipButton
+              label="Points"
+              active={vaultCategory === "points"}
+              onClick={() => setVaultCategory("points")}
+            />
           </div>
         )}
       </div>
@@ -984,6 +1194,7 @@ function HallOfFamePage() {
         <div className="px-4 md:px-12 pt-4 pb-12">
           {vaultCategory === "chasing_majors" && <ChasingMajorsView />}
           {vaultCategory === "oom" && <OomView />}
+          {vaultCategory === "points" && <PointsView />}
         </div>
       )}
     </div>
