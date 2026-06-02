@@ -849,7 +849,7 @@ function useGolferStats() {
           if (c > modalCount) { modalCount = c; modal = Number(b); }
         }
         rows.push({
-          golfer_name: titleCaseGolferName(a.name),
+          golfer_name: name,
           picks: a.picks,
           appearances: a.tournamentSet.size,
           totalPoints: a.totalPoints,
@@ -1061,14 +1061,16 @@ function useAllGolferStats() {
 
       // Build final rows.
       const rows: AllGolferStat[] = [];
-      for (const [name, a] of byName) {
+      for (const [, a] of byName) {
         let modal = 0, modalCount = 0;
         for (const b of Object.keys(a.bucketCounts)) {
           const c = a.bucketCounts[Number(b)];
           if (c > modalCount) { modalCount = c; modal = Number(b); }
         }
         rows.push({
-          golfer_name: name,
+          // Display name is the original-cased rawName stored on the Acc;
+          // the Map key is the normalised lowercased form we don't want to render.
+          golfer_name: titleCaseGolferName(a.name),
           picks: a.picksTotal,
           appearances: a.appearances.size,
           totalPoints: a.totalPoints,
@@ -1157,18 +1159,6 @@ function GolferStatsView() {
 
   return (
     <div>
-      {/* Search bar */}
-      <div className="mb-3">
-        <input
-          type="text"
-          placeholder="Search golfers…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full h-9 px-3 border border-slate-200 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
-          style={{ color: "var(--forest-deep)" }}
-        />
-      </div>
-
       {/* Mode toggle + filter row */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="inline-flex rounded-full border border-slate-200 p-0.5">
@@ -1263,6 +1253,18 @@ function GolferStatsView() {
           })}
         </div>
 
+      </div>
+
+      {/* Search bar — sits between the baseline strip and the data table */}
+      <div className="mb-3">
+        <input
+          type="text"
+          placeholder="Search golfers…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full h-9 px-3 border border-slate-200 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+          style={{ color: "var(--forest-deep)" }}
+        />
       </div>
 
       {/* Sortable table — desktop */}
