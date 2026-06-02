@@ -731,27 +731,18 @@ function useGolferStats() {
 
       // 3) Pull all pick rows for those scores. tournament_score_picks already
       //    carries golfer_name + bucket + points, so no join needed.
+      //    Chunked at 100 score-ids per query (~700 picks per query, well under
+      //    Supabase's 1000-row cap so no inner pagination needed).
       const picks: Array<{ bucket: number; golfer_name: string; points: number }> = [];
-      {
-        // Paginate by chunked ids to keep the .in() list manageable.
-        const chunkSize = 500;
-        for (let i = 0; i < scoreIds.length; i += chunkSize) {
-          const idChunk = scoreIds.slice(i, i + chunkSize);
-          let from = 0;
-          const pageSize = 1000;
-          for (let page = 0; page < 100; page++) {
-            const { data, error } = await supabase
-              .from("tournament_score_picks")
-              .select("bucket,golfer_name,points")
-              .in("tournament_score_id", idChunk)
-              .range(from, from + pageSize - 1);
-            if (error) throw new Error(error.message);
-            const chunk = (data ?? []) as Array<{ bucket: number; golfer_name: string; points: number }>;
-            picks.push(...chunk);
-            if (chunk.length < pageSize) break;
-            from += pageSize;
-          }
-        }
+      const CHUNK = 100;
+      for (let i = 0; i < scoreIds.length; i += CHUNK) {
+        const idChunk = scoreIds.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from("tournament_score_picks")
+          .select("bucket,golfer_name,points")
+          .in("tournament_score_id", idChunk);
+        if (error) throw new Error(`picks query failed: ${error.message}`);
+        picks.push(...((data ?? []) as Array<{ bucket: number; golfer_name: string; points: number }>));
       }
 
       // 4) Bucket averages — the baseline expectation per bucket across all picks.
@@ -821,7 +812,7 @@ function useGolferStats() {
 type GolferSortKey = "name" | "picks" | "avgPoints" | "best" | "worst" | "delta";
 
 function GolferStatsView() {
-  const { data, isLoading } = useGolferStats();
+  const { data, isLoading, error } = useGolferStats();
   const [sortKey, setSortKey] = useState<GolferSortKey>("delta");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [minPicks, setMinPicks] = useState<number>(5);
@@ -852,6 +843,14 @@ function GolferStatsView() {
 
   if (isLoading) {
     return <div className="text-center py-12 text-muted-foreground text-sm">Loading…</div>;
+  }
+  if (error) {
+    return (
+      <div className="text-center py-12 text-sm">
+        <div className="text-red-600 font-semibold mb-2">Failed to load golfer stats</div>
+        <div className="text-slate-500 text-xs font-mono">{(error as Error)?.message ?? String(error)}</div>
+      </div>
+    );
   }
   if (!data || data.rows.length === 0) {
     return <div className="text-center py-12 text-muted-foreground text-sm">No pick data yet.</div>;
