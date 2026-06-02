@@ -688,7 +688,8 @@ interface GolferPickStat {
   appearances: number;           // count of distinct tournaments this golfer appeared in (any team's pick)
   totalPoints: number;
   bestPoints: number;
-  worstPoints: number;
+  worstPoints: number;           // worst score excluding cuts (< 100); falls back to 100 if every pick was cut
+  cuts: number;                  // count of picks that ended in a CUT/WD/DQ (== 100 points)
   modalBucket: number;          // most-common bucket they were placed in
   avgPoints: number;             // totalPoints / picks
   vsBucketDelta: number;         // negative = beat expectation (fewer points than bucket avg)
@@ -766,9 +767,10 @@ function useGolferStats() {
         picks: number;
         totalPoints: number;
         bestPoints: number;
-        worstPoints: number;
+        worstRealPoints: number;   // tracks worst NON-cut score (< 100); -Infinity if no non-cut picks
+        cuts: number;              // count of picks scoring exactly 100 (CUT/WD/DQ penalty)
         bucketCounts: Record<number, number>;
-        deltaSum: number;          // sum of (pick.points - bucketAvg[pick.bucket])
+        deltaSum: number;
         tournamentSet: Set<string>;
       }
       const byGolfer = new Map<string, Acc>();
@@ -777,13 +779,19 @@ function useGolferStats() {
         if (!name) continue;
         let a = byGolfer.get(name);
         if (!a) {
-          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstPoints: -Infinity, bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
+          a = { picks: 0, totalPoints: 0, bestPoints: Infinity, worstRealPoints: -Infinity, cuts: 0, bucketCounts: {}, deltaSum: 0, tournamentSet: new Set() };
           byGolfer.set(name, a);
         }
         a.picks++;
         a.totalPoints += p.points;
         if (p.points < a.bestPoints) a.bestPoints = p.points;
-        if (p.points > a.worstPoints) a.worstPoints = p.points;
+        // The CUT/WD/DQ penalty is exactly 100 points. Anything < 100 is a real (weekend-played)
+        // finishing score. Worst (real) tracks only those; CUT count tracks the 100s.
+        if (p.points >= 100) {
+          a.cuts++;
+        } else if (p.points > a.worstRealPoints) {
+          a.worstRealPoints = p.points;
+        }
         a.bucketCounts[p.bucket] = (a.bucketCounts[p.bucket] ?? 0) + 1;
         a.deltaSum += (p.points - (bucketAvg[p.bucket] ?? 0));
         const tid = tournamentByScoreId.get(p.tournament_score_id);
@@ -804,10 +812,12 @@ function useGolferStats() {
           appearances: a.tournamentSet.size,
           totalPoints: a.totalPoints,
           bestPoints: a.bestPoints === Infinity ? 0 : a.bestPoints,
-          worstPoints: a.worstPoints === -Infinity ? 0 : a.worstPoints,
+          // Worst (real): if no non-cut picks exist, fall back to 100 (the cut value).
+          worstPoints: a.worstRealPoints === -Infinity ? 100 : a.worstRealPoints,
+          cuts: a.cuts,
           modalBucket: modal,
           avgPoints: a.totalPoints / a.picks,
-          vsBucketDelta: a.deltaSum / a.picks,  // negative = beat expectation
+          vsBucketDelta: a.deltaSum / a.picks,
         });
       }
       return { rows, bucketAvg };
@@ -815,7 +825,7 @@ function useGolferStats() {
   });
 }
 
-type GolferSortKey = "name" | "picks" | "appearances" | "avgPoints" | "best" | "worst" | "delta";
+type GolferSortKey = "name" | "picks" | "appearances" | "avgPoints" | "best" | "worst" | "cuts" | "delta";
 
 function GolferStatsView() {
   const { data, isLoading, error } = useGolferStats();
@@ -838,6 +848,7 @@ function GolferStatsView() {
       case "avgPoints":    arr.sort((a, b) => dir * (a.avgPoints - b.avgPoints)); break;
       case "best":         arr.sort((a, b) => dir * (a.bestPoints - b.bestPoints)); break;
       case "worst":        arr.sort((a, b) => dir * (a.worstPoints - b.worstPoints)); break;
+      case "cuts":         arr.sort((a, b) => dir * (a.cuts - b.cuts)); break;
       case "delta":        arr.sort((a, b) => dir * (a.vsBucketDelta - b.vsBucketDelta)); break;
     }
     return arr;
@@ -884,7 +895,18 @@ function GolferStatsView() {
         </select>
       </div>
 
-      {/* Lead insight: Bucket averages — small strip explaining the baseline */}
+      {/* Intro: explain what the table is showing */}
+      <div className="mb-4 text-xs text-slate-600 leading-relaxed">
+        <p>
+          Every golfer ever picked across completed tournaments, aggregated across all teams that picked them.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Avg Points</span> is the average points scored when picked.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> CUT</span> is how often the golfer missed the cut (or WD/DQ), incurring the 100-point penalty.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Worst</span> is the worst non-cut finish.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> vs Bucket</span> compares the golfer's actual points against the average score for picks in the same bucket — a negative value (gold) means they outperformed expectation; positive (red) means they underperformed. The bucket baseline below shows the average points per pick at each bucket level.
+        </p>
+      </div>
+
+      {/* Lead insight: Bucket averages — small strip showing the baseline */}
       <div className="border border-slate-200 rounded-md p-3 mb-4 bg-slate-50">
         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
           Bucket Baseline (avg points per pick)
@@ -902,9 +924,7 @@ function GolferStatsView() {
             );
           })}
         </div>
-        <p className="text-[10px] text-slate-500 italic mt-2">
-          A negative "vs bucket" means the golfer scored fewer points than the average pick at their bucket level — i.e. they outperformed expectation.
-        </p>
+
       </div>
 
       {/* Sortable table — desktop */}
@@ -918,12 +938,13 @@ function GolferStatsView() {
               <GolferSortHeader label="Avg Points"   k="avgPoints"    sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="Best"        k="best"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="Worst"       k="worst"     sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
+              <GolferSortHeader label="CUT"         k="cuts"      sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
               <GolferSortHeader label="vs Bucket"   k="delta"     sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="right" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sorted.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
+              <tr><td colSpan={8} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minPicks}+ picks.</td></tr>
             ) : sorted.map((r) => (
               <tr key={r.golfer_name} className="hover:bg-slate-50">
                 <td className="px-3 py-2 text-left">
@@ -935,6 +956,7 @@ function GolferStatsView() {
                 <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: "var(--forest-deep)" }}>{r.avgPoints.toFixed(1)}</td>
                 <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.bestPoints}</td>
                 <td className="px-3 py-2 text-center font-mono tabular-nums text-xs text-slate-600">{r.worstPoints}</td>
+                <td className="px-3 py-2 text-center font-mono font-bold tabular-nums text-xs" style={{ color: r.cuts > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>{r.cuts}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-xs" style={{ color: r.vsBucketDelta < 0 ? "var(--gold)" : r.vsBucketDelta > 0 ? "var(--alert,#ef4444)" : "var(--forest-deep)" }}>
                   {r.vsBucketDelta > 0 ? "+" : ""}{r.vsBucketDelta.toFixed(1)}
                 </td>
@@ -965,11 +987,11 @@ function MobileGolferCard({ row }: { row: GolferPickStat }) {
     row.vsBucketDelta < 0 ? "var(--gold)" :
     row.vsBucketDelta > 0 ? "var(--alert,#ef4444)" :
     "var(--forest-deep)";
-  const cells: Array<{ label: string; value: string }> = [
+  const cells: Array<{ label: string; value: string; color?: string }> = [
     { label: "PICKS",  value: row.picks.toString() },
     { label: "APPS",   value: row.appearances.toString() },
     { label: "AVG",    value: row.avgPoints.toFixed(1) },
-    { label: "BEST",   value: row.bestPoints.toString() },
+    { label: "CUT",    value: row.cuts.toString(), color: row.cuts > 0 ? "var(--alert,#ef4444)" : undefined },
   ];
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
@@ -998,7 +1020,7 @@ function MobileGolferCard({ row }: { row: GolferPickStat }) {
           <div
             key={`${c.label}-v`}
             className="text-sm font-mono font-bold tabular-nums leading-none mt-1"
-            style={{ color: "var(--forest-deep)" }}
+            style={{ color: c.color ?? "var(--forest-deep)" }}
           >
             {c.value}
           </div>
