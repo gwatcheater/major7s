@@ -624,8 +624,8 @@ function SummaryStat({
   // app's alert red so the failure stat reads at a glance.
   const labelClass =
     tone === "alert"
-      ? "text-[10px] font-bold uppercase tracking-widest"
-      : "text-[10px] font-bold uppercase tracking-widest text-muted-foreground";
+      ? "text-[10px] font-bold uppercase tracking-widest whitespace-nowrap"
+      : "text-[10px] font-bold uppercase tracking-widest text-muted-foreground whitespace-nowrap";
   const valueStyle =
     tone === "alert" ? { color: "var(--alert, #ef4444)" } : undefined;
   const labelStyle =
@@ -656,16 +656,17 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   const pillarW = "w-12 md:w-14";
   const gap = "gap-1.5";
   return (
-    <div className="mt-6">
-      {/* Row A — counts above their corresponding pillars */}
+    <div className="mt-10">
+      {/* Row A — counts above their corresponding pillars, coloured to match
+          their medal tone so the eye links count to pillar at a glance. */}
       <div className={`flex items-end justify-center ${gap}`}>
-        <PodiumCount value={breakdown.silver} pillarW={pillarW} />
-        <PodiumCount value={breakdown.gold}   pillarW={pillarW} />
-        <PodiumCount value={breakdown.bronze} pillarW={pillarW} />
+        <PodiumCount value={breakdown.silver} pillarW={pillarW} color="#7d7d7d" />
+        <PodiumCount value={breakdown.gold}   pillarW={pillarW} color="#b8860b" />
+        <PodiumCount value={breakdown.bronze} pillarW={pillarW} color="#c98447" />
       </div>
 
-      {/* Row B — the pillars themselves, with extra top padding for breathing room */}
-      <div className={`flex items-end justify-center ${gap} h-[120px] mt-3`}>
+      {/* Row B — the pillars themselves */}
+      <div className={`flex items-end justify-center ${gap} h-[120px] mt-4`}>
         <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} />
         <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} />
         <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} />
@@ -674,10 +675,18 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   );
 }
 
-function PodiumCount({ value, pillarW }: { value: number; pillarW: string }) {
+function PodiumCount({
+  value, pillarW, color,
+}: {
+  value: number;
+  pillarW: string;
+  color: string;
+}) {
+  // font-display matches the headline value typography in the row above so the
+  // numbers read as the same kind of stat (not a small metadata caption).
   return (
     <div className={`${pillarW} text-center`}>
-      <span className="text-base font-bold font-mono leading-none">{value}</span>
+      <span className="font-display text-2xl md:text-3xl leading-none" style={{ color }}>{value}</span>
     </div>
   );
 }
