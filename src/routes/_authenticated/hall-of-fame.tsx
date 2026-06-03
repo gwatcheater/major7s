@@ -1514,8 +1514,8 @@ function HallOfFamePage() {
               <thead className="sticky top-0 z-20 bg-white">
                 <tr className="border-y border-slate-200">
                   <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-12 bg-white">Year</th>
-                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[170px] bg-white">Tournament</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[160px] whitespace-nowrap">Location</th>
+                  <th className="sticky left-12 z-30 text-left pl-1 pr-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[170px] bg-white">Tournament</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[160px]">Location</th>
                   <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest w-[110px]" style={{ color: "var(--gold)" }}>1st</th>
                   <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">2nd</th>
                   <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">3rd</th>
