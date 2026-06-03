@@ -88,9 +88,11 @@ function BlogIndex() {
                       className="w-16 h-16 object-cover rounded-sm border border-border shrink-0"
                     />
                   ) : (
-                    <div className="w-16 h-16 grid place-items-center bg-muted border border-border shrink-0">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
-                    </div>
+                    <img
+                      src={blogDefault.url}
+                      alt=""
+                      className="w-16 h-16 object-contain rounded-sm border border-border shrink-0 bg-muted p-1"
+                    />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{p.title}</div>
