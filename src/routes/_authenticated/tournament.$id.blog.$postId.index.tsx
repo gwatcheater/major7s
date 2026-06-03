@@ -34,13 +34,22 @@ function BlogPostView() {
 
   return (
     <div className="p-4 md:p-12 max-w-2xl mx-auto">
-      <Link
-        to="/tournament/$id"
-        params={{ id }}
-        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Tournament
-      </Link>
+      {from === "blog" ? (
+        <Link
+          to="/blog"
+          className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Blog
+        </Link>
+      ) : (
+        <Link
+          to="/tournament/$id"
+          params={{ id }}
+          className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Tournament
+        </Link>
+      )}
 
       {isLoading ? (
         <p className="mt-8 text-sm text-muted-foreground">Loading…</p>
