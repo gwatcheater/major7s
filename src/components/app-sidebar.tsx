@@ -64,7 +64,7 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
       className={
         isDrawer
           ? "h-full w-full flex flex-col text-white"
-          : "sticky top-0 h-screen w-72 shrink-0 hidden md:flex flex-col text-white z-50"
+          : "sticky top-0 h-screen w-72 shrink-0 hidden lg:flex flex-col text-white z-50"
       }
       style={{ backgroundColor: "var(--forest-deep)" }}
     >
