@@ -35,14 +35,19 @@ function BlogIndex() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name")
+        .select("id, name, start_date")
         .in("id", tournamentIds);
       if (error) throw error;
       return data ?? [];
     },
   });
 
-  const tnameById = new Map(tournaments.map((t) => [t.id, t.name]));
+  const tnameById = new Map(
+    tournaments.map((t) => {
+      const year = t.start_date ? new Date(t.start_date).getFullYear() : null;
+      return [t.id, year ? `${t.name} ${year}` : t.name];
+    }),
+  );
 
   return (
     <div className="p-4 md:p-12 max-w-3xl mx-auto">
