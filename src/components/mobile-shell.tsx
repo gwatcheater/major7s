@@ -17,7 +17,7 @@ export function MobileTopBar() {
 
   return (
     <header
-      className="sticky top-0 z-40 flex items-center justify-between px-4 h-14 border-b border-white/10 md:hidden"
+      className="sticky top-0 z-40 flex items-center justify-between px-4 h-14 border-b border-white/10 lg:hidden"
       style={{ backgroundColor: "var(--forest-deep)", paddingTop: "env(safe-area-inset-top)" }}
     >
       <Sheet open={open} onOpenChange={setOpen}>
