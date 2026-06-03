@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle } from "lucide-react";
+import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle, Newspaper } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-teams";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { label: "Live & Upcoming", to: "/home", icon: Trophy },
+  { label: "Blog", to: "/blog", icon: Newspaper },
   { label: "Event Archive", to: "/archive", icon: Archive },
   { label: "Global Stats", to: "/stats", icon: BarChart3 },
   { label: "Hall of Fame", to: "/hall-of-fame", icon: Crown },
