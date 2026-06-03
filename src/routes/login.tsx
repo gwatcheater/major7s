@@ -164,16 +164,16 @@ function LoginPage() {
               </>
             )}
             <div>
-              <label className="text-[10px] uppercase tracking-widest font-bold">Email</label>
+              <label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold">Email</label>
               <input
-                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-widest font-bold">Password</label>
+              <label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold">Password</label>
               <input
-                type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 minLength={6}
                 className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
               />
