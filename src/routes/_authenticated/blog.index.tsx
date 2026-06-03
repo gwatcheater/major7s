@@ -104,19 +104,16 @@ function BlogIndex() {
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{p.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span>
-                        {new Date(p.created_at).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                      <span>·</span>
-                      <span className="uppercase tracking-widest text-[10px] font-bold" style={{ color: "var(--gold)" }}>
-                        {tName ?? "General"}
-                      </span>
+                    <div className="uppercase tracking-widest text-[10px] font-bold" style={{ color: "var(--gold)" }}>
+                      {tName ?? "General"}
+                    </div>
+                    <div className="text-sm font-semibold truncate mt-0.5">{p.title}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(p.created_at).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
