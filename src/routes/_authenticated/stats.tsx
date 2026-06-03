@@ -639,51 +639,64 @@ function SummaryStat({
 }
 
 function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; bronze: number; total: number } }) {
-  // Now renders TWO rows beneath the top-level summary row:
-  //   Row A: silver-count / gold-count / bronze-count, each centred over its pillar
-  //   Row B: the podium pillars themselves (silver, gold, bronze left-to-right)
-  // The "Total Podiums" label + total moved up into the top SummaryStat row.
-  const goldStyle: React.CSSProperties = {
-    background: "radial-gradient(circle at 30% 25%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
-  };
-  const silverStyle: React.CSSProperties = {
-    background: "radial-gradient(circle at 30% 25%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)",
-  };
-  const bronzeStyle: React.CSSProperties = {
-    background: "radial-gradient(circle at 30% 25%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
-  };
-  // Shared widths for counts + pillars so the columns line up vertically.
-  const pillarW = "w-12 md:w-14";
-  const gap = "gap-1.5";
+  // Flat-fill pillars with SVG ribbon-medals inside. No gradients, no inset
+  // shadows — clean confident solid colours with a small position label and
+  // medal graphic per pillar. Counts ride above each pillar in their medal tone.
+  // Heights are 100/75/55 of a 160px container so the tiers read at a glance
+  // with a shared baseline.
+  const pillarW = "w-14 md:w-16"; // bumped slightly to give the medal more room
+  const gap = "gap-2";
   return (
     <div className="mt-8">
-      {/* Single row: each pillar carries its own count anchored just above
-          its top edge, so the count sits at the right vertical position for
-          that pillar (silver count ~75% up, gold count ~100% up, bronze ~60%).
-          Extra top padding on the container reserves room for the floating counts. */}
       <div className={`flex items-end justify-center ${gap} h-[160px]`}>
-        <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} count={breakdown.silver} countColor="#7d7d7d" />
-        <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} count={breakdown.gold}   countColor="#b8860b" />
-        <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} count={breakdown.bronze} countColor="#c98447" />
+        <PodiumPillar
+          heightClass="h-[75%]"
+          fill="#c7c7c7"
+          ribbonColor="#7d7d7d"
+          position="2ND"
+          pillarW={pillarW}
+          count={breakdown.silver}
+          countColor="#7d7d7d"
+        />
+        <PodiumPillar
+          heightClass="h-[100%]"
+          fill="#d4a843"
+          ribbonColor="#a07820"
+          position="1ST"
+          pillarW={pillarW}
+          count={breakdown.gold}
+          countColor="#a07820"
+        />
+        <PodiumPillar
+          heightClass="h-[55%]"
+          fill="#b07449"
+          ribbonColor="#8a5a32"
+          position="3RD"
+          pillarW={pillarW}
+          count={breakdown.bronze}
+          countColor="#8a5a32"
+        />
       </div>
     </div>
   );
 }
 
 function PodiumPillar({
-  heightClass, style, emoji, pillarW, count, countColor,
+  heightClass, fill, ribbonColor, position, pillarW, count, countColor,
 }: {
   heightClass: string;
-  style: React.CSSProperties;
-  emoji: string;
+  fill: string;            // solid pillar colour (light medal tone)
+  ribbonColor: string;     // darker tone for ribbon + position label + count
+  position: string;        // "1ST" | "2ND" | "3RD"
   pillarW: string;
   count: number;
   countColor: string;
 }) {
-  // Each pillar now carries its own count, rendered directly above the top of
-  // the bar (mb-1 spacing between count and pillar top). items-end on the
-  // wrapper keeps every pillar sitting on the same baseline regardless of
-  // height; the count rides above each pillar's top edge proportionally.
+  // Solid-fill pillar. Internal stack from top to bottom:
+  //   - count (above the pillar, in medal tone)
+  //   - SVG ribbon medal (inside, near top)
+  //   - position label (inside, near bottom)
+  // No box-shadow, no gradients — flat clean medal tones.
   return (
     <div className={`flex flex-col items-center justify-end ${pillarW} h-full`}>
       <span
@@ -693,12 +706,35 @@ function PodiumPillar({
         {count}
       </span>
       <div
-        className={`w-full ${heightClass} rounded-t-md flex items-center justify-center text-xl`}
-        style={{ ...style, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
+        className={`w-full ${heightClass} rounded-t-md flex flex-col items-center justify-between py-2`}
+        style={{ backgroundColor: fill }}
       >
-        {emoji}
+        <RibbonMedal color={ribbonColor} />
+        <span
+          className="text-[10px] font-bold tracking-widest"
+          style={{ color: "rgba(255,255,255,0.85)" }}
+        >
+          {position}
+        </span>
       </div>
     </div>
+  );
+}
+
+function RibbonMedal({ color }: { color: string }) {
+  // Small, crisp SVG medal — two ribbon tails meeting at a circular medallion.
+  // Renders identically across platforms (no Apple-vs-Google emoji variance).
+  return (
+    <svg viewBox="0 0 32 36" width="22" height="26" xmlns="http://www.w3.org/2000/svg">
+      {/* Left ribbon tail */}
+      <path d="M8 0 L0 14 L8 14 L14 6 Z" fill={color} opacity="0.85" />
+      {/* Right ribbon tail */}
+      <path d="M24 0 L32 14 L24 14 L18 6 Z" fill={color} opacity="0.85" />
+      {/* Medallion */}
+      <circle cx="16" cy="22" r="10" fill={color} />
+      {/* Inner medallion highlight */}
+      <circle cx="16" cy="22" r="7" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+    </svg>
   );
 }
 
