@@ -8,11 +8,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/blog/$postId/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    from: search.from === "blog" ? ("blog" as const) : undefined,
+  }),
   component: BlogPostView,
 });
 
 function BlogPostView() {
   const { id, postId } = Route.useParams();
+  const { from } = Route.useSearch();
   const { isAdmin } = useAuth();
 
   const { data: post, isLoading } = useQuery({
