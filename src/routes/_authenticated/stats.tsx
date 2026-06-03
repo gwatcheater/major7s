@@ -648,30 +648,30 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   const gap = "gap-2";
   return (
     <div className="mt-8">
-      <div className={`flex items-end justify-center ${gap} h-[160px]`}>
+      <div className={`flex items-end justify-center ${gap}`}>
         <PodiumPillar
-          heightClass="h-[75%]"
-          fill="#c7c7c7"
+          heightClass="h-[75px]"
+          fill="#909090"
           position="2ND"
           pillarW={pillarW}
           count={breakdown.silver}
-          countColor="#7d7d7d"
+          countColor="#606060"
         />
         <PodiumPillar
-          heightClass="h-[100%]"
-          fill="#d4a843"
+          heightClass="h-[100px]"
+          fill="#D4A800"
           position="1ST"
           pillarW={pillarW}
           count={breakdown.gold}
-          countColor="#a07820"
+          countColor="#946F00"
         />
         <PodiumPillar
-          heightClass="h-[55%]"
-          fill="#b07449"
+          heightClass="h-[55px]"
+          fill="#B87040"
           position="3RD"
           pillarW={pillarW}
           count={breakdown.bronze}
-          countColor="#8a5a32"
+          countColor="#7E4923"
         />
       </div>
     </div>
