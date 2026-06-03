@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus, ChevronRight, Newspaper } from "lucide-react";
+import { Plus, ChevronRight, Newspaper } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import blogDefault from "@/assets/blog-default.png.asset.json";
 
 export const Route = createFileRoute("/_authenticated/blog/")({
   component: BlogIndex,
@@ -87,9 +88,11 @@ function BlogIndex() {
                       className="w-16 h-16 object-cover rounded-sm border border-border shrink-0"
                     />
                   ) : (
-                    <div className="w-16 h-16 grid place-items-center bg-muted border border-border shrink-0">
-                      <FileText className="w-5 h-5 text-muted-foreground" />
-                    </div>
+                    <img
+                      src={blogDefault.url}
+                      alt=""
+                      className="w-16 h-16 object-contain rounded-sm border border-border shrink-0 bg-muted p-1"
+                    />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{p.title}</div>
