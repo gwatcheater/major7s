@@ -47,8 +47,8 @@ function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setPendingMsg(null);
-    if (mode === "signup" && password.trim().length < 6) {
-      toast.error("Password must be at least 6 characters long.");
+    if (mode === "signup" && password.trim().length < 8) {
+      toast.error("Password must be at least 8 characters long.");
       return;
     }
     setLoading(true);
@@ -178,7 +178,7 @@ function LoginPage() {
               <label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold">Password</label>
               <input
                 id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                minLength={6}
+                minLength={8}
                 className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
               />
             </div>
