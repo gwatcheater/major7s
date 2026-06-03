@@ -492,11 +492,15 @@ function AllTimeStatsPage() {
               <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 {short}
               </div>
-              <div className="font-display text-xl mt-1">
+              {/* Position + year on a single baseline: same font-display family,
+                  same size; year uses a muted tint of forest-deep so it reads as
+                  metadata against the headline position without becoming a
+                  different visual element. */}
+              <div className="font-display text-xl mt-1" style={{ color: "var(--forest-deep)" }}>
                 {v ? (
                   <>
                     <span className="font-bold">{ordinal(v.position)}</span>
-                    <span className="text-muted-foreground text-sm ml-1">'{v.year.slice(-2)}</span>
+                    <span className="font-bold opacity-50 ml-1">'{v.year.slice(-2)}</span>
                   </>
                 ) : (
                   <span className="text-muted-foreground">—</span>
