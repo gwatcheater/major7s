@@ -78,7 +78,11 @@ function BlogIndex() {
           {posts.map((p) => {
             const tName = p.tournament_id ? tnameById.get(p.tournament_id) : null;
             const linkProps = p.tournament_id
-              ? { to: "/tournament/$id/blog/$postId" as const, params: { id: p.tournament_id, postId: p.id } }
+              ? {
+                  to: "/tournament/$id/blog/$postId" as const,
+                  params: { id: p.tournament_id, postId: p.id },
+                  search: { from: "blog" as const },
+                }
               : { to: "/blog/$postId" as const, params: { postId: p.id } };
             return (
               <li key={p.id}>
