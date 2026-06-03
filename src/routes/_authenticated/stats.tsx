@@ -652,7 +652,6 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
         <PodiumPillar
           heightClass="h-[75%]"
           fill="#c7c7c7"
-          ribbonColor="#7d7d7d"
           position="2ND"
           pillarW={pillarW}
           count={breakdown.silver}
@@ -661,7 +660,6 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
         <PodiumPillar
           heightClass="h-[100%]"
           fill="#d4a843"
-          ribbonColor="#a07820"
           position="1ST"
           pillarW={pillarW}
           count={breakdown.gold}
@@ -670,7 +668,6 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
         <PodiumPillar
           heightClass="h-[55%]"
           fill="#b07449"
-          ribbonColor="#8a5a32"
           position="3RD"
           pillarW={pillarW}
           count={breakdown.bronze}
@@ -682,21 +679,19 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
 }
 
 function PodiumPillar({
-  heightClass, fill, ribbonColor, position, pillarW, count, countColor,
+  heightClass, fill, position, pillarW, count, countColor,
 }: {
   heightClass: string;
-  fill: string;            // solid pillar colour (light medal tone)
-  ribbonColor: string;     // darker tone for ribbon + position label + count
+  fill: string;            // solid pillar colour (medal tone)
   position: string;        // "1ST" | "2ND" | "3RD"
   pillarW: string;
   count: number;
   countColor: string;
 }) {
-  // Solid-fill pillar. Internal stack from top to bottom:
-  //   - count (above the pillar, in medal tone)
-  //   - SVG ribbon medal (inside, near top)
-  //   - position label (inside, near bottom)
-  // No box-shadow, no gradients — flat clean medal tones.
+  // Solid-fill pillar. Internal stack:
+  //   - count (above the pillar, in darker medal tone)
+  //   - position label (inside, near bottom, semi-transparent white)
+  // No medal graphic, no inset shadow, no gradient. Clean flat shapes.
   return (
     <div className={`flex flex-col items-center justify-end ${pillarW} h-full`}>
       <span
@@ -706,35 +701,17 @@ function PodiumPillar({
         {count}
       </span>
       <div
-        className={`w-full ${heightClass} rounded-t-md flex flex-col items-center justify-between py-2`}
+        className={`w-full ${heightClass} rounded-t-md flex items-end justify-center pb-2`}
         style={{ backgroundColor: fill }}
       >
-        <RibbonMedal color={ribbonColor} />
         <span
-          className="text-[10px] font-bold tracking-widest"
-          style={{ color: "rgba(255,255,255,0.85)" }}
+          className="text-[11px] font-bold tracking-widest"
+          style={{ color: "rgba(255,255,255,0.9)" }}
         >
           {position}
         </span>
       </div>
     </div>
-  );
-}
-
-function RibbonMedal({ color }: { color: string }) {
-  // Small, crisp SVG medal — two ribbon tails meeting at a circular medallion.
-  // Renders identically across platforms (no Apple-vs-Google emoji variance).
-  return (
-    <svg viewBox="0 0 32 36" width="22" height="26" xmlns="http://www.w3.org/2000/svg">
-      {/* Left ribbon tail */}
-      <path d="M8 0 L0 14 L8 14 L14 6 Z" fill={color} opacity="0.85" />
-      {/* Right ribbon tail */}
-      <path d="M24 0 L32 14 L24 14 L18 6 Z" fill={color} opacity="0.85" />
-      {/* Medallion */}
-      <circle cx="16" cy="22" r="10" fill={color} />
-      {/* Inner medallion highlight */}
-      <circle cx="16" cy="22" r="7" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
-    </svg>
   );
 }
 
