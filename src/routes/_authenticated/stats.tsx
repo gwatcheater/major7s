@@ -449,11 +449,20 @@ function AllTimeStatsPage() {
         </FilterSelect>
       </div>
 
-      {/* Top summary card */}
-      <div className="border border-border bg-card rounded-md p-5 mb-4 grid grid-cols-3 gap-4">
-        <SummaryStat label="Tournaments" value={tournamentsPlayed} />
+      {/* Top summary card.
+          Row 1: three top-level KPIs (Tournaments / Total Podiums / Last Place)
+                 with matching typography and Last Place in alert red.
+          Row 2: per-place counts aligned over the pillars (2 / 1 / 3).
+          Row 3: the podium graphic itself.
+          PodiumStat handles rows 2 + 3 internally so its alignment to the
+          pillars is preserved; the top-of-card label sits in row 1 here. */}
+      <div className="border border-border bg-card rounded-md p-5 mb-4">
+        <div className="grid grid-cols-3 gap-4">
+          <SummaryStat label="Tournaments"   value={tournamentsPlayed} />
+          <SummaryStat label="Total Podiums" value={podiumBreakdown.total} />
+          <SummaryStat label="Last Place"    value={woodenSpoons} tone="alert" />
+        </div>
         <PodiumStat breakdown={podiumBreakdown} />
-        <SummaryStat label="Last Place" value={woodenSpoons} />
       </div>
 
       {/* KPI grid */}
@@ -604,19 +613,36 @@ function FilterSelect({
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: number }) {
+function SummaryStat({
+  label, value, tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "alert";
+}) {
+  // `alert` tone is used by Last Place — both label and value render in the
+  // app's alert red so the failure stat reads at a glance.
+  const labelClass =
+    tone === "alert"
+      ? "text-[10px] font-bold uppercase tracking-widest"
+      : "text-[10px] font-bold uppercase tracking-widest text-muted-foreground";
+  const valueStyle =
+    tone === "alert" ? { color: "var(--alert, #ef4444)" } : undefined;
+  const labelStyle =
+    tone === "alert" ? { color: "var(--alert, #ef4444)" } : undefined;
   return (
     <div className="text-center">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</div>
-      <div className="font-display text-3xl md:text-4xl mt-1">{value}</div>
+      <div className={labelClass} style={labelStyle}>{label}</div>
+      <div className="font-display text-3xl md:text-4xl mt-1" style={valueStyle}>{value}</div>
     </div>
   );
 }
 
 function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; bronze: number; total: number } }) {
-  // Olympic-style podium: gold dominant in the middle, silver left and bronze right
-  // at distinctly lower heights so the three tiers read at a glance. Each pillar shows
-  // the team's count above it and a medal emoji inside.
+  // Now renders TWO rows beneath the top-level summary row:
+  //   Row A: silver-count / gold-count / bronze-count, each centred over its pillar
+  //   Row B: the podium pillars themselves (silver, gold, bronze left-to-right)
+  // The "Total Podiums" label + total moved up into the top SummaryStat row.
   const goldStyle: React.CSSProperties = {
     background: "radial-gradient(circle at 30% 25%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
   };
@@ -626,37 +652,48 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   const bronzeStyle: React.CSSProperties = {
     background: "radial-gradient(circle at 30% 25%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
   };
+  // Shared widths for counts + pillars so the columns line up vertically.
+  const pillarW = "w-12 md:w-14";
+  const gap = "gap-1.5";
   return (
-    <div className="text-center">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-        Total Podiums
+    <div className="mt-6">
+      {/* Row A — counts above their corresponding pillars */}
+      <div className={`flex items-end justify-center ${gap}`}>
+        <PodiumCount value={breakdown.silver} pillarW={pillarW} />
+        <PodiumCount value={breakdown.gold}   pillarW={pillarW} />
+        <PodiumCount value={breakdown.bronze} pillarW={pillarW} />
       </div>
-      <div className="font-display text-3xl md:text-4xl mt-1 mb-2">{breakdown.total}</div>
 
-      {/* The podium itself: three columns sharing a baseline. Bigger height gaps
-          between gold/silver/bronze for clearer tier differentiation. */}
-      <div className="flex items-end justify-center gap-1.5 h-[120px] mt-2">
-        <PodiumPillar count={breakdown.silver} heightClass="h-[50%]" style={silverStyle} emoji="🥈" />
-        <PodiumPillar count={breakdown.gold}   heightClass="h-[90%]" style={goldStyle}   emoji="🥇" />
-        <PodiumPillar count={breakdown.bronze} heightClass="h-[30%]" style={bronzeStyle} emoji="🥉" />
+      {/* Row B — the pillars themselves, with extra top padding for breathing room */}
+      <div className={`flex items-end justify-center ${gap} h-[120px] mt-3`}>
+        <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} />
+        <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} />
+        <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} />
       </div>
     </div>
   );
 }
 
+function PodiumCount({ value, pillarW }: { value: number; pillarW: string }) {
+  return (
+    <div className={`${pillarW} text-center`}>
+      <span className="text-base font-bold font-mono leading-none">{value}</span>
+    </div>
+  );
+}
+
 function PodiumPillar({
-  count, heightClass, style, emoji,
+  heightClass, style, emoji, pillarW,
 }: {
-  count: number;
   heightClass: string;
   style: React.CSSProperties;
   emoji: string;
+  pillarW: string;
 }) {
+  // Counts moved out — see <PodiumCount/> above the pillar row. The pillar is
+  // now just the visual bar with a medal emoji centred inside.
   return (
-    <div className="flex flex-col items-center justify-end w-12 md:w-14 h-full">
-      {/* Count above the pillar. No icon row — the emoji inside the pillar carries the tier. */}
-      <span className="text-sm font-bold font-mono leading-none mb-1">{count}</span>
-      {/* The pillar itself, with a medal emoji centred inside */}
+    <div className={`flex flex-col items-center justify-end ${pillarW} h-full`}>
       <div
         className={`w-full ${heightClass} rounded-t-md flex items-center justify-center text-xl`}
         style={{ ...style, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
