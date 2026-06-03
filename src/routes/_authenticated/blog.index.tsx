@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus, ChevronRight, Newspaper } from "lucide-react";
+import { Plus, ChevronRight, Newspaper } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import blogDefault from "@/assets/blog-default.png.asset.json";
 
 export const Route = createFileRoute("/_authenticated/blog/")({
   component: BlogIndex,
