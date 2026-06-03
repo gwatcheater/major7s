@@ -656,12 +656,12 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   const pillarW = "w-12 md:w-14";
   const gap = "gap-1.5";
   return (
-    <div className="mt-10">
+    <div className="mt-8">
       {/* Single row: each pillar carries its own count anchored just above
           its top edge, so the count sits at the right vertical position for
           that pillar (silver count ~75% up, gold count ~100% up, bronze ~60%).
           Extra top padding on the container reserves room for the floating counts. */}
-      <div className={`flex items-end justify-center ${gap} h-[120px] pt-8`}>
+      <div className={`flex items-end justify-center ${gap} h-[160px]`}>
         <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} count={breakdown.silver} countColor="#7d7d7d" />
         <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} count={breakdown.gold}   countColor="#b8860b" />
         <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} count={breakdown.bronze} countColor="#c98447" />
