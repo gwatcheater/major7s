@@ -8,11 +8,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/blog/$postId/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    from: search.from === "blog" ? ("blog" as const) : undefined,
+  }),
   component: BlogPostView,
 });
 
 function BlogPostView() {
   const { id, postId } = Route.useParams();
+  const { from } = Route.useSearch();
   const { isAdmin } = useAuth();
 
   const { data: post, isLoading } = useQuery({
@@ -30,13 +34,22 @@ function BlogPostView() {
 
   return (
     <div className="p-4 md:p-12 max-w-2xl mx-auto">
-      <Link
-        to="/tournament/$id"
-        params={{ id }}
-        className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Tournament
-      </Link>
+      {from === "blog" ? (
+        <Link
+          to="/blog"
+          className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Blog
+        </Link>
+      ) : (
+        <Link
+          to="/tournament/$id"
+          params={{ id }}
+          className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Tournament
+        </Link>
+      )}
 
       {isLoading ? (
         <p className="mt-8 text-sm text-muted-foreground">Loading…</p>

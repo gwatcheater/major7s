@@ -35,14 +35,19 @@ function BlogIndex() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournaments")
-        .select("id, name")
+        .select("id, name, start_date")
         .in("id", tournamentIds);
       if (error) throw error;
       return data ?? [];
     },
   });
 
-  const tnameById = new Map(tournaments.map((t) => [t.id, t.name]));
+  const tnameById = new Map(
+    tournaments.map((t) => {
+      const year = t.start_date ? new Date(t.start_date).getFullYear() : null;
+      return [t.id, year ? `${t.name} ${year}` : t.name];
+    }),
+  );
 
   return (
     <div className="p-4 md:p-12 max-w-3xl mx-auto">
@@ -73,7 +78,11 @@ function BlogIndex() {
           {posts.map((p) => {
             const tName = p.tournament_id ? tnameById.get(p.tournament_id) : null;
             const linkProps = p.tournament_id
-              ? { to: "/tournament/$id/blog/$postId" as const, params: { id: p.tournament_id, postId: p.id } }
+              ? {
+                  to: "/tournament/$id/blog/$postId" as const,
+                  params: { id: p.tournament_id, postId: p.id },
+                  search: { from: "blog" as const },
+                }
               : { to: "/blog/$postId" as const, params: { postId: p.id } };
             return (
               <li key={p.id}>
@@ -95,19 +104,16 @@ function BlogIndex() {
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{p.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span>
-                        {new Date(p.created_at).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                      <span>·</span>
-                      <span className="uppercase tracking-widest text-[10px] font-bold" style={{ color: "var(--gold)" }}>
-                        {tName ?? "General"}
-                      </span>
+                    <div className="uppercase tracking-widest text-[10px] font-bold" style={{ color: "var(--gold)" }}>
+                      {tName ?? "General"}
+                    </div>
+                    <div className="text-sm font-semibold truncate mt-0.5">{p.title}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(p.created_at).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
