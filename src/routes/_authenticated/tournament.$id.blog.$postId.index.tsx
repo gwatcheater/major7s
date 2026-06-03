@@ -78,9 +78,12 @@ function BlogPostView() {
           )}
 
           <Card className="p-5 md:p-6">
-            <div className="text-sm whitespace-pre-wrap leading-relaxed">
-              {linkify(post.body ?? "")}
-            </div>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              className="prose prose-slate max-w-none"
+            >
+              {post.body ?? ""}
+            </ReactMarkdown>
           </Card>
         </article>
       )}
