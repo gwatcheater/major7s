@@ -1509,18 +1509,18 @@ function HallOfFamePage() {
       <div className="relative">
         {/* Desktop: full table with sticky Year + Tournament columns. */}
         <div className="hidden md:block overflow-x-auto overflow-y-visible">
-          <div className="min-w-[860px] pr-16 md:pr-0">
+          <div className="min-w-[760px] pr-16 md:pr-0">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20 bg-white">
                 <tr className="border-y border-slate-200">
-                  <th className="sticky left-0 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-14 bg-white">Year</th>
-                  <th className="sticky left-14 z-30 text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[180px] bg-white">Tournament</th>
-                  <th className="text-left px-2 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[180px] whitespace-nowrap">Location</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest w-[120px]" style={{ color: "var(--gold)" }}>1st</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[120px]">2nd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[120px]">3rd</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[120px]">BOTR</th>
-                  <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest w-[120px]" style={{ color: "var(--alert,#ef4444)" }}>Last Place</th>
+                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-12 bg-white">Year</th>
+                  <th className="sticky left-12 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[170px] bg-white">Tournament</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[160px] whitespace-nowrap">Location</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest w-[110px]" style={{ color: "var(--gold)" }}>1st</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">2nd</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">3rd</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[110px]">BOTR</th>
+                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest w-[110px]" style={{ color: "var(--alert,#ef4444)" }}>Last Place</th>
                 </tr>
               </thead>
               <tbody>
@@ -1532,14 +1532,14 @@ function HallOfFamePage() {
                 )}
                 {data?.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
-                    <td className="sticky left-0 z-20 px-2 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight text-[color:var(--forest-deep)]">{r.year}</td>
-                    <td className="sticky left-14 z-20 px-2 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
-                    <td className="px-2 py-4 text-left text-xs font-semibold text-slate-500 whitespace-nowrap leading-tight">{r.location}</td>
-                    <td className="px-3 py-4"><Cell entries={r.p1} nameColor="var(--gold)" /></td>
-                    <td className="px-3 py-4"><Cell entries={r.p2} /></td>
-                    <td className="px-3 py-4"><Cell entries={r.p3} /></td>
-                    <td className="px-3 py-4"><Cell entries={r.botr} /></td>
-                    <td className="px-3 py-4"><Cell entries={r.spoon} /></td>
+                    <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight text-[color:var(--forest-deep)]">{r.year}</td>
+                    <td className="sticky left-12 z-20 px-1 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
+                    <td className="px-1 py-4 text-left text-xs font-semibold text-slate-500 whitespace-nowrap leading-tight">{r.location}</td>
+                    <td className="px-1 py-4"><Cell entries={r.p1} nameColor="var(--gold)" /></td>
+                    <td className="px-1 py-4"><Cell entries={r.p2} /></td>
+                    <td className="px-1 py-4"><Cell entries={r.p3} /></td>
+                    <td className="px-1 py-4"><Cell entries={r.botr} /></td>
+                    <td className="px-1 py-4"><Cell entries={r.spoon} /></td>
                   </tr>
                 ))}
               </tbody>
