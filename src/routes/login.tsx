@@ -164,9 +164,9 @@ function LoginPage() {
               </>
             )}
             <div>
-              <label className="text-[10px] uppercase tracking-widest font-bold">Email</label>
+              <label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold">Email</label>
               <input
-                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
               />
             </div>
