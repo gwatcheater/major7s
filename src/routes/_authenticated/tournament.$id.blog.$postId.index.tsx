@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Pencil } from "lucide-react";
-import { linkify } from "@/lib/linkify";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/blog/$postId/")({
   component: BlogPostView,
@@ -77,8 +78,10 @@ function BlogPostView() {
           )}
 
           <Card className="p-5 md:p-6">
-            <div className="text-sm whitespace-pre-wrap leading-relaxed">
-              {linkify(post.body ?? "")}
+            <div className="prose prose-slate max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {post.body ?? ""}
+              </ReactMarkdown>
             </div>
           </Card>
         </article>
