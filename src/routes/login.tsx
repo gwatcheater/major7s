@@ -47,6 +47,10 @@ function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setPendingMsg(null);
+    if (mode === "signup" && password.trim().length < 6) {
+      toast.error("Password must be at least 6 characters long.");
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "signup") {
