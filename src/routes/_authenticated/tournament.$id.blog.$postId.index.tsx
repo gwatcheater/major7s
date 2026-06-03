@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Pencil } from "lucide-react";
-import { linkify } from "@/lib/linkify";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/blog/$postId/")({
   component: BlogPostView,
