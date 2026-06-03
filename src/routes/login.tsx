@@ -10,7 +10,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot-password">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -20,6 +20,7 @@ function LoginPage() {
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingMsg, setPendingMsg] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
 
   async function checkApprovalAndProceed(userId: string) {
     const { data, error } = await supabase
@@ -85,16 +86,34 @@ function LoginPage() {
     } finally { setLoading(false); }
   }
 
-  async function handleForgotPassword() {
+  async function handleForgotPassword(e: FormEvent) {
+    e.preventDefault();
     if (!email) { toast.error("Enter your email above first"); return; }
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     setLoading(false);
-    if (error) toast.error(error.message);
-    else toast.success("Password reset email sent");
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setForgotSuccess(true);
+    }
   }
+
+  const pageTitle =
+    mode === "signin"
+      ? "Sign in"
+      : mode === "signup"
+        ? "Create account"
+        : "Reset password";
+
+  const pageSubtitle =
+    mode === "signin"
+      ? "Welcome back to the clubhouse."
+      : mode === "signup"
+        ? "Reserve your tee time. Admin approval required."
+        : "Enter your email to receive a reset link.";
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2" style={{ backgroundColor: "var(--ui-bg)" }}>
@@ -121,12 +140,8 @@ function LoginPage() {
 
       <div className="flex items-center justify-center p-8 lg:p-16">
         <div className="w-full max-w-sm">
-          <h2 className="font-display text-2xl uppercase mb-1">
-            {mode === "signin" ? "Sign in" : "Create account"}
-          </h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            {mode === "signin" ? "Welcome back to the clubhouse." : "Reserve your tee time. Admin approval required."}
-          </p>
+          <h2 className="font-display text-2xl uppercase mb-1">{pageTitle}</h2>
+          <p className="text-sm text-muted-foreground mb-6">{pageSubtitle}</p>
 
           {pendingMsg && (
             <div className="mb-4 p-3 border text-xs" style={{ borderColor: "var(--gold)", backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)" }}>
@@ -134,78 +149,131 @@ function LoginPage() {
             </div>
           )}
 
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {mode === "signup" && (
-              <>
-                <div className="grid grid-cols-2 gap-2">
+          {mode === "forgot-password" && forgotSuccess ? (
+            <div className="space-y-4">
+              <div className="p-4 border text-sm" style={{ borderColor: "var(--gold)", backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)" }}>
+                Check your inbox for a reset link!
+              </div>
+              <button
+                onClick={() => { setMode("signin"); setForgotSuccess(false); }}
+                disabled={loading}
+                className="w-full py-3 font-display text-xs uppercase tracking-widest text-white rounded-sm transition-colors disabled:opacity-50"
+                style={{ backgroundColor: "var(--forest-deep)" }}
+              >
+                Back to Login
+              </button>
+            </div>
+          ) : (
+            <>
+              {mode === "forgot-password" ? (
+                <form onSubmit={handleForgotPassword} className="space-y-3">
                   <div>
-                    <label className="text-[10px] uppercase tracking-widest font-bold">First name</label>
-                    <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={60}
-                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                    <label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold">Email</label>
+                    <input
+                      id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <button
+                    type="submit" disabled={loading}
+                    className="w-full py-3 mt-2 font-display text-xs uppercase tracking-widest text-white rounded-sm transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "var(--forest-deep)" }}
+                  >
+                    {loading ? "..." : "Send Reset Link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("signin")}
+                    disabled={loading}
+                    className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground underline"
+                  >
+                    Back to Login
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  {mode === "signup" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest font-bold">First name</label>
+                          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={60}
+                            className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest font-bold">Last name</label>
+                          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={60}
+                            className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-bold">Phone</label>
+                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30}
+                          className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-bold">Referred by</label>
+                        <input value={referralName} onChange={(e) => setReferralName(e.target.value)} maxLength={120}
+                          className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-bold">Nickname</label>
+                        <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={60}
+                          className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold">Email</label>
+                    <input
+                      id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase tracking-widest font-bold">Last name</label>
-                    <input required value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={60}
-                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
+                    <label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold">Password</label>
+                    <input
+                      id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                      minLength={8}
+                      className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
+                    />
                   </div>
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-widest font-bold">Phone</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30}
-                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-widest font-bold">Referred by</label>
-                  <input value={referralName} onChange={(e) => setReferralName(e.target.value)} maxLength={120}
-                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-widest font-bold">Nickname</label>
-                  <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={60}
-                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
-                </div>
-              </>
-            )}
-            <div>
-              <label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold">Email</label>
-              <input
-                id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold">Password</label>
-              <input
-                id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <button
-              type="submit" disabled={loading}
-              className="w-full py-3 mt-2 font-display text-xs uppercase tracking-widest text-white rounded-sm transition-colors disabled:opacity-50"
-              style={{ backgroundColor: "var(--forest-deep)" }}
-            >
-              {loading ? "..." : mode === "signin" ? "Sign in" : "Create account"}
-            </button>
-          </form>
+                  <button
+                    type="submit" disabled={loading}
+                    className="w-full py-3 mt-2 font-display text-xs uppercase tracking-widest text-white rounded-sm transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "var(--forest-deep)" }}
+                  >
+                    {loading ? "..." : mode === "signin" ? "Sign in" : "Create account"}
+                  </button>
+                </form>
+              )}
 
-          {mode === "signin" && (
-            <button onClick={handleForgotPassword} disabled={loading} className="mt-3 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground underline">
-              Forgot password?
-            </button>
+              {mode === "signin" && (
+                <button
+                  onClick={() => { setMode("forgot-password"); setPendingMsg(null); }}
+                  disabled={loading}
+                  className="mt-3 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground underline"
+                >
+                  Forgot password?
+                </button>
+              )}
+
+              {mode !== "forgot-password" && (
+                <p className="mt-6 text-sm text-center text-muted-foreground">
+                  {mode === "signin" ? "New to Major7s? " : "Already have an account? "}
+                  <button onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setPendingMsg(null); }} className="font-bold underline">
+                    {mode === "signin" ? "Create one" : "Sign in"}
+                  </button>
+                </p>
+              )}
+            </>
           )}
 
-          <p className="mt-6 text-sm text-center text-muted-foreground">
-            {mode === "signin" ? "New to Major7s? " : "Already have an account? "}
-            <button onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setPendingMsg(null); }} className="font-bold underline">
-              {mode === "signin" ? "Create one" : "Sign in"}
-            </button>
-          </p>
-          <p className="mt-4 text-xs text-center text-muted-foreground">
-            New accounts require admin approval before sign-in.
-          </p>
+          {mode !== "signup" && (
+            <p className="mt-4 text-xs text-center text-muted-foreground">
+              New accounts require admin approval before sign-in.
+            </p>
+          )}
         </div>
       </div>
     </div>
