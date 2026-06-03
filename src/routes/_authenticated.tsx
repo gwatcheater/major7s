@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   return (
-    <div className="flex flex-col md:flex-row min-h-[100dvh]" style={{ backgroundColor: "var(--ui-bg)" }}>
+    <div className="flex flex-col lg:flex-row min-h-[100dvh]" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
       <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
