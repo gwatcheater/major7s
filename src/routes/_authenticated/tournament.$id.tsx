@@ -98,6 +98,19 @@ function TournamentHub() {
     },
   });
 
+  const { data: blogPosts = [] } = useQuery({
+    queryKey: ["blog_posts", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("id, title, created_at")
+        .eq("tournament_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
   if (
