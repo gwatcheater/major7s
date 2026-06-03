@@ -459,7 +459,7 @@ function AllTimeStatsPage() {
       <div className="border border-border bg-card rounded-md p-5 mb-4">
         <div className="grid grid-cols-3 gap-4">
           <SummaryStat label="Tournaments"   value={tournamentsPlayed} />
-          <SummaryStat label="Total Podiums" value={podiumBreakdown.total} />
+          <SummaryStat label="Podiums" value={podiumBreakdown.total} />
           <SummaryStat label="Last Place"    value={woodenSpoons} tone="alert" />
         </div>
         <PodiumStat breakdown={podiumBreakdown} />
@@ -657,52 +657,41 @@ function PodiumStat({ breakdown }: { breakdown: { gold: number; silver: number; 
   const gap = "gap-1.5";
   return (
     <div className="mt-10">
-      {/* Row A — counts above their corresponding pillars, coloured to match
-          their medal tone so the eye links count to pillar at a glance. */}
-      <div className={`flex items-end justify-center ${gap}`}>
-        <PodiumCount value={breakdown.silver} pillarW={pillarW} color="#7d7d7d" />
-        <PodiumCount value={breakdown.gold}   pillarW={pillarW} color="#b8860b" />
-        <PodiumCount value={breakdown.bronze} pillarW={pillarW} color="#c98447" />
+      {/* Single row: each pillar carries its own count anchored just above
+          its top edge, so the count sits at the right vertical position for
+          that pillar (silver count ~75% up, gold count ~100% up, bronze ~60%).
+          Extra top padding on the container reserves room for the floating counts. */}
+      <div className={`flex items-end justify-center ${gap} h-[120px] pt-8`}>
+        <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} count={breakdown.silver} countColor="#7d7d7d" />
+        <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} count={breakdown.gold}   countColor="#b8860b" />
+        <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} count={breakdown.bronze} countColor="#c98447" />
       </div>
-
-      {/* Row B — the pillars themselves */}
-      <div className={`flex items-end justify-center ${gap} h-[120px] mt-4`}>
-        <PodiumPillar heightClass="h-[75%]"  style={silverStyle} emoji="🥈" pillarW={pillarW} />
-        <PodiumPillar heightClass="h-[100%]" style={goldStyle}   emoji="🥇" pillarW={pillarW} />
-        <PodiumPillar heightClass="h-[60%]"  style={bronzeStyle} emoji="🥉" pillarW={pillarW} />
-      </div>
-    </div>
-  );
-}
-
-function PodiumCount({
-  value, pillarW, color,
-}: {
-  value: number;
-  pillarW: string;
-  color: string;
-}) {
-  // font-display matches the headline value typography in the row above so the
-  // numbers read as the same kind of stat (not a small metadata caption).
-  return (
-    <div className={`${pillarW} text-center`}>
-      <span className="font-display text-2xl md:text-3xl leading-none" style={{ color }}>{value}</span>
     </div>
   );
 }
 
 function PodiumPillar({
-  heightClass, style, emoji, pillarW,
+  heightClass, style, emoji, pillarW, count, countColor,
 }: {
   heightClass: string;
   style: React.CSSProperties;
   emoji: string;
   pillarW: string;
+  count: number;
+  countColor: string;
 }) {
-  // Counts moved out — see <PodiumCount/> above the pillar row. The pillar is
-  // now just the visual bar with a medal emoji centred inside.
+  // Each pillar now carries its own count, rendered directly above the top of
+  // the bar (mb-1 spacing between count and pillar top). items-end on the
+  // wrapper keeps every pillar sitting on the same baseline regardless of
+  // height; the count rides above each pillar's top edge proportionally.
   return (
     <div className={`flex flex-col items-center justify-end ${pillarW} h-full`}>
+      <span
+        className="font-display text-2xl md:text-3xl leading-none mb-1"
+        style={{ color: countColor }}
+      >
+        {count}
+      </span>
       <div
         className={`w-full ${heightClass} rounded-t-md flex items-center justify-center text-xl`}
         style={{ ...style, boxShadow: "inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(0,0,0,.15)" }}
