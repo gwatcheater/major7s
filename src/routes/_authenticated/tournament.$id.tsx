@@ -98,6 +98,19 @@ function TournamentHub() {
     },
   });
 
+  const { data: blogPosts = [] } = useQuery({
+    queryKey: ["blog_posts", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("id, title, created_at")
+        .eq("tournament_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   if (isLoading) return <div className="p-12">Loading…</div>;
   if (!t) return <div className="p-12">Tournament not found.</div>;
   if (
@@ -282,8 +295,37 @@ function TournamentHub() {
               className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
             />
           </CollapsibleTrigger>
-          <CollapsibleContent className="border border-t-0 border-border bg-card p-5 text-sm text-muted-foreground whitespace-pre-wrap">
-            {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
+          <CollapsibleContent className="border border-t-0 border-border bg-card">
+            {blogPosts.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {blogPosts.map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      to="/tournament/$id/blog/$postId"
+                      params={{ id, postId: p.id }}
+                      className="flex items-center gap-3 p-4 hover:bg-accent transition-colors"
+                    >
+                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{p.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(p.created_at).toLocaleDateString(undefined, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="p-5 text-sm text-muted-foreground whitespace-pre-wrap">
+                {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
+              </div>
+            )}
           </CollapsibleContent>
         </Collapsible>
       </div>
