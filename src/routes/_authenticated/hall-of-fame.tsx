@@ -1533,8 +1533,8 @@ function HallOfFamePage() {
                 {data?.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
                     <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight text-[color:var(--forest-deep)]">{r.year}</td>
-                    <td className="sticky left-12 z-20 px-1 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
-                    <td className="px-1 py-4 text-left text-xs font-semibold text-slate-500 whitespace-nowrap leading-tight">{r.location}</td>
+                    <td className="sticky left-12 z-20 pl-1 pr-3 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
+                    <td className="px-1 py-4 text-left text-xs font-semibold text-slate-500 whitespace-normal break-words leading-tight">{r.location}</td>
                     <td className="px-1 py-4"><Cell entries={r.p1} nameColor="var(--gold)" /></td>
                     <td className="px-1 py-4"><Cell entries={r.p2} /></td>
                     <td className="px-1 py-4"><Cell entries={r.p3} /></td>
