@@ -77,12 +77,11 @@ function GeneralBlogPostView() {
           )}
 
           <Card className="p-5 md:p-6">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              className="prose prose-slate max-w-none"
-            >
-              {post.body ?? ""}
-            </ReactMarkdown>
+            <div className="prose prose-slate max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {post.body ?? ""}
+              </ReactMarkdown>
+            </div>
           </Card>
         </article>
       )}
