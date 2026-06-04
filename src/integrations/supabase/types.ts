@@ -255,15 +255,21 @@ export type Database = {
           is_tie: boolean | null
           position_display: string | null
           position_numeric: number | null
+          position_r1: number | null
+          position_r2: number | null
+          position_r3: number | null
+          position_r4: number | null
           round_1: number | null
           round_2: number | null
           round_3: number | null
           round_4: number | null
+          rounds_completed: number | null
           score_to_par: number | null
           status_short_detail: string | null
           status_type: string | null
           total_strokes: number | null
           tournament_id: string
+          withdrew_after_round: number | null
         }
         Insert: {
           country?: string | null
@@ -275,15 +281,21 @@ export type Database = {
           is_tie?: boolean | null
           position_display?: string | null
           position_numeric?: number | null
+          position_r1?: number | null
+          position_r2?: number | null
+          position_r3?: number | null
+          position_r4?: number | null
           round_1?: number | null
           round_2?: number | null
           round_3?: number | null
           round_4?: number | null
+          rounds_completed?: number | null
           score_to_par?: number | null
           status_short_detail?: string | null
           status_type?: string | null
           total_strokes?: number | null
           tournament_id: string
+          withdrew_after_round?: number | null
         }
         Update: {
           country?: string | null
@@ -295,15 +307,21 @@ export type Database = {
           is_tie?: boolean | null
           position_display?: string | null
           position_numeric?: number | null
+          position_r1?: number | null
+          position_r2?: number | null
+          position_r3?: number | null
+          position_r4?: number | null
           round_1?: number | null
           round_2?: number | null
           round_3?: number | null
           round_4?: number | null
+          rounds_completed?: number | null
           score_to_par?: number | null
           status_short_detail?: string | null
           status_type?: string | null
           total_strokes?: number | null
           tournament_id?: string
+          withdrew_after_round?: number | null
         }
         Relationships: [
           {
