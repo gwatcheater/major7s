@@ -43,12 +43,17 @@ function ResetPasswordPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const attemptedRef = useRef(false);
+  const readyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const markReady = () => {
-      if (!cancelled) setReady(true);
+      readyRef.current = true;
+      if (!cancelled) {
+        setErrorMsg(null);
+        setReady(true);
+      }
     };
 
     // 1. Standard path — listen for Supabase's auth events
@@ -71,9 +76,15 @@ function ResetPasswordPage() {
     // 3. Safari-safe fallback — manually parse the URL after a short delay
     //    if the auth listener hasn't fired yet.
     const fallback = async () => {
-      if (cancelled || attemptedRef.current) return;
+      if (cancelled || attemptedRef.current || readyRef.current) return;
       attemptedRef.current = true;
       try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          markReady();
+          return;
+        }
+
         const hashParams = parseHashParams(window.location.hash);
         const searchParams = new URLSearchParams(window.location.search);
 
@@ -174,13 +185,26 @@ function ResetPasswordPage() {
       }
     };
 
+    const recheckSession = () => {
+      if (readyRef.current || cancelled) return;
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          if (data.session) markReady();
+        })
+        .catch(() => undefined);
+    };
+
+    window.addEventListener("pageshow", recheckSession);
+    document.addEventListener("visibilitychange", recheckSession);
+
     const timer = window.setTimeout(() => {
-      if (!ready) fallback();
+      if (!readyRef.current) fallback();
     }, 1500);
 
     // Hard ceiling — surface an actionable error rather than hanging forever
     const hardTimer = window.setTimeout(() => {
-      if (!cancelled && !ready) {
+      if (!cancelled && !readyRef.current) {
         setErrorMsg(
           (prev) => prev ?? "Recovery link took too long to verify. Please request a new one.",
         );
@@ -190,6 +214,8 @@ function ResetPasswordPage() {
     return () => {
       cancelled = true;
       subscription.unsubscribe();
+      window.removeEventListener("pageshow", recheckSession);
+      document.removeEventListener("visibilitychange", recheckSession);
       window.clearTimeout(timer);
       window.clearTimeout(hardTimer);
     };
