@@ -38,7 +38,9 @@ function readRecoveryParams(initialUrl: UrlSnapshot | null) {
     if (!url) continue;
     mergeSearchParams(searchParams, url.search);
     const cleanHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-    const hashQuery = cleanHash.includes("?") ? cleanHash.slice(cleanHash.indexOf("?") + 1) : cleanHash;
+    const hashQuery = cleanHash.includes("?")
+      ? cleanHash.slice(cleanHash.indexOf("?") + 1)
+      : cleanHash;
     mergeSearchParams(searchParams, hashQuery);
     Object.assign(hashParams, { ...parseHashParams(hashQuery), ...parseHashParams(url.hash) });
   }
