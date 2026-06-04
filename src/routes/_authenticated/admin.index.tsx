@@ -475,7 +475,11 @@ function TournamentTab() {
       const { data, error } = await supabase
         .from("tournaments")
         .select(
-          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes",
+          // espn_event_id is required so the ESPN leaderboard import section
+          // can show the saved ID + load the event-name confirmation preview.
+          // Without it, initialEspnEventId arrives as undefined and the panel
+          // looks empty even when the DB has the value.
+          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes, espn_event_id",
         )
         .order("start_date", { ascending: false });
       if (error) throw error;
