@@ -137,8 +137,7 @@ function ResetPasswordPage() {
 
         // New email link format — token_hash + type in query or hash
         const tokenHash = searchParams.get("token_hash") || hashParams.token_hash;
-        const otpType =
-          (searchParams.get("type") || hashParams.type || "recovery") as "recovery";
+        const otpType = (searchParams.get("type") || hashParams.type || "recovery") as "recovery";
         if (tokenHash) {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
@@ -219,7 +218,6 @@ function ResetPasswordPage() {
       window.clearTimeout(timer);
       window.clearTimeout(hardTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e: FormEvent) {
