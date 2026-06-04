@@ -18,6 +18,22 @@ function parseHashParams(hash: string): Record<string, string> {
   return out;
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function ResetPasswordPage() {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
@@ -25,6 +41,7 @@ function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const attemptedRef = useRef(false);
 
   useEffect(() => {
@@ -122,13 +139,30 @@ function ResetPasswordPage() {
     e.preventDefault();
     if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
     if (password !== confirm) { toast.error("Passwords don't match"); return; }
+    setSubmitError(null);
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Password updated. Please sign in.");
-    await supabase.auth.signOut();
-    navigate({ to: "/login" });
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.updateUser({ password }),
+        12000,
+        "Password update took too long. Please check your connection and try again.",
+      );
+      if (error) throw error;
+
+      toast.success("Password updated. Please sign in.");
+      await withTimeout(
+        supabase.auth.signOut(),
+        2500,
+        "Password updated, but sign-out took too long.",
+      ).catch(() => undefined);
+      navigate({ to: "/login", replace: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update password. Please try again.";
+      setSubmitError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -152,6 +186,11 @@ function ResetPasswordPage() {
           <p className="text-sm text-muted-foreground">Waiting for recovery link…</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
+            {submitError && (
+              <div className="p-3 border text-xs" style={{ borderColor: "var(--gold)", backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)" }}>
+                {submitError}
+              </div>
+            )}
             <div>
               <label className="text-[10px] uppercase tracking-widest font-bold">New password</label>
               <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
