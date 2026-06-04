@@ -421,18 +421,14 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
         teams_skipped_incomplete: 0,
       };
     }
-    const completed = event?.status?.type?.completed === true;
-    if (!completed) {
-      return {
-        error: "Tournament is not yet final on ESPN",
-        imported: 0,
-        matched: 0,
-        unmatched: 0,
-        unmatched_names: [] as string[],
-        teams_scored: 0,
-        teams_skipped_incomplete: 0,
-      };
-    }
+    // Note: previously gated on event.status.type.completed === true so the
+    // import would refuse to run on in-progress tournaments. That gate is now
+    // removed — mid-tournament imports populate whatever round positions are
+    // available so far (from linescores[i].currentPosition) and refresh the
+    // current snapshot. The downstream Major7s scoring uses position_numeric
+    // which on a live tournament is the *current* leaderboard position, so
+    // tournament_scores becomes "current snapshot" rather than "final results".
+    // That's intentional — for a live view we want the snapshot to be live.
 
     // Local golfers for name match
     const { data: golfers, error: gErr } = await supabaseAdmin
@@ -479,14 +475,30 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
         }
       }
 
+      // Per-round strokes AND per-round positions, both extracted from ESPN's
+      // linescores[]. ESPN gives us linescores[i].value (strokes that round)
+      // and linescores[i].currentPosition (position at END of that round) —
+      // no computation needed on our side.
       const rounds: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null };
+      const positionsByRound: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null };
       const linescores: any[] = c?.linescores ?? [];
       for (const ls of linescores) {
         const period = ls?.period;
-        if (period >= 1 && period <= 4 && typeof ls?.value === "number") {
-          rounds[period] = ls.value;
+        if (period >= 1 && period <= 4) {
+          if (typeof ls?.value === "number") rounds[period] = ls.value;
+          if (typeof ls?.currentPosition === "number") positionsByRound[period] = ls.currentPosition;
         }
       }
+      // Number of rounds with a recorded stroke value. For a finisher this is 4;
+      // for a CUT player it's 2; for a WD/DQ partway through it could be 1, 2, or 3.
+      const roundsCompleted = [1, 2, 3, 4].filter((r) => rounds[r] !== null).length;
+      // Withdrawal point — only meaningful for WD/DQ statuses, not CUT (which
+      // always means "cut after R2") and not finishers. If a WD/DQ player has
+      // completed 2 rounds, they withdrew after R2; if 3, after R3; etc.
+      const withdrewAfterRound =
+        statusType === "STATUS_WITHDRAWN" || statusType === "STATUS_DISQUALIFIED"
+          ? (roundsCompleted > 0 ? roundsCompleted : null)
+          : null;
 
       const golferId = golferByName.get(normalizeName(displayName)) ?? null;
       if (golferId) matched++;
@@ -509,6 +521,14 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
         round_2: rounds[2],
         round_3: rounds[3],
         round_4: rounds[4],
+        // Per-round positions parsed from ESPN's linescores[i].currentPosition.
+        // NULL for rounds the player hasn't completed yet (or won't, post-cut).
+        position_r1: positionsByRound[1],
+        position_r2: positionsByRound[2],
+        position_r3: positionsByRound[3],
+        position_r4: positionsByRound[4],
+        rounds_completed: roundsCompleted,
+        withdrew_after_round: withdrewAfterRound,
         imported_at: new Date().toISOString(),
       });
     }
