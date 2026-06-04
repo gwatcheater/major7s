@@ -124,6 +124,48 @@ function ResetPasswordPage() {
           return;
         }
 
+        // New email link format — token_hash + type in query or hash
+        const tokenHash = searchParams.get("token_hash") || hashParams.token_hash;
+        const otpType =
+          (searchParams.get("type") || hashParams.type || "recovery") as "recovery";
+        if (tokenHash) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
+          if (!error) {
+            markReady();
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+          if (!cancelled) setErrorMsg(error.message);
+          return;
+        }
+
+        // Legacy token + type
+        const legacyToken = searchParams.get("token") || hashParams.token;
+        if (legacyToken) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: legacyToken,
+            type: otpType,
+          });
+          if (!error) {
+            markReady();
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+          if (!cancelled) setErrorMsg(error.message);
+          return;
+        }
+
         // Nothing to work with
         if (!cancelled) setErrorMsg("No recovery token found. Please request a new reset link.");
       } catch (err) {
