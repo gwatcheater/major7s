@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.1 — round toggle + Δ movement column on R2/R3/Final
+// VERSION MARKER: leaderboard v4.2 — Δ between POS and GOLFER; T-prefix on round-view ties
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -312,13 +312,13 @@ function TourneyCols({
   showR3: boolean;
   showR4: boolean;
 }) {
-  // Tight widths so the Golfer column gets the leftover horizontal space.
-  // Δ column is 36px to fit arrow + 2-3 digit number ("↑127" being the worst).
+  // Column widths. Δ sits between POS and GOLFER for visual clarity — the
+  // movement value belongs next to the position, not floating mid-row.
   return (
     <colgroup>
       <col style={{ width: "36px" }} />
-      <col />
       {showDelta && <col style={{ width: "36px" }} />}
+      <col />
       {showToPar && <col style={{ width: "56px" }} />}
       {showR1 && <col style={{ width: "30px" }} />}
       {showR2 && <col style={{ width: "30px" }} />}
@@ -336,15 +336,33 @@ function TournamentTable({
   myPickGolferIds: Set<string>;
   round: Round;
 }) {
-  // Which columns to show.
   const showR1 = true;
   const showR2 = round === "r2" || round === "r3" || round === "final";
   const showR3 = round === "r3" || round === "final";
   const showR4 = round === "final";
   const showToPar = round === "final";
-  // Δ = movement from the previous round into this round. R1 has no prior
-  // round to compare against, so hidden there. Shown on R2, R3, Final.
+  // Δ = movement from previous round. R1 has no prior round to compare to.
   const showDelta = round !== "r1";
+
+  // Tie detection for round views. Final view uses the row's `is_tie` flag
+  // directly (computed by ESPN). For r1/r2/r3 we have no flag, so derive it
+  // by counting how many rows share the same position_r{n} value across the
+  // full active+cut list. Built once per round-switch, O(N).
+  const tiedPositions = useMemo<Set<number>>(() => {
+    if (round === "final") return new Set();
+    const posKey: "position_r1" | "position_r2" | "position_r3" =
+      round === "r1" ? "position_r1" : round === "r2" ? "position_r2" : "position_r3";
+    const counts = new Map<number, number>();
+    for (const r of active) {
+      const v = r[posKey];
+      if (v !== null) counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    const ties = new Set<number>();
+    for (const [pos, count] of counts) {
+      if (count > 1) ties.add(pos);
+    }
+    return ties;
+  }, [active, round]);
 
   const colCount = 2
     + (showDelta ? 1 : 0)
@@ -368,8 +386,8 @@ function TournamentTable({
         <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-2">Pos</th>
-            <th className="text-left px-2 py-2">Golfer</th>
             {showDelta && <th className="text-center px-1 py-2" title="Position change from previous round">Δ</th>}
+            <th className="text-left px-2 py-2">Golfer</th>
             {showToPar && <th className="text-right px-2 py-2 whitespace-nowrap">To Par</th>}
             {showR1 && <th className="text-right px-1 py-2">R1</th>}
             {showR2 && <th className="text-right px-1 py-2">R2</th>}
@@ -384,6 +402,7 @@ function TournamentTable({
               r={r}
               mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
               round={round}
+              tiedPositions={tiedPositions}
               showDelta={showDelta}
               showToPar={showToPar}
               showR1={showR1}
@@ -406,6 +425,7 @@ function TournamentTable({
                   mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
                   dim
                   round={round}
+                  tiedPositions={tiedPositions}
                   showDelta={showDelta}
                   showToPar={showToPar}
                   showR1={showR1}
@@ -423,12 +443,13 @@ function TournamentTable({
 }
 
 function TourneyRow({
-  r, mine, dim, round, showDelta, showToPar, showR1, showR2, showR3, showR4,
+  r, mine, dim, round, tiedPositions, showDelta, showToPar, showR1, showR2, showR3, showR4,
 }: {
   r: LbRow;
   mine: boolean;
   dim?: boolean;
   round: Round;
+  tiedPositions: Set<number>;
   showDelta: boolean;
   showToPar: boolean;
   showR1: boolean;
@@ -438,7 +459,10 @@ function TourneyRow({
 }) {
   const par = fmtToPar(r.score_to_par);
 
-  // Position label for the current view's selection.
+  // Position label.
+  // - Final view: use the row's own is_tie flag (set by ESPN).
+  // - R1/R2/R3 views: tied iff this row's position_r{n} appears more than
+  //   once across the table (tiedPositions set, built once by the parent).
   let posLabel: string;
   if (round === "final") {
     if (r.position_numeric === null) {
@@ -453,13 +477,16 @@ function TourneyRow({
                 : round === "r2" ? "position_r2"
                 : "position_r3";
     const v = r[posKey];
-    posLabel = v === null ? "—" : String(v);
+    if (v === null) {
+      posLabel = "—";
+    } else if (tiedPositions.has(v)) {
+      posLabel = `T${v}`;
+    } else {
+      posLabel = String(v);
+    }
   }
 
   // Δ movement: prevPos - currPos. Positive = climbed, negative = dropped.
-  // r2:    Δ = position_r1 - position_r2
-  // r3:    Δ = position_r2 - position_r3
-  // final: Δ = position_r3 - position_numeric (movement during R4)
   let deltaCell: React.ReactNode = null;
   if (showDelta) {
     let prev: number | null = null;
@@ -475,7 +502,7 @@ function TourneyRow({
       curr = r.position_numeric;
     }
     if (prev !== null && curr !== null) {
-      const delta = prev - curr; // positive = climbed
+      const delta = prev - curr;
       if (delta === 0) {
         deltaCell = <span className="text-muted-foreground">—</span>;
       } else if (delta > 0) {
@@ -493,13 +520,13 @@ function TourneyRow({
   return (
     <tr className={`${rowBg} ${text}`}>
       <td className="px-2 py-2 font-mono text-xs">{posLabel}</td>
+      {showDelta && <td className="px-1 py-2 text-center font-mono text-xs">{deltaCell}</td>}
       <td className="px-2 py-2">
         <div className="font-medium leading-tight truncate">{r.espn_display_name}</div>
         {r.country && (
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{r.country}</div>
         )}
       </td>
-      {showDelta && <td className="px-1 py-2 text-center font-mono text-xs">{deltaCell}</td>}
       {showToPar && (
         <td className={`px-2 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
       )}
