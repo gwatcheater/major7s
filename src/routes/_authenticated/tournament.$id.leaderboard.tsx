@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.5 — per-round pick breakdown columns + thru cut R3/Final only
+// VERSION MARKER: leaderboard v4.7 — medals only on Final view
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -762,9 +762,8 @@ function useMajor7sRoundScores(
 
 // -- Round-view pick breakdown (expandable) --
 // Shows a column per completed round up to the current round.
-// R1 → [Golfer, R1]
-// R2 → [Golfer, R1, R2]
-// R3 → [Golfer, R1, R2, R3]
+// R1 → [R1]  R2 → [R1, R2]  R3 → [R1, R2, R3]
+// Rows are ordered by bucket (1–7) — the pick slot, not points.
 function RoundPickBreakdown({
   picks, showDelta, round, lbRows,
 }: {
@@ -773,10 +772,7 @@ function RoundPickBreakdown({
   round: Exclude<Round, "final">;
   lbRows: LbRow[];
 }) {
-  const sorted = [...picks].sort((a, b) => {
-    if (a.counted !== b.counted) return a.counted ? -1 : 1;
-    return a.points - b.points;
-  });
+  const byBucket = [...picks].sort((a, b) => a.bucket - b.bucket);
 
   // Build a lookup: golfer_id → LbRow for per-round positions
   const lbByGolfer = useMemo(() => {
@@ -808,7 +804,7 @@ function RoundPickBreakdown({
           <tr className="text-[10px] uppercase tracking-widest text-muted-foreground">
             <th />
             {showDelta && <th />}
-            <th className="px-3 py-1 text-left">Golfer</th>
+            <th />
             {showR1 && <th className="px-1 py-1 text-right">R1</th>}
             {showR2 && <th className="px-1 py-1 text-right">R2</th>}
             {showR3 && <th className="px-1 py-1 text-right">R3</th>}
@@ -816,7 +812,7 @@ function RoundPickBreakdown({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((p) => {
+          {byBucket.map((p) => {
             const isNonFinisher = p.position_in_round === null;
             const isDropped = !p.counted;
             let nameCls = "";
@@ -1114,7 +1110,7 @@ function MajorSevensTable({
         )}
 
         {myTeam && (
-          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} showDelta={showDelta} showThruCut={showThruCut} round={round} lbRows={lbRows} />
+          <RoundActiveTeamPanel team={myTeam} medal={null} showDelta={showDelta} showThruCut={showThruCut} round={round} lbRows={lbRows} />
         )}
         {myTeamDisqualifiedFromBotr && (
           <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1148,7 +1144,7 @@ function MajorSevensTable({
                     key={t.team_id}
                     team={t}
                     mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
-                    medal={medalFor(t.position)}
+                    medal={null}
                     showDelta={showDelta}
                     showThruCut={showThruCut}
                     round={round}
@@ -1466,7 +1462,7 @@ function PickBreakdown({
           <tr className="text-[10px] uppercase tracking-widest text-muted-foreground">
             <th />
             {showDelta && <th />}
-            <th className="px-3 py-1 text-left">Golfer</th>
+            <th />
             <th className="px-1 py-1 text-right">R1</th>
             <th className="px-1 py-1 text-right">R2</th>
             <th className="px-1 py-1 text-right">R3</th>
