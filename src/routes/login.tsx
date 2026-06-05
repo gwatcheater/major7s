@@ -191,34 +191,34 @@ function LoginPage() {
                   </button>
                 </form>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-3">
+                <form onSubmit={handleSubmit} method="POST" action="/register" className="space-y-3">
                   {mode === "signup" && (
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-bold">First name</label>
-                          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={60}
+                          <label htmlFor="given-name" className="text-[10px] uppercase tracking-widest font-bold">First name</label>
+                          <input type="text" name="given-name" id="given-name" autoComplete="given-name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={60}
                             className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-bold">Last name</label>
-                          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={60}
+                          <label htmlFor="family-name" className="text-[10px] uppercase tracking-widest font-bold">Last name</label>
+                          <input type="text" name="family-name" id="family-name" autoComplete="family-name" required value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={60}
                             className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-bold">Phone</label>
-                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30}
+                        <label htmlFor="tel" className="text-[10px] uppercase tracking-widest font-bold">Phone</label>
+                        <input type="tel" name="tel" id="tel" autoComplete="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30}
                           className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-bold">Referred by</label>
-                        <input value={referralName} onChange={(e) => setReferralName(e.target.value)} maxLength={120}
+                        <label htmlFor="referral-name" className="text-[10px] uppercase tracking-widest font-bold">Referred by</label>
+                        <input id="referral-name" name="referral-name" value={referralName} onChange={(e) => setReferralName(e.target.value)} maxLength={120}
                           className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-bold">Nickname</label>
-                        <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={60}
+                        <label htmlFor="nickname" className="text-[10px] uppercase tracking-widest font-bold">Nickname</label>
+                        <input id="nickname" name="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={60}
                           className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm" />
                       </div>
                     </>
@@ -233,7 +233,7 @@ function LoginPage() {
                   <div>
                     <label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold">Password</label>
                     <input
-                      id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                      id="password" name="password" type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)}
                       minLength={8}
                       className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
                     />
