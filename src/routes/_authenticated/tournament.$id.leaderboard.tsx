@@ -588,7 +588,7 @@ function positionKeyForRound(round: Round): "position_r1" | "position_r2" | "pos
  */
 function computeRoundScores(
   teams: { id: string; nickname: string; owner_user_id: string }[],
-  picks: { team_id: string; bucket: number; golfer_id: string; golfer_name: string }[],
+  picks: { team_id: string; bucket: number; golfer_id: string }[],
   lbRows: LbRow[],
   round: Exclude<Round, "final">,
 ): RoundTeamScore[] {
@@ -605,7 +605,7 @@ function computeRoundScores(
       const posVal = lb ? (lb[posKey] as number | null) : null;
       return {
         golfer_id: pick.golfer_id,
-        golfer_name: pick.golfer_name || lb?.espn_display_name || "Unknown",
+        golfer_name: lb?.espn_display_name || "Unknown",
         bucket: pick.bucket,
         position_in_round: posVal,
         points: posVal ?? NON_FINISHER_POINTS,
@@ -669,20 +669,19 @@ function useMajor7sRoundScores(
   round: Exclude<Round, "final">,
   lbRows: LbRow[],
 ) {
-  // Picks for this tournament — includes golfer_name for display
+  // Picks for this tournament — golfer names resolved from lbRows, not a join
   const picksQuery = useQuery({
     queryKey: ["major7s-round-picks", tournamentId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("picks")
-        .select("team_id, bucket, golfer_id, golfers(name)")
+        .select("team_id, bucket, golfer_id")
         .eq("tournament_id", tournamentId);
       if (error) throw error;
       return (data ?? []).map((p: any) => ({
         team_id: p.team_id as string,
         bucket: p.bucket as number,
         golfer_id: p.golfer_id as string,
-        golfer_name: (p.golfers?.name ?? "") as string,
       }));
     },
   });
@@ -939,7 +938,7 @@ function MajorSevensTable({
   });
 
   // -- Round view: on-the-fly computation --
-  const { scores: roundScores, isLoading: roundLoading } = useMajor7sRoundScores(
+  const { scores: roundScores, isLoading: roundLoading, error: roundError } = useMajor7sRoundScores(
     tournamentId,
     round === "final" ? "r1" : round, // dummy when final; hook won't run
     lbRows,
@@ -948,6 +947,16 @@ function MajorSevensTable({
   // ---- ROUND VIEW (R1 / R2 / R3) ----
   if (round !== "final") {
     if (roundLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
+    if (roundError) {
+      return (
+        <div className="border-2 border-dashed border-red-300 p-12 text-center bg-red-50/30">
+          <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
+          <p className="text-sm text-red-600">
+            Failed to load round data: {(roundError as Error).message}
+          </p>
+        </div>
+      );
+    }
     if (!roundScores || roundScores.length === 0) {
       return (
         <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
