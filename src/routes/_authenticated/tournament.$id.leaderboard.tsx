@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4 — round toggle (R1/R2/R3/Final) on Tournament view
+// VERSION MARKER: leaderboard v4.1 — round toggle + Δ movement column on R2/R3/Final
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -303,8 +303,9 @@ function RoundToggle({
 // TOURNAMENT VIEW (ESPN leaderboard)
 // =============================================================
 function TourneyCols({
-  showToPar, showR1, showR2, showR3, showR4,
+  showDelta, showToPar, showR1, showR2, showR3, showR4,
 }: {
+  showDelta: boolean;
   showToPar: boolean;
   showR1: boolean;
   showR2: boolean;
@@ -312,12 +313,12 @@ function TourneyCols({
   showR4: boolean;
 }) {
   // Tight widths so the Golfer column gets the leftover horizontal space.
-  // On a 380px viewport: 36 + 56 + (~30×N) numeric, leaving the rest for name.
-  // In round views, hidden columns get zero width so they don't consume space.
+  // Δ column is 36px to fit arrow + 2-3 digit number ("↑127" being the worst).
   return (
     <colgroup>
       <col style={{ width: "36px" }} />
       <col />
+      {showDelta && <col style={{ width: "36px" }} />}
       {showToPar && <col style={{ width: "56px" }} />}
       {showR1 && <col style={{ width: "30px" }} />}
       {showR2 && <col style={{ width: "30px" }} />}
@@ -335,26 +336,29 @@ function TournamentTable({
   myPickGolferIds: Set<string>;
   round: Round;
 }) {
-  // Which round columns to show. In a round view we only show stroke columns
-  // for rounds that have been played up to that point — anything else is
-  // visually noise.
-  const showR1 = true; // R1 always shown in every non-future view
+  // Which columns to show.
+  const showR1 = true;
   const showR2 = round === "r2" || round === "r3" || round === "final";
   const showR3 = round === "r3" || round === "final";
   const showR4 = round === "final";
-  // In round views the To Par column shows cumulative-through-Rn (using the
-  // score_to_par which IS cumulative-to-Rn for non-final views ONLY IF we
-  // computed it that way... we don't. Cleaner: hide To Par in round views
-  // and show position + per-round strokes only.
   const showToPar = round === "final";
+  // Δ = movement from the previous round into this round. R1 has no prior
+  // round to compare against, so hidden there. Shown on R2, R3, Final.
+  const showDelta = round !== "r1";
 
-  // Total column count for the colspan on the "Missed Cut" separator.
-  const colCount = 2 + (showToPar ? 1 : 0) + (showR1 ? 1 : 0) + (showR2 ? 1 : 0) + (showR3 ? 1 : 0) + (showR4 ? 1 : 0);
+  const colCount = 2
+    + (showDelta ? 1 : 0)
+    + (showToPar ? 1 : 0)
+    + (showR1 ? 1 : 0)
+    + (showR2 ? 1 : 0)
+    + (showR3 ? 1 : 0)
+    + (showR4 ? 1 : 0);
 
   return (
     <div className="border border-border bg-card">
       <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
         <TourneyCols
+          showDelta={showDelta}
           showToPar={showToPar}
           showR1={showR1}
           showR2={showR2}
@@ -365,6 +369,7 @@ function TournamentTable({
           <tr>
             <th className="text-left px-2 py-2">Pos</th>
             <th className="text-left px-2 py-2">Golfer</th>
+            {showDelta && <th className="text-center px-1 py-2" title="Position change from previous round">Δ</th>}
             {showToPar && <th className="text-right px-2 py-2 whitespace-nowrap">To Par</th>}
             {showR1 && <th className="text-right px-1 py-2">R1</th>}
             {showR2 && <th className="text-right px-1 py-2">R2</th>}
@@ -379,6 +384,7 @@ function TournamentTable({
               r={r}
               mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
               round={round}
+              showDelta={showDelta}
               showToPar={showToPar}
               showR1={showR1}
               showR2={showR2}
@@ -400,6 +406,7 @@ function TournamentTable({
                   mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
                   dim
                   round={round}
+                  showDelta={showDelta}
                   showToPar={showToPar}
                   showR1={showR1}
                   showR2={showR2}
@@ -416,12 +423,13 @@ function TournamentTable({
 }
 
 function TourneyRow({
-  r, mine, dim, round, showToPar, showR1, showR2, showR3, showR4,
+  r, mine, dim, round, showDelta, showToPar, showR1, showR2, showR3, showR4,
 }: {
   r: LbRow;
   mine: boolean;
   dim?: boolean;
   round: Round;
+  showDelta: boolean;
   showToPar: boolean;
   showR1: boolean;
   showR2: boolean;
@@ -429,13 +437,8 @@ function TourneyRow({
   showR4: boolean;
 }) {
   const par = fmtToPar(r.score_to_par);
-  // Pick the position to display based on the current round selection.
-  // For round views we render the simple T{n} or {n} style using position_r{n};
-  // we don't have a per-round "is_tie" boolean, so we synthesise the T prefix
-  // by checking whether any other row shares this same position_r{n} value.
-  // Cheaper alternative: just show the raw number without T-prefix in round
-  // views. Going with the cheaper option since ties at mid-round are common
-  // and the absence of T isn't misleading.
+
+  // Position label for the current view's selection.
   let posLabel: string;
   if (round === "final") {
     if (r.position_numeric === null) {
@@ -452,6 +455,39 @@ function TourneyRow({
     const v = r[posKey];
     posLabel = v === null ? "—" : String(v);
   }
+
+  // Δ movement: prevPos - currPos. Positive = climbed, negative = dropped.
+  // r2:    Δ = position_r1 - position_r2
+  // r3:    Δ = position_r2 - position_r3
+  // final: Δ = position_r3 - position_numeric (movement during R4)
+  let deltaCell: React.ReactNode = null;
+  if (showDelta) {
+    let prev: number | null = null;
+    let curr: number | null = null;
+    if (round === "r2") {
+      prev = r.position_r1;
+      curr = r.position_r2;
+    } else if (round === "r3") {
+      prev = r.position_r2;
+      curr = r.position_r3;
+    } else if (round === "final") {
+      prev = r.position_r3;
+      curr = r.position_numeric;
+    }
+    if (prev !== null && curr !== null) {
+      const delta = prev - curr; // positive = climbed
+      if (delta === 0) {
+        deltaCell = <span className="text-muted-foreground">—</span>;
+      } else if (delta > 0) {
+        deltaCell = <span className="text-green-600 font-semibold">↑{delta}</span>;
+      } else {
+        deltaCell = <span className="text-red-600 font-semibold">↓{-delta}</span>;
+      }
+    } else {
+      deltaCell = <span className="text-muted-foreground">—</span>;
+    }
+  }
+
   const rowBg = mine ? "bg-amber-50" : "";
   const text = dim ? "text-muted-foreground" : "";
   return (
@@ -463,6 +499,7 @@ function TourneyRow({
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{r.country}</div>
         )}
       </td>
+      {showDelta && <td className="px-1 py-2 text-center font-mono text-xs">{deltaCell}</td>}
       {showToPar && (
         <td className={`px-2 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
       )}
