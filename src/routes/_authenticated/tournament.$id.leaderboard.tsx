@@ -607,26 +607,6 @@ function computeRoundScores(
   round: Exclude<Round, "final">,
 ): RoundTeamScore[] {
   const posKey = positionKeyForRound(round);
-
-  // TEMPORARY DEBUG — remove after diagnosing Masters 2026 zero-score issue
-  console.log("[M7S DEBUG]", {
-    round,
-    posKey,
-    teamsCount: teams.length,
-    picksCount: picks.length,
-    lbRowsCount: lbRows.length,
-    samplePick: picks[0],
-    sampleTeam: teams[0],
-    sampleLb: lbRows[0] && {
-      golfer_id: lbRows[0].golfer_id,
-      position_r1: lbRows[0].position_r1,
-      position_r2: lbRows[0].position_r2,
-    },
-    firstPickMatch: lbRows.find(
-      (lb) => lb.golfer_id === picks[0]?.golfer_id
-    )?.espn_display_name ?? "NO MATCH",
-  });
-
   const lbByGolfer = new Map<string, LbRow>();
   for (const row of lbRows) {
     if (row.golfer_id) lbByGolfer.set(row.golfer_id, row);
@@ -704,20 +684,33 @@ function useMajor7sRoundScores(
   round: Exclude<Round, "final">,
   lbRows: LbRow[],
 ) {
-  // Picks for this tournament — golfer names resolved from lbRows, not a join
+  // Picks for this tournament — paginated to avoid Supabase's 1000-row ceiling.
+  // Masters 2026 has 183 teams × 7 picks = 1,281 rows, which silently truncates
+  // without pagination, causing teams beyond row 1000 to show 0 points.
   const picksQuery = useQuery({
     queryKey: ["major7s-round-picks", tournamentId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("picks")
-        .select("team_id, bucket, golfer_id")
-        .eq("tournament_id", tournamentId);
-      if (error) throw error;
-      return (data ?? []).map((p: any) => ({
-        team_id: p.team_id as string,
-        bucket: p.bucket as number,
-        golfer_id: p.golfer_id as string,
-      }));
+      const PAGE = 1000;
+      const all: { team_id: string; bucket: number; golfer_id: string }[] = [];
+      for (let page = 0; page < 100; page++) {
+        const from = page * PAGE;
+        const { data, error } = await supabase
+          .from("picks")
+          .select("team_id, bucket, golfer_id")
+          .eq("tournament_id", tournamentId)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const p of data) {
+          all.push({
+            team_id: p.team_id as string,
+            bucket: p.bucket as number,
+            golfer_id: p.golfer_id as string,
+          });
+        }
+        if (data.length < PAGE) break;
+      }
+      return all;
     },
   });
 
