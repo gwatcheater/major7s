@@ -791,9 +791,7 @@ function RoundPickBreakdown({ picks, showDelta }: { picks: RoundPickScore[]; sho
                 {showDelta && <td />}
                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
-                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
-                  {isNonFinisher ? "—" : p.position_in_round}
-                </td>
+                <td />
                 <td />
               </tr>
             );
@@ -943,9 +941,7 @@ function RoundActiveTeamPanel({
                                 {showDelta && <td />}
                                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                                 <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
-                                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
-                                  {isNonFinisher ? "—" : p.position_in_round}
-                                </td>
+                                <td />
                                 <td />
                               </tr>
                             );
