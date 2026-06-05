@@ -607,6 +607,26 @@ function computeRoundScores(
   round: Exclude<Round, "final">,
 ): RoundTeamScore[] {
   const posKey = positionKeyForRound(round);
+
+  // TEMPORARY DEBUG — remove after diagnosing Masters 2026 zero-score issue
+  console.log("[M7S DEBUG]", {
+    round,
+    posKey,
+    teamsCount: teams.length,
+    picksCount: picks.length,
+    lbRowsCount: lbRows.length,
+    samplePick: picks[0],
+    sampleTeam: teams[0],
+    sampleLb: lbRows[0] && {
+      golfer_id: lbRows[0].golfer_id,
+      position_r1: lbRows[0].position_r1,
+      position_r2: lbRows[0].position_r2,
+    },
+    firstPickMatch: lbRows.find(
+      (lb) => lb.golfer_id === picks[0]?.golfer_id
+    )?.espn_display_name ?? "NO MATCH",
+  });
+
   const lbByGolfer = new Map<string, LbRow>();
   for (const row of lbRows) {
     if (row.golfer_id) lbByGolfer.set(row.golfer_id, row);
