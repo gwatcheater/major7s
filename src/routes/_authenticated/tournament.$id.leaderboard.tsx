@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.3 — Major7s round-by-round on-the-fly scoring + BOTR gating
+// VERSION MARKER: leaderboard v4.4 — Major7s Δ column (R2/R3/Final)
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -77,16 +77,29 @@ function fmtToPar(v: number | null): { text: string; cls: string } {
 
 // Shared column widths for ALL Major7s tables (panel, leaderboard, breakdown).
 // Identical widths + tableLayout:fixed guarantee column alignment across them.
-function MajorCols() {
+// When showDelta is true a 36px Δ column sits between Pos and Team.
+function MajorCols({ showDelta = false }: { showDelta?: boolean }) {
   return (
     <colgroup>
       <col style={{ width: "52px" }} />
+      {showDelta && <col style={{ width: "36px" }} />}
       <col />
       <col style={{ width: "64px" }} />
       <col style={{ width: "64px" }} />
       <col style={{ width: "32px" }} />
     </colgroup>
   );
+}
+
+/** Shared Δ cell — mirrors the tournament-view rendering exactly. */
+function Major7sDeltaCell({ delta }: { delta: number | null }) {
+  if (delta === null || delta === undefined || delta === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  if (delta > 0) {
+    return <span className="text-green-600 font-semibold">↑{delta}</span>;
+  }
+  return <span className="text-red-600 font-semibold">↓{-delta}</span>;
 }
 
 function LeaderboardView() {
@@ -559,6 +572,7 @@ interface RoundTeamScore {
   is_tie: boolean;
   picks: RoundPickScore[];
   thru_cut: number | null; // null on R1/R2 (meaningless pre-cut)
+  delta: number | null;    // movement from previous round (positive = climbed)
 }
 
 interface RoundPickScore {
@@ -642,6 +656,7 @@ function computeRoundScores(
       is_tie: false,
       picks: pickScores,
       thru_cut: thruCut,
+      delta: null, // set by caller after comparing with previous round
     };
   });
 
@@ -707,7 +722,21 @@ function useMajor7sRoundScores(
 
   const scores = useMemo(() => {
     if (!teamsQuery.data || !picksQuery.data || lbRows.length === 0) return null;
-    return computeRoundScores(teamsQuery.data, picksQuery.data, lbRows, round);
+    const current = computeRoundScores(teamsQuery.data, picksQuery.data, lbRows, round);
+
+    // Compute delta: position change from previous round
+    const prevRound: Exclude<Round, "final"> | null =
+      round === "r1" ? null : round === "r2" ? "r1" : "r2";
+    if (prevRound) {
+      const prev = computeRoundScores(teamsQuery.data, picksQuery.data, lbRows, prevRound);
+      const prevMap = new Map(prev.map((s) => [s.team_id, s.position]));
+      for (const team of current) {
+        const pp = prevMap.get(team.team_id);
+        team.delta = pp != null ? pp - team.position : null;
+      }
+    }
+
+    return current;
   }, [teamsQuery.data, picksQuery.data, lbRows, round]);
 
   return {
@@ -718,7 +747,7 @@ function useMajor7sRoundScores(
 }
 
 // -- Round-view pick breakdown (expandable) --
-function RoundPickBreakdown({ picks }: { picks: RoundPickScore[] }) {
+function RoundPickBreakdown({ picks, showDelta }: { picks: RoundPickScore[]; showDelta: boolean }) {
   const sorted = [...picks].sort((a, b) => {
     if (a.counted !== b.counted) return a.counted ? -1 : 1;
     return a.points - b.points;
@@ -726,7 +755,7 @@ function RoundPickBreakdown({ picks }: { picks: RoundPickScore[] }) {
   return (
     <div className="bg-muted/20 border-t border-border">
       <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
-        <MajorCols />
+        <MajorCols showDelta={showDelta} />
         <tbody>
           {sorted.map((p) => {
             const isNonFinisher = p.position_in_round === null;
@@ -746,6 +775,7 @@ function RoundPickBreakdown({ picks }: { picks: RoundPickScore[] }) {
             return (
               <tr key={p.golfer_id} className={opacity}>
                 <td />
+                {showDelta && <td />}
                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
                 <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
@@ -763,15 +793,17 @@ function RoundPickBreakdown({ picks }: { picks: RoundPickScore[] }) {
 
 // -- Round-view expandable team row --
 function RoundExpandableTeamRow({
-  team, mine, medal,
+  team, mine, medal, showDelta,
 }: {
   team: RoundTeamScore;
   mine: boolean;
   medal: "gold" | "silver" | "bronze" | null;
+  showDelta: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const rowBg = mine ? "bg-amber-50" : "";
+  const cols = showDelta ? 6 : 5;
   return (
     <>
       <tr
@@ -783,6 +815,11 @@ function RoundExpandableTeamRow({
             <PositionMedal positionDisplay={posDisplay} medal={medal} size="sm" />
           </div>
         </td>
+        {showDelta && (
+          <td className="px-1 py-2 text-center font-mono text-xs">
+            <Major7sDeltaCell delta={team.delta} />
+          </td>
+        )}
         <td className="px-3 py-2 font-medium truncate">{team.nickname}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{team.total}</td>
         <td className="px-2 py-2 text-center font-mono text-muted-foreground">
@@ -793,13 +830,13 @@ function RoundExpandableTeamRow({
         </td>
       </tr>
       <tr>
-        <td colSpan={5} className="p-0 border-0">
+        <td colSpan={cols} className="p-0 border-0">
           <div
             className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
               open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
-            {open && <RoundPickBreakdown picks={team.picks} />}
+            {open && <RoundPickBreakdown picks={team.picks} showDelta={showDelta} />}
           </div>
         </td>
       </tr>
@@ -809,20 +846,22 @@ function RoundExpandableTeamRow({
 
 // -- Round-view "Your Team" panel --
 function RoundActiveTeamPanel({
-  team, medal,
-}: { team: RoundTeamScore; medal: "gold" | "silver" | "bronze" | null }) {
+  team, medal, showDelta,
+}: { team: RoundTeamScore; medal: "gold" | "silver" | "bronze" | null; showDelta: boolean }) {
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
+  const cols = showDelta ? 6 : 5;
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
       <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
         Your Team
       </div>
       <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-        <MajorCols />
+        <MajorCols showDelta={showDelta} />
         <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
             <th className="text-center px-3 py-1">Pos</th>
+            {showDelta && <th className="text-center px-1 py-1">Δ</th>}
             <th />
             <th className="text-right px-3 py-1">Points</th>
             <th className="text-center px-3 py-1">{team.thru_cut !== null ? "Thru Cut" : ""}</th>
@@ -839,6 +878,11 @@ function RoundActiveTeamPanel({
                 <PositionMedal positionDisplay={posDisplay} medal={medal} size="sm" />
               </div>
             </td>
+            {showDelta && (
+              <td className="px-1 py-2 text-center font-mono text-xs">
+                <Major7sDeltaCell delta={team.delta} />
+              </td>
+            )}
             <td className="px-3 py-2 font-medium truncate">{team.nickname}</td>
             <td className="px-3 py-2 text-right font-mono font-semibold">{team.total}</td>
             <td className="px-3 py-2 text-center font-mono text-muted-foreground">
@@ -849,7 +893,7 @@ function RoundActiveTeamPanel({
             </td>
           </tr>
           <tr>
-            <td colSpan={5} className="p-0 border-0">
+            <td colSpan={cols} className="p-0 border-0">
               <div
                 className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
                   open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
@@ -858,7 +902,7 @@ function RoundActiveTeamPanel({
                 {open && (
                   <div className="bg-amber-50/50 border-t border-border">
                     <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
-                      <MajorCols />
+                      <MajorCols showDelta={showDelta} />
                       <tbody>
                         {[...team.picks]
                           .sort((a, b) => {
@@ -883,6 +927,7 @@ function RoundActiveTeamPanel({
                             return (
                               <tr key={p.golfer_id} className={opacity}>
                                 <td />
+                                {showDelta && <td />}
                                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                                 <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
                                 <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
@@ -937,12 +982,15 @@ function MajorSevensTable({
     },
   });
 
-  // -- Round view: on-the-fly computation --
+  // -- Round view: on-the-fly computation (also provides R3 positions for final-view Δ) --
   const { scores: roundScores, isLoading: roundLoading, error: roundError } = useMajor7sRoundScores(
     tournamentId,
-    round === "final" ? "r1" : round, // dummy when final; hook won't run
+    round === "final" ? "r3" : round,
     lbRows,
   );
+
+  // Δ column: shown on R2, R3, and Final (not R1 — no prior round to compare)
+  const showDelta = round !== "r1";
 
   // ---- ROUND VIEW (R1 / R2 / R3) ----
   if (round !== "final") {
@@ -1027,7 +1075,7 @@ function MajorSevensTable({
         )}
 
         {myTeam && (
-          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} />
+          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} showDelta={showDelta} />
         )}
         {myTeamDisqualifiedFromBotr && (
           <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1037,10 +1085,11 @@ function MajorSevensTable({
 
         <div className="border border-border bg-card">
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-            <MajorCols />
+            <MajorCols showDelta={showDelta} />
             <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
               <tr>
                 <th className="text-center px-3 py-2">Pos</th>
+                {showDelta && <th className="text-center px-1 py-2" title="Position change from previous round">Δ</th>}
                 <th className="text-left px-3 py-2">Team</th>
                 <th className="text-right px-3 py-2">Points</th>
                 <th className="text-center px-3 py-2">{showThruCut ? "Thru Cut" : ""}</th>
@@ -1050,7 +1099,7 @@ function MajorSevensTable({
             <tbody className="divide-y divide-border">
               {visibleTeams.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                  <td colSpan={showDelta ? 6 : 5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
                     No teams in this competition yet.
                   </td>
                 </tr>
@@ -1061,6 +1110,7 @@ function MajorSevensTable({
                     team={t}
                     mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
                     medal={medalFor(t.position)}
+                    showDelta={showDelta}
                   />
                 ))
               )}
@@ -1082,6 +1132,12 @@ function MajorSevensTable({
         </p>
       </div>
     );
+  }
+
+  // Build R3 position map for final-view Δ. roundScores is R3 on-the-fly data.
+  const r3PosMap = new Map<string, number>();
+  if (roundScores) {
+    for (const s of roundScores) r3PosMap.set(s.team_id, s.position);
   }
 
   const visibleRows = mode === "botr" ? finalRows.filter((r) => r.thru_cut < 5) : finalRows;
@@ -1120,7 +1176,11 @@ function MajorSevensTable({
       </div>
 
       {myRow && (
-        <ActiveTeamPanel row={myRow} medal={medalFor(myRow.position_numeric)} />
+        <ActiveTeamPanel
+          row={myRow}
+          medal={medalFor(myRow.position_numeric)}
+          delta={(() => { const pp = r3PosMap.get(myRow.team_id); return pp != null ? pp - myRow.position_numeric : null; })()}
+        />
       )}
       {myTeamDisqualifiedFromBotr && (
         <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1130,10 +1190,11 @@ function MajorSevensTable({
 
       <div className="border border-border bg-card">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-          <MajorCols />
+          <MajorCols showDelta />
           <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
             <tr>
               <th className="text-center px-3 py-2">Pos</th>
+              <th className="text-center px-1 py-2" title="Position change from previous round">Δ</th>
               <th className="text-left px-3 py-2">Team</th>
               <th className="text-right px-3 py-2">Points</th>
               <th className="text-center px-3 py-2">Thru Cut</th>
@@ -1143,19 +1204,24 @@ function MajorSevensTable({
           <tbody className="divide-y divide-border">
             {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                <td colSpan={6} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
                   No teams in this competition yet.
                 </td>
               </tr>
             ) : (
-              visibleRows.map((r) => (
-                <ExpandableTeamRow
-                  key={r.id}
-                  r={r}
-                  mine={!!myTeamId && r.team_id === myTeamId}
-                  medal={medalFor(r.position_numeric)}
-                />
-              ))
+              visibleRows.map((r) => {
+                const pp = r3PosMap.get(r.team_id);
+                const delta = pp != null ? pp - r.position_numeric : null;
+                return (
+                  <ExpandableTeamRow
+                    key={r.id}
+                    r={r}
+                    mine={!!myTeamId && r.team_id === myTeamId}
+                    medal={medalFor(r.position_numeric)}
+                    delta={delta}
+                  />
+                );
+              })
             )}
           </tbody>
         </table>
@@ -1165,8 +1231,8 @@ function MajorSevensTable({
 }
 
 function ActiveTeamPanel({
-  row, medal,
-}: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null }) {
+  row, medal, delta,
+}: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null; delta: number | null }) {
   const [open, setOpen] = useState(false);
   const { data: picks, isLoading: picksLoading } = useQuery({
     queryKey: ["tournament-score-picks", row.id],
@@ -1188,10 +1254,11 @@ function ActiveTeamPanel({
         Your Team
       </div>
       <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-        <MajorCols />
+        <MajorCols showDelta />
         <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
             <th className="text-center px-3 py-1">Pos</th>
+            <th className="text-center px-1 py-1">Δ</th>
             <th />
             <th className="text-right px-3 py-1">Points</th>
             <th className="text-center px-3 py-1">Thru Cut</th>
@@ -1208,6 +1275,9 @@ function ActiveTeamPanel({
                 <PositionMedal positionDisplay={row.position_display} medal={medal} size="sm" />
               </div>
             </td>
+            <td className="px-1 py-2 text-center font-mono text-xs">
+              <Major7sDeltaCell delta={delta} />
+            </td>
             <td className="px-3 py-2 font-medium truncate">{row.teams?.nickname ?? "—"}</td>
             <td className="px-3 py-2 text-right font-mono font-semibold">{row.total_points}</td>
             <td className="px-3 py-2 text-center font-mono text-muted-foreground">{row.thru_cut}</td>
@@ -1216,13 +1286,13 @@ function ActiveTeamPanel({
             </td>
           </tr>
           <tr>
-            <td colSpan={5} className="p-0 border-0">
+            <td colSpan={6} className="p-0 border-0">
               <div
                 className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
                   open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
                 }`}
               >
-                <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={true} />
+                <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={true} showDelta />
               </div>
             </td>
           </tr>
@@ -1267,8 +1337,8 @@ function PositionMedal({
 }
 
 function ExpandableTeamRow({
-  r, mine, medal,
-}: { r: ScoreRow; mine: boolean; medal: "gold" | "silver" | "bronze" | null }) {
+  r, mine, medal, delta,
+}: { r: ScoreRow; mine: boolean; medal: "gold" | "silver" | "bronze" | null; delta: number | null }) {
   const [open, setOpen] = useState(false);
   const { data: picks, isLoading: picksLoading } = useQuery({
     queryKey: ["tournament-score-picks", r.id],
@@ -1295,6 +1365,9 @@ function ExpandableTeamRow({
             <PositionMedal positionDisplay={r.position_display} medal={medal} size="sm" />
           </div>
         </td>
+        <td className="px-1 py-2 text-center font-mono text-xs">
+          <Major7sDeltaCell delta={delta} />
+        </td>
         <td className="px-3 py-2 font-medium truncate">{r.teams?.nickname ?? "—"}</td>
         <td className="px-3 py-2 text-right font-mono font-semibold">{r.total_points}</td>
         <td className="px-2 py-2 text-center font-mono text-muted-foreground">{r.thru_cut}</td>
@@ -1303,13 +1376,13 @@ function ExpandableTeamRow({
         </td>
       </tr>
       <tr>
-        <td colSpan={5} className="p-0 border-0">
+        <td colSpan={6} className="p-0 border-0">
           <div
             className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
               open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
-            <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={mine} />
+            <PickBreakdown picks={picks ?? null} loading={picksLoading} mine={mine} showDelta />
           </div>
         </td>
       </tr>
@@ -1318,8 +1391,8 @@ function ExpandableTeamRow({
 }
 
 function PickBreakdown({
-  picks, loading, mine,
-}: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean }) {
+  picks, loading, mine, showDelta = false,
+}: { picks: ScorePickRow[] | null; loading: boolean; mine: boolean; showDelta?: boolean }) {
   if (loading) {
     return <div className="px-3 py-3 text-sm text-muted-foreground">Loading picks…</div>;
   }
@@ -1329,7 +1402,7 @@ function PickBreakdown({
   return (
     <div className={`${mine ? "bg-amber-50/50" : "bg-muted/20"} border-t border-border`}>
       <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
-        <MajorCols />
+        <MajorCols showDelta={showDelta} />
         <tbody>
           {picks.map((p) => {
             const cutLike = p.points === NON_FINISHER_POINTS;
@@ -1348,6 +1421,7 @@ function PickBreakdown({
             return (
               <tr key={p.bucket} className={opacity}>
                 <td />
+                {showDelta && <td />}
                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
