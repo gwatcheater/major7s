@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.2 — Δ between POS and GOLFER; T-prefix on round-view ties
+// VERSION MARKER: leaderboard v4.3 — Major7s round-by-round on-the-fly scoring + BOTR gating
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -236,12 +236,11 @@ function LeaderboardView() {
           </button>
         </div>
 
-        {/* Round toggle — only shown on Tournament view (Major7s round toggle
-            comes in a follow-up). Hidden entirely when the tournament has no
-            per-round position data (older ESPN archives). The "Final" label
-            becomes "Current" for live tournaments since the snapshot is
-            mid-tournament, not settled. */}
-        {view === "tournament" && hasRoundData && (
+        {/* Round toggle — shown on both Tournament and Major7s views when
+            per-round position data exists. Hidden entirely when the tournament
+            has no per-round data (older ESPN archives). The "Final" label
+            becomes "Current" for live tournaments. */}
+        {hasRoundData && (view === "tournament" || view === "major7s") && (
           <RoundToggle
             round={round}
             onChange={setRound}
@@ -251,7 +250,7 @@ function LeaderboardView() {
       </div>
 
       {view === "major7s" ? (
-        <MajorSevensTable tournamentId={id} myTeamId={activeTeam?.id ?? null} />
+        <MajorSevensTable tournamentId={id} myTeamId={activeTeam?.id ?? null} round={round} lbRows={rows} />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground p-4">Loading…</p>
       ) : rows.length === 0 ? (
@@ -550,10 +549,384 @@ function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null 
 
 type MajorView = "all" | "botr";
 
-function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; myTeamId: string | null }) {
+// -- Round-view scoring types --
+interface RoundTeamScore {
+  team_id: string;
+  nickname: string;
+  owner_user_id: string;
+  total: number;
+  position: number;
+  is_tie: boolean;
+  picks: RoundPickScore[];
+  thru_cut: number | null; // null on R1/R2 (meaningless pre-cut)
+}
+
+interface RoundPickScore {
+  golfer_id: string;
+  golfer_name: string;
+  bucket: number;
+  position_in_round: number | null;
+  points: number;
+  counted: boolean;
+}
+
+// -- Round-view scoring computation --
+function positionKeyForRound(round: Round): "position_r1" | "position_r2" | "position_r3" | "position_numeric" {
+  const map: Record<Round, "position_r1" | "position_r2" | "position_r3" | "position_numeric"> = {
+    r1: "position_r1",
+    r2: "position_r2",
+    r3: "position_r3",
+    final: "position_numeric",
+  };
+  return map[round];
+}
+
+/**
+ * Compute Major7s team scores on the fly for a non-final round.
+ * Each pick scores its position_r{n} value (lower = better). Null = 100.
+ * Best 5 of 7 count. Standard Competition Ranking for ties.
+ */
+function computeRoundScores(
+  teams: { id: string; nickname: string; owner_user_id: string }[],
+  picks: { team_id: string; bucket: number; golfer_id: string; golfer_name: string }[],
+  lbRows: LbRow[],
+  round: Exclude<Round, "final">,
+): RoundTeamScore[] {
+  const posKey = positionKeyForRound(round);
+  const lbByGolfer = new Map<string, LbRow>();
+  for (const row of lbRows) {
+    if (row.golfer_id) lbByGolfer.set(row.golfer_id, row);
+  }
+
+  const scored: RoundTeamScore[] = teams.map((team) => {
+    const teamPicks = picks.filter((p) => p.team_id === team.id);
+    const pickScores: RoundPickScore[] = teamPicks.map((pick) => {
+      const lb = lbByGolfer.get(pick.golfer_id);
+      const posVal = lb ? (lb[posKey] as number | null) : null;
+      return {
+        golfer_id: pick.golfer_id,
+        golfer_name: pick.golfer_name || lb?.espn_display_name || "Unknown",
+        bucket: pick.bucket,
+        position_in_round: posVal,
+        points: posVal ?? NON_FINISHER_POINTS,
+        counted: false,
+      };
+    });
+
+    // Mark best 5 as counted
+    const sorted = [...pickScores].sort((a, b) => a.points - b.points);
+    const countedIds = new Set<string>();
+    for (let i = 0; i < Math.min(5, sorted.length); i++) {
+      countedIds.add(sorted[i].golfer_id);
+    }
+    for (const ps of pickScores) {
+      ps.counted = countedIds.has(ps.golfer_id);
+    }
+
+    const total = sorted
+      .slice(0, Math.min(5, sorted.length))
+      .reduce((sum, p) => sum + p.points, 0);
+
+    // thru_cut only meaningful on R3
+    let thruCut: number | null = null;
+    if (round === "r3") {
+      thruCut = pickScores.filter((p) => p.position_in_round !== null).length;
+    }
+
+    return {
+      team_id: team.id,
+      nickname: team.nickname,
+      owner_user_id: team.owner_user_id,
+      total,
+      position: 0,
+      is_tie: false,
+      picks: pickScores,
+      thru_cut: thruCut,
+    };
+  });
+
+  scored.sort((a, b) => a.total - b.total);
+
+  // Standard Competition Ranking
+  let rank = 1;
+  for (let i = 0; i < scored.length; i++) {
+    if (i > 0 && scored[i].total === scored[i - 1].total) {
+      scored[i].position = scored[i - 1].position;
+      scored[i].is_tie = true;
+      scored[i - 1].is_tie = true;
+    } else {
+      scored[i].position = rank;
+    }
+    rank++;
+  }
+
+  return scored;
+}
+
+// -- Hook: fetch picks + teams and compute round scores --
+function useMajor7sRoundScores(
+  tournamentId: string,
+  round: Exclude<Round, "final">,
+  lbRows: LbRow[],
+) {
+  // Picks for this tournament — includes golfer_name for display
+  const picksQuery = useQuery({
+    queryKey: ["major7s-round-picks", tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks")
+        .select("team_id, bucket, golfer_id, golfers(name)")
+        .eq("tournament_id", tournamentId);
+      if (error) throw error;
+      return (data ?? []).map((p: any) => ({
+        team_id: p.team_id as string,
+        bucket: p.bucket as number,
+        golfer_id: p.golfer_id as string,
+        golfer_name: (p.golfers?.name ?? "") as string,
+      }));
+    },
+  });
+
+  // Distinct teams from those picks — derive from picks + teams table
+  const teamsQuery = useQuery({
+    queryKey: ["major7s-round-teams", tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_scores")
+        .select("team_id, teams(id, nickname, owner_user_id)")
+        .eq("tournament_id", tournamentId);
+      if (error) throw error;
+      return (data ?? [])
+        .filter((r: any) => r.teams)
+        .map((r: any) => ({
+          id: r.teams.id as string,
+          nickname: r.teams.nickname as string,
+          owner_user_id: r.teams.owner_user_id as string,
+        }));
+    },
+  });
+
+  const scores = useMemo(() => {
+    if (!teamsQuery.data || !picksQuery.data || lbRows.length === 0) return null;
+    return computeRoundScores(teamsQuery.data, picksQuery.data, lbRows, round);
+  }, [teamsQuery.data, picksQuery.data, lbRows, round]);
+
+  return {
+    scores,
+    isLoading: teamsQuery.isLoading || picksQuery.isLoading,
+    error: teamsQuery.error || picksQuery.error,
+  };
+}
+
+// -- Round-view pick breakdown (expandable) --
+function RoundPickBreakdown({ picks }: { picks: RoundPickScore[] }) {
+  const sorted = [...picks].sort((a, b) => {
+    if (a.counted !== b.counted) return a.counted ? -1 : 1;
+    return a.points - b.points;
+  });
+  return (
+    <div className="bg-muted/20 border-t border-border">
+      <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
+        <MajorCols />
+        <tbody>
+          {sorted.map((p) => {
+            const isNonFinisher = p.position_in_round === null;
+            const isDropped = !p.counted;
+            let nameCls = "";
+            let ptsCls = "font-mono font-semibold";
+            let opacity = "";
+            if (isNonFinisher) {
+              nameCls = "text-red-600";
+              ptsCls = "font-mono font-semibold text-red-600";
+              if (isDropped) opacity = "opacity-30";
+            } else if (isDropped) {
+              nameCls = "text-muted-foreground";
+              ptsCls = "font-mono font-semibold text-muted-foreground";
+              opacity = "opacity-60";
+            }
+            return (
+              <tr key={p.golfer_id} className={opacity}>
+                <td />
+                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
+                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
+                  {isNonFinisher ? "—" : p.position_in_round}
+                </td>
+                <td />
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// -- Round-view expandable team row --
+function RoundExpandableTeamRow({
+  team, mine, medal,
+}: {
+  team: RoundTeamScore;
+  mine: boolean;
+  medal: "gold" | "silver" | "bronze" | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
+  const rowBg = mine ? "bg-amber-50" : "";
+  return (
+    <>
+      <tr
+        className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <td className="px-2 py-2 text-center">
+          <div className="inline-flex justify-center">
+            <PositionMedal positionDisplay={posDisplay} medal={medal} size="sm" />
+          </div>
+        </td>
+        <td className="px-3 py-2 font-medium truncate">{team.nickname}</td>
+        <td className="px-3 py-2 text-right font-mono font-semibold">{team.total}</td>
+        <td className="px-2 py-2 text-center font-mono text-muted-foreground">
+          {team.thru_cut !== null ? team.thru_cut : "—"}
+        </td>
+        <td className="px-2 py-2 text-muted-foreground">
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </td>
+      </tr>
+      <tr>
+        <td colSpan={5} className="p-0 border-0">
+          <div
+            className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
+              open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            {open && <RoundPickBreakdown picks={team.picks} />}
+          </div>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+// -- Round-view "Your Team" panel --
+function RoundActiveTeamPanel({
+  team, medal,
+}: { team: RoundTeamScore; medal: "gold" | "silver" | "bronze" | null }) {
+  const [open, setOpen] = useState(false);
+  const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
+  return (
+    <div className="border border-amber-300 bg-amber-50 rounded-md overflow-hidden">
+      <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold bg-amber-100 text-amber-800">
+        Your Team
+      </div>
+      <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <MajorCols />
+        <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <tr>
+            <th className="text-center px-3 py-1">Pos</th>
+            <th />
+            <th className="text-right px-3 py-1">Points</th>
+            <th className="text-center px-3 py-1">{team.thru_cut !== null ? "Thru Cut" : ""}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            className="cursor-pointer hover:bg-amber-100/50 transition-colors"
+            onClick={() => setOpen((o) => !o)}
+          >
+            <td className="px-3 py-2 text-center">
+              <div className="inline-flex justify-center">
+                <PositionMedal positionDisplay={posDisplay} medal={medal} size="sm" />
+              </div>
+            </td>
+            <td className="px-3 py-2 font-medium truncate">{team.nickname}</td>
+            <td className="px-3 py-2 text-right font-mono font-semibold">{team.total}</td>
+            <td className="px-3 py-2 text-center font-mono text-muted-foreground">
+              {team.thru_cut !== null ? team.thru_cut : ""}
+            </td>
+            <td className="px-3 py-2 text-muted-foreground">
+              <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+            </td>
+          </tr>
+          <tr>
+            <td colSpan={5} className="p-0 border-0">
+              <div
+                className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
+                  open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                }`}
+              >
+                {open && (
+                  <div className="bg-amber-50/50 border-t border-border">
+                    <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
+                      <MajorCols />
+                      <tbody>
+                        {[...team.picks]
+                          .sort((a, b) => {
+                            if (a.counted !== b.counted) return a.counted ? -1 : 1;
+                            return a.points - b.points;
+                          })
+                          .map((p) => {
+                            const isNonFinisher = p.position_in_round === null;
+                            const isDropped = !p.counted;
+                            let nameCls = "";
+                            let ptsCls = "font-mono font-semibold";
+                            let opacity = "";
+                            if (isNonFinisher) {
+                              nameCls = "text-red-600";
+                              ptsCls = "font-mono font-semibold text-red-600";
+                              if (isDropped) opacity = "opacity-30";
+                            } else if (isDropped) {
+                              nameCls = "text-muted-foreground";
+                              ptsCls = "font-mono font-semibold text-muted-foreground";
+                              opacity = "opacity-60";
+                            }
+                            return (
+                              <tr key={p.golfer_id} className={opacity}>
+                                <td />
+                                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
+                                <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
+                                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
+                                  {isNonFinisher ? "—" : p.position_in_round}
+                                </td>
+                                <td />
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// -- Main MajorSevensTable (now round-aware) --
+function MajorSevensTable({
+  tournamentId, myTeamId, round, lbRows,
+}: {
+  tournamentId: string;
+  myTeamId: string | null;
+  round: Round;
+  lbRows: LbRow[];
+}) {
   const [mode, setMode] = useState<MajorView>("all");
-  const { data: rows = [], isLoading } = useQuery({
+
+  // 3d: Silently reset BOTR when switching to R1/R2
+  const botrAvailable = round === "r3" || round === "final";
+  useEffect(() => {
+    if (!botrAvailable) setMode("all");
+  }, [botrAvailable]);
+
+  // -- Final view: persisted tournament_scores (existing behaviour) --
+  const { data: finalRows = [], isLoading: finalLoading } = useQuery({
     queryKey: ["tournament-scores", tournamentId],
+    enabled: round === "final",
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_scores")
@@ -565,8 +938,133 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
     },
   });
 
-  if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
-  if (rows.length === 0) {
+  // -- Round view: on-the-fly computation --
+  const { scores: roundScores, isLoading: roundLoading } = useMajor7sRoundScores(
+    tournamentId,
+    round === "final" ? "r1" : round, // dummy when final; hook won't run
+    lbRows,
+  );
+
+  // ---- ROUND VIEW (R1 / R2 / R3) ----
+  if (round !== "final") {
+    if (roundLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
+    if (!roundScores || roundScores.length === 0) {
+      return (
+        <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
+          <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
+          <p className="text-sm text-muted-foreground">
+            No scoring data for this round yet.
+          </p>
+        </div>
+      );
+    }
+
+    // BOTR filter on R3 only (R1/R2 already gated away by botrAvailable)
+    const visibleTeams =
+      mode === "botr" && round === "r3"
+        ? roundScores.filter((t) => t.thru_cut !== null && t.thru_cut < 5)
+        : roundScores;
+
+    const myTeam = myTeamId
+      ? visibleTeams.find((t) => t.owner_user_id === myTeamId || t.team_id === myTeamId) ?? null
+      : null;
+    const allMyTeam = myTeamId
+      ? roundScores.find((t) => t.owner_user_id === myTeamId || t.team_id === myTeamId) ?? null
+      : null;
+    const myTeamDisqualifiedFromBotr = mode === "botr" && !!allMyTeam && !myTeam;
+
+    // Thru Cut column header: show on R3 only
+    const showThruCut = round === "r3";
+
+    return (
+      <div className="space-y-3">
+        {/* ALL / BOTR toggle — R3 only */}
+        {botrAvailable && (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex rounded-md border border-border bg-card p-1">
+              <button
+                type="button"
+                onClick={() => setMode("all")}
+                className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded ${
+                  mode === "all" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("botr")}
+                className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded ${
+                  mode === "botr" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                }`}
+                title="Best of the Rest — teams with fewer than 5 picks through the cut"
+              >
+                BOTR
+              </button>
+            </div>
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">
+              {visibleTeams.length} {visibleTeams.length === 1 ? "team" : "teams"}
+            </div>
+          </div>
+        )}
+
+        {/* Team count when BOTR not shown (R1/R2) */}
+        {!botrAvailable && (
+          <div className="flex justify-end">
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">
+              {visibleTeams.length} {visibleTeams.length === 1 ? "team" : "teams"}
+            </div>
+          </div>
+        )}
+
+        {myTeam && (
+          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} />
+        )}
+        {myTeamDisqualifiedFromBotr && (
+          <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
+            Your team has 5+ picks through the cut and isn't in this competition.
+          </div>
+        )}
+
+        <div className="border border-border bg-card">
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+            <MajorCols />
+            <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
+              <tr>
+                <th className="text-center px-3 py-2">Pos</th>
+                <th className="text-left px-3 py-2">Team</th>
+                <th className="text-right px-3 py-2">Points</th>
+                <th className="text-center px-3 py-2">{showThruCut ? "Thru Cut" : ""}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {visibleTeams.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                    No teams in this competition yet.
+                  </td>
+                </tr>
+              ) : (
+                visibleTeams.map((t) => (
+                  <RoundExpandableTeamRow
+                    key={t.team_id}
+                    team={t}
+                    mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
+                    medal={medalFor(t.position)}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- FINAL VIEW (persisted tournament_scores — unchanged behaviour) ----
+  if (finalLoading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
+  if (finalRows.length === 0) {
     return (
       <div className="border-2 border-dashed border-border p-12 text-center bg-card/30">
         <p className="font-display text-sm uppercase mb-2">Major7s Scoring</p>
@@ -577,14 +1075,9 @@ function MajorSevensTable({ tournamentId, myTeamId }: { tournamentId: string; my
     );
   }
 
-  // BOTR filter: teams with fewer than 5 picks through the cut. Keeps
-  // each team's overall position_numeric — BOTR is a filtered view of the
-  // same ranking, not a re-ranking of the consolation set.
-  const visibleRows = mode === "botr" ? rows.filter((r) => r.thru_cut < 5) : rows;
+  const visibleRows = mode === "botr" ? finalRows.filter((r) => r.thru_cut < 5) : finalRows;
   const myRow = myTeamId ? visibleRows.find((r) => r.team_id === myTeamId) ?? null : null;
-  const allMyRow = myTeamId ? rows.find((r) => r.team_id === myTeamId) ?? null : null;
-  // If the user is in BOTR mode but their team doesn't qualify, surface that
-  // gently rather than silently hiding the panel.
+  const allMyRow = myTeamId ? finalRows.find((r) => r.team_id === myTeamId) ?? null : null;
   const myTeamDisqualifiedFromBotr = mode === "botr" && !!allMyRow && !myRow;
 
   return (
