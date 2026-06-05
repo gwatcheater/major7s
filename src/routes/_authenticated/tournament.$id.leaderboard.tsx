@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v3 — single-cell bucket label, sticky headers, expandable panel
+// VERSION MARKER: leaderboard v4 — round toggle (R1/R2/R3/Final) on Tournament view
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -15,6 +15,9 @@ export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard
 });
 
 type View = "tournament" | "major7s";
+// "current" is a label shown on the toggle when the tournament is live;
+// internally it behaves identically to "final" (use position_numeric).
+type Round = "r1" | "r2" | "r3" | "final";
 
 interface LbRow {
   id: string;
@@ -32,6 +35,13 @@ interface LbRow {
   round_2: number | null;
   round_3: number | null;
   round_4: number | null;
+  // Per-round positions captured at the end of each round, from ESPN's
+  // linescores[].currentPosition. NULL when the round wasn't played (CUT/WD
+  // past that point) or when the tournament's ESPN archive lacks this data.
+  position_r1: number | null;
+  position_r2: number | null;
+  position_r3: number | null;
+  position_r4: number | null;
 }
 
 interface ScoreRow {
@@ -86,12 +96,16 @@ function LeaderboardView() {
   const { activeTeam } = useTeams();
   const effectiveUserId = getEffectiveUserId(user?.id);
   const [view, setView] = useState<View>("major7s");
+  // Round selector — defaults to "final" (the tournament's settled view).
+  // Shared across both Major7s and Tournament views so switching views
+  // doesn't reset the user's round selection.
+  const [round, setRound] = useState<Round>("final");
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament-leaderboard-header", id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tournaments").select("id, name, location").eq("id", id).single();
+        .from("tournaments").select("id, name, location, status").eq("id", id).single();
       if (error) throw error;
       return data;
     },
@@ -102,7 +116,7 @@ function LeaderboardView() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("id, golfer_id, espn_display_name, country, position_display, position_numeric, is_tie, status_type, status_short_detail, total_strokes, score_to_par, round_1, round_2, round_3, round_4")
+        .select("id, golfer_id, espn_display_name, country, position_display, position_numeric, is_tie, status_type, status_short_detail, total_strokes, score_to_par, round_1, round_2, round_3, round_4, position_r1, position_r2, position_r3, position_r4")
         .eq("tournament_id", id);
       if (error) throw error;
       return (data ?? []) as LbRow[];
@@ -122,33 +136,64 @@ function LeaderboardView() {
     },
   });
 
+  // Whether this tournament has per-round position data. Older tournaments
+  // (PGA 2021/2023/2024, Masters 2024) lack ESPN's `currentPosition` in
+  // linescores, so position_r1..r3 are null. In that case the round toggle
+  // is hidden and only Final view is shown.
+  const hasRoundData = useMemo(
+    () => rows.some((r) => r.position_r1 !== null),
+    [rows],
+  );
+
+  // Round-aware grouping + sorting of leaderboard rows.
   const { active, cut } = useMemo(() => {
+    // Final view: existing behaviour (CUT/WD in their own bottom group).
+    if (round === "final") {
+      const a: LbRow[] = [];
+      const c: LbRow[] = [];
+      for (const r of rows) {
+        if (isCutOrWithdrawn(r.status_type)) c.push(r);
+        else a.push(r);
+      }
+      a.sort((x, y) => {
+        const xp = x.position_numeric ?? 9999;
+        const yp = y.position_numeric ?? 9999;
+        if (xp !== yp) return xp - yp;
+        const xt = x.total_strokes ?? 9999;
+        const yt = y.total_strokes ?? 9999;
+        if (xt !== yt) return xt - yt;
+        return x.espn_display_name.localeCompare(y.espn_display_name);
+      });
+      c.sort((x, y) => {
+        const xp = x.score_to_par ?? 9999;
+        const yp = y.score_to_par ?? 9999;
+        if (xp !== yp) return xp - yp;
+        const xt = x.total_strokes ?? 9999;
+        const yt = y.total_strokes ?? 9999;
+        if (xt !== yt) return xt - yt;
+        return x.espn_display_name.localeCompare(y.espn_display_name);
+      });
+      return { active: a, cut: c };
+    }
+
+    // Round view (r1 / r2 / r3): filter to rows with that round's position
+    // populated, sort by it. No "cut" bucket — players outside this set
+    // simply hadn't played this round (or had already left the field).
+    const roundKey = round === "r1" ? "position_r1"
+                  : round === "r2" ? "position_r2"
+                  : "position_r3";
     const a: LbRow[] = [];
-    const c: LbRow[] = [];
     for (const r of rows) {
-      if (isCutOrWithdrawn(r.status_type)) c.push(r);
-      else a.push(r);
+      if (r[roundKey] !== null) a.push(r);
     }
     a.sort((x, y) => {
-      const xp = x.position_numeric ?? 9999;
-      const yp = y.position_numeric ?? 9999;
+      const xp = (x[roundKey] ?? 9999) as number;
+      const yp = (y[roundKey] ?? 9999) as number;
       if (xp !== yp) return xp - yp;
-      const xt = x.total_strokes ?? 9999;
-      const yt = y.total_strokes ?? 9999;
-      if (xt !== yt) return xt - yt;
       return x.espn_display_name.localeCompare(y.espn_display_name);
     });
-    c.sort((x, y) => {
-      const xp = x.score_to_par ?? 9999;
-      const yp = y.score_to_par ?? 9999;
-      if (xp !== yp) return xp - yp;
-      const xt = x.total_strokes ?? 9999;
-      const yt = y.total_strokes ?? 9999;
-      if (xt !== yt) return xt - yt;
-      return x.espn_display_name.localeCompare(y.espn_display_name);
-    });
-    return { active: a, cut: c };
-  }, [rows]);
+    return { active: a, cut: [] };
+  }, [rows, round]);
 
   return (
     <div className="p-4 md:p-12 max-w-5xl mx-auto">
@@ -169,25 +214,40 @@ function LeaderboardView() {
         </h1>
       </header>
 
-      <div className="inline-flex rounded-md border border-border bg-card p-1 mb-6">
-        <button
-          type="button"
-          onClick={() => setView("major7s")}
-          className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
-            view === "major7s" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Major7s
-        </button>
-        <button
-          type="button"
-          onClick={() => setView("tournament")}
-          className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
-            view === "tournament" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Tournament
-        </button>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+        <div className="inline-flex rounded-md border border-border bg-card p-1">
+          <button
+            type="button"
+            onClick={() => setView("major7s")}
+            className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
+              view === "major7s" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Major7s
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("tournament")}
+            className={`px-4 py-1.5 text-xs uppercase tracking-widest font-bold rounded ${
+              view === "tournament" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Tournament
+          </button>
+        </div>
+
+        {/* Round toggle — only shown on Tournament view (Major7s round toggle
+            comes in a follow-up). Hidden entirely when the tournament has no
+            per-round position data (older ESPN archives). The "Final" label
+            becomes "Current" for live tournaments since the snapshot is
+            mid-tournament, not settled. */}
+        {view === "tournament" && hasRoundData && (
+          <RoundToggle
+            round={round}
+            onChange={setRound}
+            finalLabel={tournament?.status === "live" ? "Current" : "Final"}
+          />
+        )}
       </div>
 
       {view === "major7s" ? (
@@ -199,8 +259,42 @@ function LeaderboardView() {
           No leaderboard data yet. An admin can import the final results from the tournament admin page.
         </p>
       ) : (
-        <TournamentTable active={active} cut={cut} myPickGolferIds={myPickGolferIds} />
+        <TournamentTable active={active} cut={cut} myPickGolferIds={myPickGolferIds} round={round} />
       )}
+    </div>
+  );
+}
+
+// =============================================================
+// ROUND TOGGLE
+// =============================================================
+function RoundToggle({
+  round, onChange, finalLabel,
+}: {
+  round: Round;
+  onChange: (r: Round) => void;
+  finalLabel: string;
+}) {
+  const items: { value: Round; label: string }[] = [
+    { value: "r1", label: "R1" },
+    { value: "r2", label: "R2" },
+    { value: "r3", label: "R3" },
+    { value: "final", label: finalLabel },
+  ];
+  return (
+    <div className="inline-flex rounded-md border border-border bg-card p-1">
+      {items.map((it) => (
+        <button
+          key={it.value}
+          type="button"
+          onClick={() => onChange(it.value)}
+          className={`px-3 py-1 text-[10px] uppercase tracking-widest font-bold rounded ${
+            round === it.value ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {it.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -208,53 +302,110 @@ function LeaderboardView() {
 // =============================================================
 // TOURNAMENT VIEW (ESPN leaderboard)
 // =============================================================
-function TourneyCols() {
+function TourneyCols({
+  showToPar, showR1, showR2, showR3, showR4,
+}: {
+  showToPar: boolean;
+  showR1: boolean;
+  showR2: boolean;
+  showR3: boolean;
+  showR4: boolean;
+}) {
   // Tight widths so the Golfer column gets the leftover horizontal space.
-  // On a 380px viewport: 36 + 52 + 28*4 = 200 numeric, leaving ~180 for Golfer name.
+  // On a 380px viewport: 36 + 56 + (~30×N) numeric, leaving the rest for name.
+  // In round views, hidden columns get zero width so they don't consume space.
   return (
     <colgroup>
       <col style={{ width: "36px" }} />
       <col />
-      <col style={{ width: "56px" }} />
-      <col style={{ width: "30px" }} />
-      <col style={{ width: "30px" }} />
-      <col style={{ width: "30px" }} />
-      <col style={{ width: "36px" }} />
+      {showToPar && <col style={{ width: "56px" }} />}
+      {showR1 && <col style={{ width: "30px" }} />}
+      {showR2 && <col style={{ width: "30px" }} />}
+      {showR3 && <col style={{ width: "30px" }} />}
+      {showR4 && <col style={{ width: "36px" }} />}
     </colgroup>
   );
 }
 
 function TournamentTable({
-  active, cut, myPickGolferIds,
-}: { active: LbRow[]; cut: LbRow[]; myPickGolferIds: Set<string> }) {
+  active, cut, myPickGolferIds, round,
+}: {
+  active: LbRow[];
+  cut: LbRow[];
+  myPickGolferIds: Set<string>;
+  round: Round;
+}) {
+  // Which round columns to show. In a round view we only show stroke columns
+  // for rounds that have been played up to that point — anything else is
+  // visually noise.
+  const showR1 = true; // R1 always shown in every non-future view
+  const showR2 = round === "r2" || round === "r3" || round === "final";
+  const showR3 = round === "r3" || round === "final";
+  const showR4 = round === "final";
+  // In round views the To Par column shows cumulative-through-Rn (using the
+  // score_to_par which IS cumulative-to-Rn for non-final views ONLY IF we
+  // computed it that way... we don't. Cleaner: hide To Par in round views
+  // and show position + per-round strokes only.
+  const showToPar = round === "final";
+
+  // Total column count for the colspan on the "Missed Cut" separator.
+  const colCount = 2 + (showToPar ? 1 : 0) + (showR1 ? 1 : 0) + (showR2 ? 1 : 0) + (showR3 ? 1 : 0) + (showR4 ? 1 : 0);
+
   return (
     <div className="border border-border bg-card">
       <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-        <TourneyCols />
+        <TourneyCols
+          showToPar={showToPar}
+          showR1={showR1}
+          showR2={showR2}
+          showR3={showR3}
+          showR4={showR4}
+        />
         <thead className="bg-muted/40 text-[10px] uppercase tracking-widest text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-2">Pos</th>
             <th className="text-left px-2 py-2">Golfer</th>
-            <th className="text-right px-2 py-2 whitespace-nowrap">To Par</th>
-            <th className="text-right px-1 py-2">R1</th>
-            <th className="text-right px-1 py-2">R2</th>
-            <th className="text-right px-1 py-2">R3</th>
-            <th className="text-right pl-1 pr-3 py-2">R4</th>
+            {showToPar && <th className="text-right px-2 py-2 whitespace-nowrap">To Par</th>}
+            {showR1 && <th className="text-right px-1 py-2">R1</th>}
+            {showR2 && <th className="text-right px-1 py-2">R2</th>}
+            {showR3 && <th className="text-right px-1 py-2">R3</th>}
+            {showR4 && <th className="text-right pl-1 pr-3 py-2">R4</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {active.map((r) => (
-            <TourneyRow key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} />
+            <TourneyRow
+              key={r.id}
+              r={r}
+              mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
+              round={round}
+              showToPar={showToPar}
+              showR1={showR1}
+              showR2={showR2}
+              showR3={showR3}
+              showR4={showR4}
+            />
           ))}
           {cut.length > 0 && (
             <>
               <tr className="bg-muted/30">
-                <td colSpan={7} className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+                <td colSpan={colCount} className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                   Missed Cut / Withdrew
                 </td>
               </tr>
               {cut.map((r) => (
-                <TourneyRow key={r.id} r={r} mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)} dim />
+                <TourneyRow
+                  key={r.id}
+                  r={r}
+                  mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
+                  dim
+                  round={round}
+                  showToPar={showToPar}
+                  showR1={showR1}
+                  showR2={showR2}
+                  showR3={showR3}
+                  showR4={showR4}
+                />
               ))}
             </>
           )}
@@ -264,16 +415,42 @@ function TournamentTable({
   );
 }
 
-function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }) {
+function TourneyRow({
+  r, mine, dim, round, showToPar, showR1, showR2, showR3, showR4,
+}: {
+  r: LbRow;
+  mine: boolean;
+  dim?: boolean;
+  round: Round;
+  showToPar: boolean;
+  showR1: boolean;
+  showR2: boolean;
+  showR3: boolean;
+  showR4: boolean;
+}) {
   const par = fmtToPar(r.score_to_par);
+  // Pick the position to display based on the current round selection.
+  // For round views we render the simple T{n} or {n} style using position_r{n};
+  // we don't have a per-round "is_tie" boolean, so we synthesise the T prefix
+  // by checking whether any other row shares this same position_r{n} value.
+  // Cheaper alternative: just show the raw number without T-prefix in round
+  // views. Going with the cheaper option since ties at mid-round are common
+  // and the absence of T isn't misleading.
   let posLabel: string;
-  if (r.position_numeric === null) {
-    // Didn't finish — surface the human-readable status (CUT/WD/DQ) rather than a dash.
-    posLabel = r.status_short_detail ?? r.position_display ?? "—";
-  } else if (r.is_tie) {
-    posLabel = `T${r.position_numeric}`;
+  if (round === "final") {
+    if (r.position_numeric === null) {
+      posLabel = r.status_short_detail ?? r.position_display ?? "—";
+    } else if (r.is_tie) {
+      posLabel = `T${r.position_numeric}`;
+    } else {
+      posLabel = r.position_display ?? String(r.position_numeric);
+    }
   } else {
-    posLabel = r.position_display ?? String(r.position_numeric);
+    const posKey = round === "r1" ? "position_r1"
+                : round === "r2" ? "position_r2"
+                : "position_r3";
+    const v = r[posKey];
+    posLabel = v === null ? "—" : String(v);
   }
   const rowBg = mine ? "bg-amber-50" : "";
   const text = dim ? "text-muted-foreground" : "";
@@ -286,11 +463,13 @@ function TourneyRow({ r, mine, dim }: { r: LbRow; mine: boolean; dim?: boolean }
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{r.country}</div>
         )}
       </td>
-      <td className={`px-2 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
-      <td className="px-1 py-2 text-right font-mono text-xs">{r.round_1 ?? "—"}</td>
-      <td className="px-1 py-2 text-right font-mono text-xs">{r.round_2 ?? "—"}</td>
-      <td className="px-1 py-2 text-right font-mono text-xs">{r.round_3 ?? "—"}</td>
-      <td className="px-1 pr-3 py-2 text-right font-mono text-xs">{r.round_4 ?? "—"}</td>
+      {showToPar && (
+        <td className={`px-2 py-2 text-right font-mono ${par.cls}`}>{par.text}</td>
+      )}
+      {showR1 && <td className="px-1 py-2 text-right font-mono text-xs">{r.round_1 ?? "—"}</td>}
+      {showR2 && <td className="px-1 py-2 text-right font-mono text-xs">{r.round_2 ?? "—"}</td>}
+      {showR3 && <td className="px-1 py-2 text-right font-mono text-xs">{r.round_3 ?? "—"}</td>}
+      {showR4 && <td className="px-1 pr-3 py-2 text-right font-mono text-xs">{r.round_4 ?? "—"}</td>}
     </tr>
   );
 }
