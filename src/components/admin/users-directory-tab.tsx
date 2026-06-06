@@ -884,18 +884,24 @@ function UserDrawer({
                 <p className="text-sm text-muted-foreground py-2">No tournament entries.</p>
               ) : (
                 <div className="space-y-1.5 text-sm">
-                  {entries.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span>{e.name}</span>
-                      <span
-                        className={
-                          e.picks >= 7 ? "text-emerald-600 text-xs" : "text-amber-600 text-xs"
-                        }
-                      >
-                        {e.picks >= 7 ? "Submitted" : `${e.picks}/7 picks`}
-                      </span>
-                    </div>
-                  ))}
+                  {entries.map((e, i) => {
+                    const year = e.startDate ? new Date(e.startDate).getFullYear() : null;
+                    return (
+                      <div key={i} className="flex items-center justify-between">
+                        <span>
+                          {e.name}
+                          {year !== null && ` (${year})`}
+                        </span>
+                        <span
+                          className={
+                            e.picks >= 7 ? "text-emerald-600 text-xs" : "text-amber-600 text-xs"
+                          }
+                        >
+                          {e.picks >= 7 ? "Submitted" : `${e.picks}/7 picks`}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>
