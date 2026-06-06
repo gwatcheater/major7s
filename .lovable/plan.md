@@ -1,21 +1,27 @@
 ## Objective
-Simplify the blog post hero image on individual post views to a small, centered, fully-visible thumbnail instead of a wide cropped banner.
+Resolve the Supabase linter warning "Signed-In Users Can Execute SECURITY DEFINER Function" by revoking `EXECUTE` on trigger-only `SECURITY DEFINER` functions so they cannot be invoked through the PostgREST API.
 
-## Files to change
-1. `src/routes/_authenticated/blog.$postId.index.tsx`
-2. `src/routes/_authenticated/tournament.$id.blog.$postId.index.tsx`
+## Approach
+Trigger functions run with the table owner's privileges via the trigger itself — clients never need `EXECUTE` on them. Revoking `EXECUTE` from `PUBLIC`, `anon`, and `authenticated` closes the RPC surface without affecting trigger behavior.
 
-## Changes
-In both files, replace the current hero image wrapper+img with a single centered `<img>` using these exact Tailwind classes:
-- `max-w-[280px] sm:max-w-[340px]` — restrict width
-- `h-auto` — preserve aspect ratio
-- `object-contain` — show full image, no cropping
-- `mx-auto block` — center horizontally
-- `shadow-sm` — subtle shadow
-- `rounded-xl` — rounded corners
-- `mb-8` — bottom margin
+Functions that are intentionally callable (`has_role`, `log_impersonation`, `set_primary_team`, `audit_admin_pick_edit`) are left untouched — they either back RLS policies or self-gate with `has_role(auth.uid(),'admin')`.
 
-This removes the previous `max-h` wrapper and `object-cover` cropping entirely.
+## Migration
+A single migration revokes `EXECUTE` on these trigger-only functions:
+- `public.enforce_pick_lock()`
+- `public.handle_new_user()`
+- `public.audit_teams()`
+- `public.audit_profile_status()`
+- `public.audit_user_roles()`
+- `public.protect_profile_status()`
+- `public.set_updated_at()`
 
-## Result
-Blog post images display as compact, centered thumbnails with the entire graphic visible, on both mobile and desktop.
+For each:
+```sql
+REVOKE EXECUTE ON FUNCTION public.<fn>() FROM PUBLIC, anon, authenticated;
+```
+
+## Verification
+- Re-run the Supabase linter; the warning should clear for the revoked functions.
+- Triggers continue firing on inserts/updates/deletes (trigger execution does not require caller `EXECUTE`).
+- App behavior (auth signup, pick edits, audit logging, profile status protection) is unchanged.
