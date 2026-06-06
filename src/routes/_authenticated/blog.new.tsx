@@ -75,7 +75,8 @@ function NewGeneralBlogPost() {
     let image_url: string | null = null;
     if (file) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `general/${crypto.randomUUID()}.${ext}`;
+      const folder = tournamentId ?? "general";
+      const path = `${folder}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from("blog-images")
         .upload(path, file, { contentType: file.type, upsert: false });
@@ -86,7 +87,7 @@ function NewGeneralBlogPost() {
 
     const { error: insErr } = await supabase.from("blog_posts").insert({
       author_id: user.id,
-      tournament_id: null,
+      tournament_id: tournamentId,
       title: title.trim(),
       body: body.trim(),
       image_url,
