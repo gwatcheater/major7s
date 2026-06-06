@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode, type CSSProperties } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-teams";
@@ -1121,6 +1121,49 @@ function SectionShell({ title, children }: { title: string; children: ReactNode 
   );
 }
 
+// Podium medal styling (shared handover spec). Positions 1/2/3 render as a
+// gold/silver/bronze badge; everything else falls back to plain mono text.
+function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
+  if (positionNumeric === 1) return "gold";
+  if (positionNumeric === 2) return "silver";
+  if (positionNumeric === 3) return "bronze";
+  return null;
+}
+
+function PositionMedal({
+  positionDisplay, medal, size = "sm",
+}: { positionDisplay: string; medal: "gold" | "silver" | "bronze" | null; size?: "sm" | "lg" }) {
+  const dim = size === "lg" ? "w-12 h-12 text-base" : "w-9 h-9 text-xs";
+  if (!medal) {
+    return <span className="font-mono text-base font-bold tabular-nums">{positionDisplay}</span>;
+  }
+  const styles: Record<string, CSSProperties> = {
+    gold: {
+      background: "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
+      color: "#3a2a00",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    silver: {
+      background: "radial-gradient(circle at 30% 30%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)",
+      color: "#222",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    bronze: {
+      background: "radial-gradient(circle at 30% 30%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
+      color: "#2a1500",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+  };
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full font-bold leading-none ${dim}`}
+      style={styles[medal]}
+    >
+      {positionDisplay}
+    </span>
+  );
+}
+
 function HeadToHeadView() {
   const { activeTeam } = useTeams();
   const { data: teams = [] } = useTeamsList();
@@ -1258,7 +1301,8 @@ function HeadToHeadView() {
   }, [rows]);
 
   return (
-    <div className="max-w-md mx-auto px-4 md:px-6">
+    <div className="relative max-w-3xl mx-auto px-4 md:px-12">
+      <div className="max-w-xl mx-auto">
       {/* Team pickers */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
@@ -1318,32 +1362,32 @@ function HeadToHeadView() {
             <div className="h-px mb-3" style={{ backgroundColor: "#2e5c40" }} />
             <div className="grid grid-cols-3">
               <div className="flex flex-col items-center">
-                <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.aWins}</div>
+                <div className="text-3xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.aWins > stats.bWins ? "var(--gold)" : "#ffffff" }}>{stats.aWins}</div>
                 <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>wins</div>
-                <div className="text-xs mt-1" style={{ color: "#7aab8a" }}>{stats.aWinPct}%</div>
+                <div className="text-xs mt-1" style={{ color: stats.aWins > stats.bWins ? "var(--gold)" : "#7aab8a" }}>{stats.aWinPct}%</div>
               </div>
               <div className="flex flex-col items-center">
                 <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.played}</div>
                 <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>played</div>
               </div>
               <div className="flex flex-col items-center">
-                <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.bWins}</div>
+                <div className="text-3xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.bWins > stats.aWins ? "var(--gold)" : "#ffffff" }}>{stats.bWins}</div>
                 <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>wins</div>
-                <div className="text-xs mt-1" style={{ color: "#7aab8a" }}>{stats.bWinPct}%</div>
+                <div className="text-xs mt-1" style={{ color: stats.bWins > stats.aWins ? "var(--gold)" : "#7aab8a" }}>{stats.bWinPct}%</div>
               </div>
             </div>
           </div>
 
-          {/* Dominance index — higher is better */}
+          {/* Dominance index — higher is better; leader shown in gold */}
           <SectionShell title="Dominance Index">
             <div className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] items-center">
               <div className="text-center text-4xl font-mono font-bold tabular-nums leading-none"
-                style={{ color: stats.di.a >= stats.di.b ? WIN_FG : LOSE_FG }}>
+                style={{ color: stats.di.a > stats.di.b ? "var(--gold)" : LOSE_FG }}>
                 {stats.di.a.toFixed(1)}
               </div>
               <div className="text-center text-[10px] uppercase tracking-widest text-slate-400">index</div>
               <div className="text-center text-4xl font-mono font-bold tabular-nums leading-none"
-                style={{ color: stats.di.b >= stats.di.a ? WIN_FG : LOSE_FG }}>
+                style={{ color: stats.di.b > stats.di.a ? "var(--gold)" : LOSE_FG }}>
                 {stats.di.b.toFixed(1)}
               </div>
             </div>
@@ -1353,17 +1397,17 @@ function HeadToHeadView() {
           <SectionShell title="Performance Margins">
             <CompareRow
               label={<>avg pts<br/>delta</>}
-              aWin={stats.avgPtsDeltaA <= stats.avgPtsDeltaB}
+              aWin={stats.avgPtsDeltaA < stats.avgPtsDeltaB}
               bWin={stats.avgPtsDeltaB < stats.avgPtsDeltaA}
-              aContent={<CompareVal win={stats.avgPtsDeltaA <= stats.avgPtsDeltaB}>{stats.avgPtsDeltaA > 0 ? "+" : ""}{stats.avgPtsDeltaA}</CompareVal>}
-              bContent={<CompareVal win={stats.avgPtsDeltaB < stats.avgPtsDeltaA}>{stats.avgPtsDeltaB > 0 ? "+" : ""}{stats.avgPtsDeltaB}</CompareVal>}
+              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPtsDeltaA > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPtsDeltaA > 0 ? "+" : ""}{stats.avgPtsDeltaA}</div>}
+              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPtsDeltaB > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPtsDeltaB > 0 ? "+" : ""}{stats.avgPtsDeltaB}</div>}
             />
             <CompareRow
               label={<>avg pos<br/>delta</>}
-              aWin={stats.avgPosDeltaA <= stats.avgPosDeltaB}
+              aWin={stats.avgPosDeltaA < stats.avgPosDeltaB}
               bWin={stats.avgPosDeltaB < stats.avgPosDeltaA}
-              aContent={<CompareVal win={stats.avgPosDeltaA <= stats.avgPosDeltaB}>{stats.avgPosDeltaA > 0 ? "+" : ""}{stats.avgPosDeltaA}</CompareVal>}
-              bContent={<CompareVal win={stats.avgPosDeltaB < stats.avgPosDeltaA}>{stats.avgPosDeltaB > 0 ? "+" : ""}{stats.avgPosDeltaB}</CompareVal>}
+              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPosDeltaA > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPosDeltaA > 0 ? "+" : ""}{stats.avgPosDeltaA}</div>}
+              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPosDeltaB > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPosDeltaB > 0 ? "+" : ""}{stats.avgPosDeltaB}</div>}
             />
             <CompareRow
               label={<>biggest<br/>margin</>}
@@ -1382,11 +1426,11 @@ function HeadToHeadView() {
           <SectionShell title="Finish Profile">
             <CompareRow
               label={<>Grand<br/>Slam</>}
-              aWin={stats.slamA >= stats.slamB && stats.slamA > 0}
+              aWin={stats.slamA > stats.slamB}
               bWin={stats.slamB > stats.slamA}
               dividerBelow
-              aContent={<CompareVal win={stats.slamA >= stats.slamB && stats.slamA > 0}>{stats.slamA}<span className="text-sm font-normal text-slate-400"> / 4</span></CompareVal>}
-              bContent={<CompareVal win={stats.slamB > stats.slamA}>{stats.slamB}<span className="text-sm font-normal text-slate-400"> / 4</span></CompareVal>}
+              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.slamA > 0 ? "var(--gold)" : LOSE_FG }}>{stats.slamA}<span style={{ color: "#94a3b8" }}> / 4</span></div>}
+              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.slamB > 0 ? "var(--gold)" : LOSE_FG }}>{stats.slamB}<span style={{ color: "#94a3b8" }}> / 4</span></div>}
             />
             {([
               ["1st place", stats.firstsA, stats.firstsB],
@@ -1421,8 +1465,12 @@ function HeadToHeadView() {
                   label={m.major}
                   aWin={aBetter}
                   bWin={bBetter}
-                  aContent={<CompareVal win={aBetter}>{m.aDisp}</CompareVal>}
-                  bContent={<CompareVal win={bBetter}>{m.bDisp}</CompareVal>}
+                  aContent={m.aNum !== null
+                    ? <div className="inline-flex justify-center"><PositionMedal positionDisplay={m.aDisp} medal={medalFor(m.aNum)} /></div>
+                    : <CompareVal win={false}>{m.aDisp}</CompareVal>}
+                  bContent={m.bNum !== null
+                    ? <div className="inline-flex justify-center"><PositionMedal positionDisplay={m.bDisp} medal={medalFor(m.bNum)} /></div>
+                    : <CompareVal win={false}>{m.bDisp}</CompareVal>}
                 />
               );
             })}
@@ -1463,19 +1511,26 @@ function HeadToHeadView() {
               const aWon = r.a.position_numeric < r.b.position_numeric;
               const bWon = r.b.position_numeric < r.a.position_numeric;
               const yr = `'${(r.tournament.start_date ?? r.tournament.end_date).slice(2, 4)}`;
+              const aDisp = String(r.a.position_display ?? r.a.position_numeric);
+              const bDisp = String(r.b.position_display ?? r.b.position_numeric);
               return (
                 <CompareRow key={r.tournament.id}
                   label={<><span className="font-semibold" style={{ color: "var(--forest-deep)" }}>{r.tournament.shortName}</span><br/><span className="text-[10px] text-slate-400">{yr}</span></>}
                   aWin={aWon}
                   bWin={bWon}
-                  aContent={<><CompareVal win={aWon}>{r.a.position_display ?? r.a.position_numeric}</CompareVal><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.a.total_points} pts</div></>}
-                  bContent={<><CompareVal win={bWon}>{r.b.position_display ?? r.b.position_numeric}</CompareVal><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.b.total_points} pts</div></>}
+                  aContent={<><div className="inline-flex justify-center">{medalFor(r.a.position_numeric)
+                    ? <PositionMedal positionDisplay={aDisp} medal={medalFor(r.a.position_numeric)} />
+                    : <CompareVal win={aWon}>{aDisp}</CompareVal>}</div><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.a.total_points} pts</div></>}
+                  bContent={<><div className="inline-flex justify-center">{medalFor(r.b.position_numeric)
+                    ? <PositionMedal positionDisplay={bDisp} medal={medalFor(r.b.position_numeric)} />
+                    : <CompareVal win={bWon}>{bDisp}</CompareVal>}</div><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.b.total_points} pts</div></>}
                 />
               );
             })}
           </SectionShell>
         </>
       )}
+      </div>
     </div>
   );
 }
