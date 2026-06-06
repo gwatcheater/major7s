@@ -10,12 +10,14 @@ import {
   BarChart3,
   FileText,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   Collapsible,
@@ -42,7 +44,7 @@ function statusMeta(status: string) {
 
 function TournamentHub() {
   const { id } = Route.useParams();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { getEffectiveUserId } = useImpersonation();
   const effectiveId = getEffectiveUserId(user?.id);
   const { activeTeam } = useTeams();
@@ -296,6 +298,21 @@ function TournamentHub() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent className="border border-t-0 border-border bg-card">
+            {isAdmin && (
+              <Button
+                asChild
+                variant="ghost"
+                className="w-full justify-start gap-3 p-4 h-auto rounded-none border-b border-border hover:bg-accent"
+              >
+                <Link to="/tournament/$id/blog/new" params={{ id }}>
+                  <Plus className="h-4 w-4 text-primary shrink-0" />
+                  <span className="flex-1 text-left font-display text-sm uppercase">
+                    New Post
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
+              </Button>
+            )}
             {blogPosts.length > 0 ? (
               <ul className="divide-y divide-border">
                 {blogPosts.map((p) => (
