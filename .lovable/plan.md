@@ -1,29 +1,47 @@
-## Problem
-The tournament-scoped blog creation page already exists at `/tournament/$id/blog/new` but there is no UI entry point on the tournament hub. Admins must type the URL manually.
+## Findings
 
-## Solution
-Add a single-file UI entry point to `src/routes/_authenticated/tournament.$id.tsx`.
+The button code and imports in `src/routes/_authenticated/tournament.$id.tsx` are correct. The button is gated on `isAdmin` from `useAuth()`. Your current preview route is `/login?redirect=%2Fhome`, which strongly suggests you are not authenticated as admin in this preview tab.
 
-### Changes to `src/routes/_authenticated/tournament.$id.tsx`
+`isAdmin` resolves to `true` only if your user has a row in `user_roles` with `role = 'admin'`. The check is async (deferred via setTimeout in `use-auth.tsx`), and starts as `false`.
 
-1. **Import additions**
-   - Add `Plus` to the `lucide-react` import list.
-   - Add `import { Button } from "@/components/ui/button";`.
+## Diagnostic steps (build mode)
 
-2. **Destructuring**
-   - From the existing `useAuth()` call, also destructure `isAdmin` (currently only `user` is pulled).
+1. **Add temporary debug logging** to `src/routes/_authenticated/tournament.$id.tsx`:
+   - Log `{ userId: user?.id, isAdmin }` on every render so we can see the actual values in the console.
+   - Render a small visible debug chip near the Blog section showing `admin: {String(isAdmin)}` and `user: {user?.email ?? "none"}` — only when not in production.
 
-3. **"+ New Post" button inside Blog `<CollapsibleContent>`**
-   - Above the existing post list (around line 298), conditionally render when `isAdmin` is true.
-   - Use the existing `<Button asChild>` component wrapping a `<Link to="/tournament/$id/blog/new" params={{ id }}>`.
-   - Visual: match existing list-item rhythm — flex row with `Plus` icon left, "New Post" label, and `ChevronRight` on the right, inside a bordered row with `hover:bg-accent`.
-   - Render this button **regardless of** `blogPosts.length` (empty or non-empty) so admins can always create a post.
+2. **Add a dev-mode fallback** so we can distinguish "JSX never renders" from "isAdmin is false":
+   ```tsx
+   {isAdmin ? (
+     <Button asChild ...>...</Button>
+   ) : import.meta.env.DEV ? (
+     <div className="p-4 text-xs text-muted-foreground border-b border-border">
+       [dev only] Admin button hidden — isAdmin = {String(isAdmin)}
+     </div>
+   ) : null}
+   ```
+   Note: in Vite use `import.meta.env.DEV`, not `process.env.NODE_ENV` (which is undefined in the browser bundle).
 
-### No other changes
-- Do not modify the general `/blog` page or its button.
-- Do not alter `blog_posts` schema, RLS, or storage — all infrastructure is already functional.
+3. **Verify admin role in the database** via `read_query`:
+   ```sql
+   SELECT ur.user_id, u.email, ur.role
+   FROM public.user_roles ur
+   JOIN auth.users u ON u.id = ur.user_id
+   WHERE ur.role = 'admin';
+   ```
+   Confirm the signed-in account appears.
 
-### Verification steps
-1. As admin: open any tournament hub → expand Blog → click "+ New Post" → confirm form loads → publish → confirm redirect to tournament hub and new post appears in list with correct `tournament_id`.
-2. As non-admin: confirm the button is not rendered.
-3. Verify existing blog post listing behavior is unchanged for both roles.
+4. **After diagnosis**, remove the debug logging and dev-only fallback, leaving only the original `{isAdmin && ...}` button.
+
+## What I will NOT do
+
+- Will not change the gating to render for non-admins in production.
+- Will not touch RLS, schemas, or the general `/blog` page.
+- Will not modify `use-auth.tsx` unless step 3 proves the role check itself is broken.
+
+## Expected outcome
+
+One of these three:
+- Console shows `isAdmin: true` → button is actually rendering; issue is visual (collapsible closed, scroll, cache). Hard reload.
+- Console shows `isAdmin: false` but DB has admin row → auth/session issue; need to sign in or `use-auth.tsx` query is failing.
+- DB has no admin row for your user → need to insert one.
