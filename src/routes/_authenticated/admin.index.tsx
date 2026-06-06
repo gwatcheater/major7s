@@ -1141,42 +1141,70 @@ function SubmissionsTab() {
   const { data: approved = [] } = useQuery({
     queryKey: ["admin-approved-profiles"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, nickname, email, first_name, last_name, phone")
-        .eq("status", "approved");
-      if (error) throw error;
-      return data ?? [];
+      const PAGE = 1000;
+      let all: Array<{
+        id: string;
+        nickname: string;
+        email: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        phone: string | null;
+      }> = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, nickname, email, first_name, last_name, phone")
+          .eq("status", "approved")
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data ?? []);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
     },
   });
 
   // Embedded join: picks → teams (FK exists) and picks → golfers (FK exists)
+  // Paginated to avoid the Supabase 1000-row default cap. With 183 teams × 7
+  // buckets = 1,281 rows, a single un-ranged query silently truncates to 1000,
+  // causing ~43 teams to disappear from the count, grid, and CSV export.
   const { data: fetchedPicks = [] } = useQuery({
     enabled: !!activeId,
     queryKey: ["admin-picks-for-tournament", activeId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("picks")
-        .select(
-          `
-          id,
-          bucket,
-          tweak_count,
-          tournament_id,
-          golfers ( golfer_name ),
-          teams!inner ( id, nickname, owner_user_id )
-        `,
-        )
-        .eq("tournament_id", activeId!);
-      if (error) throw error;
-      return (data ?? []) as unknown as Array<{
+      const PAGE = 1000;
+      let all: Array<{
         id: string;
         bucket: number;
         tweak_count: number;
         tournament_id: string;
         golfers: { golfer_name: string } | null;
         teams: { id: string; nickname: string; owner_user_id: string };
-      }>;
+      }> = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select(
+            `
+            id,
+            bucket,
+            tweak_count,
+            tournament_id,
+            golfers ( golfer_name ),
+            teams!inner ( id, nickname, owner_user_id )
+          `,
+          )
+          .eq("tournament_id", activeId!)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat((data ?? []) as unknown as typeof all);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
     },
   });
 
