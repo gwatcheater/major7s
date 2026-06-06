@@ -1194,6 +1194,8 @@ function HeadToHeadView() {
       avgPosDeltaA: 0, avgPosDeltaB: 0,
       biggestA: null as null | { gap: number; label: string },
       biggestB: null as null | { gap: number; label: string },
+      biggestPosA: null as null | { gap: number; label: string },
+      biggestPosB: null as null | { gap: number; label: string },
       slamA: 0, slamB: 0,
       firstsA: 0, firstsB: 0, top3A: 0, top3B: 0, top5A: 0, top5B: 0, top10A: 0, top10B: 0,
       eliteA: 0, eliteB: 0,
@@ -1208,6 +1210,8 @@ function HeadToHeadView() {
     let firstsA = 0, firstsB = 0, top3A = 0, top3B = 0, top5A = 0, top5B = 0, top10A = 0, top10B = 0;
     let biggestA: { gap: number; label: string } | null = null;
     let biggestB: { gap: number; label: string } | null = null;
+    let biggestPosA: { gap: number; label: string } | null = null;
+    let biggestPosB: { gap: number; label: string } | null = null;
     const winsByMajorA = new Set<string>();
     const winsByMajorB = new Set<string>();
     const bestA: Record<string, { num: number; disp: string } | null> = {};
@@ -1233,10 +1237,14 @@ function HeadToHeadView() {
         aWins++;
         const gap = r.b.total_points - r.a.total_points;
         if (!biggestA || gap > biggestA.gap) biggestA = { gap, label: fixtureLabel };
+        const posGap = bN - aN;
+        if (!biggestPosA || posGap > biggestPosA.gap) biggestPosA = { gap: posGap, label: fixtureLabel };
       } else if (bN < aN) {
         bWins++;
         const gap = r.a.total_points - r.b.total_points;
         if (!biggestB || gap > biggestB.gap) biggestB = { gap, label: fixtureLabel };
+        const posGap = aN - bN;
+        if (!biggestPosB || posGap > biggestPosB.gap) biggestPosB = { gap: posGap, label: fixtureLabel };
       } else ties++;
 
       if (aN === 1) firstsA++; if (bN === 1) firstsB++;
@@ -1253,8 +1261,10 @@ function HeadToHeadView() {
       }
 
       // Cut-survival metrics. thru_cut = golfers through the midway cut (max 7).
-      const aThru = r.a.thru_cut ?? 0;
-      const bThru = r.b.thru_cut ?? 0;
+      // Coerce explicitly — PostgREST can serialise integers as strings, which
+      // would break the >= comparison below.
+      const aThru = Number(r.a.thru_cut ?? 0);
+      const bThru = Number(r.b.thru_cut ?? 0);
       cutFracSumA += (7 - aThru) / 7;
       cutFracSumB += (7 - bThru) / 7;
       if (aThru >= 5) over5CountA++;
@@ -1286,6 +1296,7 @@ function HeadToHeadView() {
       avgPosDeltaA: Math.round((avgPosA - avgPosB) * 10) / 10,
       avgPosDeltaB: Math.round((avgPosB - avgPosA) * 10) / 10,
       biggestA, biggestB,
+      biggestPosA, biggestPosB,
       slamA: winsByMajorA.size, slamB: winsByMajorB.size,
       firstsA, firstsB, top3A, top3B, top5A, top5B, top10A, top10B,
       eliteA: Math.round((top10A / n) * 100),
@@ -1430,12 +1441,27 @@ function HeadToHeadView() {
               label={<>biggest<br/>margin</>}
               aWin={(stats.biggestA?.gap ?? -1) >= (stats.biggestB?.gap ?? -1) && !!stats.biggestA}
               bWin={(stats.biggestB?.gap ?? -1) > (stats.biggestA?.gap ?? -1) && !!stats.biggestB}
+              aTint={stats.biggestA ? undefined : "transparent"}
+              bTint={stats.biggestB ? undefined : "transparent"}
               aContent={stats.biggestA
                 ? <><CompareVal win={(stats.biggestA.gap) >= (stats.biggestB?.gap ?? -1)}>{stats.biggestA.gap} <span className="text-xs font-normal">pts</span></CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestA.label}</div></>
-                : <CompareVal win={false}>—</CompareVal>}
+                : null}
               bContent={stats.biggestB
                 ? <><CompareVal win={(stats.biggestB.gap) > (stats.biggestA?.gap ?? -1)}>{stats.biggestB.gap} <span className="text-xs font-normal">pts</span></CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestB.label}</div></>
-                : <CompareVal win={false}>—</CompareVal>}
+                : null}
+            />
+            <CompareRow
+              label={<>biggest<br/>position gap</>}
+              aWin={(stats.biggestPosA?.gap ?? -1) >= (stats.biggestPosB?.gap ?? -1) && !!stats.biggestPosA}
+              bWin={(stats.biggestPosB?.gap ?? -1) > (stats.biggestPosA?.gap ?? -1) && !!stats.biggestPosB}
+              aTint={stats.biggestPosA ? undefined : "transparent"}
+              bTint={stats.biggestPosB ? undefined : "transparent"}
+              aContent={stats.biggestPosA
+                ? <><CompareVal win={(stats.biggestPosA.gap) >= (stats.biggestPosB?.gap ?? -1)}>{stats.biggestPosA.gap}</CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestPosA.label}</div></>
+                : null}
+              bContent={stats.biggestPosB
+                ? <><CompareVal win={(stats.biggestPosB.gap) > (stats.biggestPosA?.gap ?? -1)}>{stats.biggestPosB.gap}</CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestPosB.label}</div></>
+                : null}
             />
           </SectionShell>
 
