@@ -70,7 +70,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 }
 
 export function UsersDirectoryTab() {
-  const [selected, setSelected] = useState<ProfileRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(0);
@@ -90,6 +90,11 @@ export function UsersDirectoryTab() {
       return (data ?? []) as ProfileRow[];
     },
   });
+
+  const selected = useMemo(
+    () => (selectedId ? (users.find((u) => u.id === selectedId) ?? null) : null),
+    [selectedId, users],
+  );
 
   // Fetch all teams so we can resolve primary team nicknames for each user.
   const { data: allTeams = [] } = useQuery({
