@@ -50,6 +50,7 @@ function TournamentHub() {
   const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [blogOpen, setBlogOpen] = useState(false);
+  console.log("[tournament hub debug]", { userId: user?.id, email: user?.email, isAdmin });
 
   const { data: t, isLoading } = useQuery({
     queryKey: ["tournament", id],
