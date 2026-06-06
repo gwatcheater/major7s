@@ -427,15 +427,15 @@ function UserDrawer({
       const teamIds = teams.map((t) => t.id);
       const { data, error } = await supabase
         .from("picks")
-        .select("team_id, bucket, tournaments(id, name, status)")
+        .select("team_id, bucket, tournaments(id, name, status, start_date)")
         .in("team_id", teamIds);
       if (error) throw error;
       // Aggregate: one row per tournament, count picks (out of 7).
-      const byTournament = new Map<string, { name: string; status: string; picks: number }>();
+      const byTournament = new Map<string, { name: string; status: string; startDate: string | null; picks: number }>();
       for (const row of (data ?? []) as any[]) {
         const t = row.tournaments;
         if (!t) continue;
-        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, picks: 0 };
+        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, startDate: t.start_date ?? null, picks: 0 };
         e.picks += 1;
         byTournament.set(t.id, e);
       }
@@ -884,18 +884,24 @@ function UserDrawer({
                 <p className="text-sm text-muted-foreground py-2">No tournament entries.</p>
               ) : (
                 <div className="space-y-1.5 text-sm">
-                  {entries.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span>{e.name}</span>
-                      <span
-                        className={
-                          e.picks >= 7 ? "text-emerald-600 text-xs" : "text-amber-600 text-xs"
-                        }
-                      >
-                        {e.picks >= 7 ? "Submitted" : `${e.picks}/7 picks`}
-                      </span>
-                    </div>
-                  ))}
+                  {entries.map((e, i) => {
+                    const year = e.startDate ? new Date(e.startDate).getFullYear() : null;
+                    return (
+                      <div key={i} className="flex items-center justify-between">
+                        <span>
+                          {e.name}
+                          {year !== null && ` (${year})`}
+                        </span>
+                        <span
+                          className={
+                            e.picks >= 7 ? "text-emerald-600 text-xs" : "text-amber-600 text-xs"
+                          }
+                        >
+                          {e.picks >= 7 ? "Submitted" : `${e.picks}/7 picks`}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>
