@@ -427,15 +427,15 @@ function UserDrawer({
       const teamIds = teams.map((t) => t.id);
       const { data, error } = await supabase
         .from("picks")
-        .select("team_id, bucket, tournaments(id, name, status)")
+        .select("team_id, bucket, tournaments(id, name, status, start_date)")
         .in("team_id", teamIds);
       if (error) throw error;
       // Aggregate: one row per tournament, count picks (out of 7).
-      const byTournament = new Map<string, { name: string; status: string; picks: number }>();
+      const byTournament = new Map<string, { name: string; status: string; startDate: string | null; picks: number }>();
       for (const row of (data ?? []) as any[]) {
         const t = row.tournaments;
         if (!t) continue;
-        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, picks: 0 };
+        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, startDate: t.start_date ?? null, picks: 0 };
         e.picks += 1;
         byTournament.set(t.id, e);
       }
