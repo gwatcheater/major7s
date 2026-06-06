@@ -44,7 +44,7 @@ function statusMeta(status: string) {
 
 function TournamentHub() {
   const { id } = Route.useParams();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { getEffectiveUserId } = useImpersonation();
   const effectiveId = getEffectiveUserId(user?.id);
   const { activeTeam } = useTeams();
