@@ -1,36 +1,15 @@
 ## Objective
-Add a destructive "Delete Post" action to the existing blog post editing flow in both the general and tournament-scoped edit pages.
+Cap the blog post hero image height on individual post views so it acts as an accent banner rather than dominating the viewport.
 
-## Scope
-1. `src/routes/_authenticated/blog.$postId.edit.tsx` — general blog post editor.
-2. `src/routes/_authenticated/tournament.$id.blog.$postId.edit.tsx` — tournament-scoped blog post editor.
+## Files to change
+1. `src/routes/_authenticated/blog.$postId.index.tsx`
+2. `src/routes/_authenticated/tournament.$id.blog.$postId.index.tsx`
 
-## Plan
+## Changes
+In both files, update the `post.image_url` conditional block:
+- Wrap the `<img>` in a `<div>` with `className="w-full overflow-hidden rounded-md border border-border mb-6"`.
+- Update the `<img>` classes to `w-full h-full object-cover object-center`.
+- Add a max-height constraint to the wrapper: `max-h-[350px] sm:max-h-[400px]`.
 
-### 1. Add destructive delete button
-In the bottom action row of each edit form (currently holds "Save Changes" + "Cancel"), append a third button styled with the existing destructive variant (`bg-destructive` / `text-destructive-foreground` via the `Button` component's `destructive` variant). This places the button directly in the form alongside the existing controls.
-
-### 2. Confirmation dialog
-Use the existing `AlertDialog` component (`src/components/ui/alert-dialog.tsx`) already in the project:
-- Triggered on clicking "Delete Post".
-- Title: "Are you sure?"
-- Description: "Are you sure you want to delete this blog post? This action cannot be undone."
-- Actions: "Cancel" (outline) + "Delete" (destructive).
-
-### 3. Delete mutation
-On confirm, call:
-```ts
-await supabase.from("blog_posts").delete().eq("id", postId);
-```
-Handle errors with `toast.error(...)`.
-
-### 4. Post-delete redirect & cache invalidation
-- On success, invalidate the relevant query keys (`blog_posts_all`, `blog_posts`, `blog_post`) and toast a success message.
-- Redirect the user away from the stale edit page:
-  - General edit → `/blog`
-  - Tournament edit → `/tournament/$id`
-
-## Out of scope
-- No changes to RLS policies or schemas.
-- No changes to the list view.
-- No changes to the creation flow.
+## Result
+Portrait or oversized images will center-crop into a cinematic widescreen banner (~350–400 px tall) while maintaining the existing border, rounded corners, and bottom margin for clean separation from the heading and content.
