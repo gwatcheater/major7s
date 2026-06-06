@@ -1,27 +1,25 @@
-## Objective
-Resolve the Supabase linter warning "Signed-In Users Can Execute SECURITY DEFINER Function" by revoking `EXECUTE` on trigger-only `SECURITY DEFINER` functions so they cannot be invoked through the PostgREST API.
+## Branding Update Plan
 
-## Approach
-Trigger functions run with the table owner's privileges via the trigger itself — clients never need `EXECUTE` on them. Revoking `EXECUTE` from `PUBLIC`, `anon`, and `authenticated` closes the RPC surface without affecting trigger behavior.
+Use the attached `major7s.jpeg` (golf flag/ball logo) as the source for both favicon and Apple touch icon.
 
-Functions that are intentionally callable (`has_role`, `log_impersonation`, `set_primary_team`, `audit_admin_pick_edit`) are left untouched — they either back RLS policies or self-gate with `has_role(auth.uid(),'admin')`.
+### 1. Add image assets to `public/`
+- Generate `public/faviconf.ico` from the uploaded image (resized/converted via ImageMagick).
+- Generate `public/apple-touch-icon.png` from the uploaded image (180x180 PNG).
 
-## Migration
-A single migration revokes `EXECUTE` on these trigger-only functions:
-- `public.enforce_pick_lock()`
-- `public.handle_new_user()`
-- `public.audit_teams()`
-- `public.audit_profile_status()`
-- `public.audit_user_roles()`
-- `public.protect_profile_status()`
-- `public.set_updated_at()`
+### 2. Update `src/routes/__root.tsx` head
 
-For each:
-```sql
-REVOKE EXECUTE ON FUNCTION public.<fn>() FROM PUBLIC, anon, authenticated;
-```
+**Meta updates:**
+- `description`: `"Pick smart. Tweak obsessively. Suffer beautifully. Major7s is the ultimate golf picks game across all four majors."`
+- `og:description` and `twitter:description`: same as above
+- `og:title` / `twitter:title`: keep `"Major7s"`
+- `og:type`: keep `"website"`
+- `og:image` / `twitter:image`: `https://www.major7s.com/apple-touch-icon.png` (absolute URL, project's custom domain)
 
-## Verification
-- Re-run the Supabase linter; the warning should clear for the revoked functions.
-- Triggers continue firing on inserts/updates/deletes (trigger execution does not require caller `EXECUTE`).
-- App behavior (auth signup, pick edits, audit logging, profile status protection) is unchanged.
+**Links additions:**
+- `{ rel: "icon", href: "/faviconf.ico", type: "image/x-icon" }`
+- `{ rel: "apple-touch-icon", href: "/apple-touch-icon.png" }`
+
+### Notes
+- Files placed in `public/` are served from the site root, matching the requested URLs.
+- Using `https://www.major7s.com` (the project's custom domain) for absolute OG image URL so WhatsApp/social previews work.
+- The existing R2 og:image URL will be replaced with the new apple-touch-icon URL.
