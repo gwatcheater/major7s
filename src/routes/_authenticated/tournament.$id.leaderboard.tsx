@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.7 — medals only on Final view
+// VERSION MARKER: leaderboard v4.8 — persisted pick breakdown open state across round switches
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -851,7 +851,7 @@ function RoundPickBreakdown({
 
 // -- Round-view expandable team row --
 function RoundExpandableTeamRow({
-  team, mine, medal, showDelta, showThruCut, round, lbRows,
+  team, mine, medal, showDelta, showThruCut, round, lbRows, open, onToggle,
 }: {
   team: RoundTeamScore;
   mine: boolean;
@@ -860,8 +860,9 @@ function RoundExpandableTeamRow({
   showThruCut: boolean;
   round: Exclude<Round, "final">;
   lbRows: LbRow[];
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const rowBg = mine ? "bg-amber-50" : "";
   const cols = (showDelta ? 1 : 0) + (showThruCut ? 1 : 0) + 4; // pos + name + points + chevron + conditionals
@@ -869,7 +870,7 @@ function RoundExpandableTeamRow({
     <>
       <tr
         className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
       >
         <td className="px-2 py-2 text-center">
           <div className="inline-flex justify-center">
@@ -909,7 +910,7 @@ function RoundExpandableTeamRow({
 
 // -- Round-view "Your Team" panel --
 function RoundActiveTeamPanel({
-  team, medal, showDelta, showThruCut, round, lbRows,
+  team, medal, showDelta, showThruCut, round, lbRows, open, onToggle,
 }: {
   team: RoundTeamScore;
   medal: "gold" | "silver" | "bronze" | null;
@@ -917,8 +918,9 @@ function RoundActiveTeamPanel({
   showThruCut: boolean;
   round: Exclude<Round, "final">;
   lbRows: LbRow[];
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const cols = (showDelta ? 1 : 0) + (showThruCut ? 1 : 0) + 4;
   return (
@@ -941,7 +943,7 @@ function RoundActiveTeamPanel({
         <tbody>
           <tr
             className="cursor-pointer hover:bg-amber-100/50 transition-colors"
-            onClick={() => setOpen((o) => !o)}
+            onClick={onToggle}
           >
             <td className="px-3 py-2 text-center">
               <div className="inline-flex justify-center">
@@ -995,6 +997,16 @@ function MajorSevensTable({
   lbRows: LbRow[];
 }) {
   const [mode, setMode] = useState<MajorView>("all");
+
+  // Persisted open/closed state for pick breakdowns — keyed by team_id.
+  // Stored at this level so it survives round switches (R1↔R2↔R3↔Final).
+  const [openTeamIds, setOpenTeamIds] = useState<Set<string>>(new Set());
+  const toggleTeam = (teamId: string) =>
+    setOpenTeamIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
+      return next;
+    });
 
   // 3d: Silently reset BOTR when switching to R1/R2
   const botrAvailable = round === "r3" || round === "final";
@@ -1110,7 +1122,7 @@ function MajorSevensTable({
         )}
 
         {myTeam && (
-          <RoundActiveTeamPanel team={myTeam} medal={null} showDelta={showDelta} showThruCut={showThruCut} round={round} lbRows={lbRows} />
+          <RoundActiveTeamPanel team={myTeam} medal={null} showDelta={showDelta} showThruCut={showThruCut} round={round} lbRows={lbRows} open={openTeamIds.has(myTeam.team_id)} onToggle={() => toggleTeam(myTeam.team_id)} />
         )}
         {myTeamDisqualifiedFromBotr && (
           <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1149,6 +1161,8 @@ function MajorSevensTable({
                     showThruCut={showThruCut}
                     round={round}
                     lbRows={lbRows}
+                    open={openTeamIds.has(t.team_id)}
+                    onToggle={() => toggleTeam(t.team_id)}
                   />
                 ))
               )}
@@ -1219,6 +1233,8 @@ function MajorSevensTable({
           medal={medalFor(myRow.position_numeric)}
           delta={(() => { const pp = r3PosMap.get(myRow.team_id); return pp != null ? pp - myRow.position_numeric : null; })()}
           lbRows={lbRows}
+          open={openTeamIds.has(myRow.team_id)}
+          onToggle={() => toggleTeam(myRow.team_id)}
         />
       )}
       {myTeamDisqualifiedFromBotr && (
@@ -1259,6 +1275,8 @@ function MajorSevensTable({
                     medal={medalFor(r.position_numeric)}
                     delta={delta}
                     lbRows={lbRows}
+                    open={openTeamIds.has(r.team_id)}
+                    onToggle={() => toggleTeam(r.team_id)}
                   />
                 );
               })
@@ -1271,9 +1289,8 @@ function MajorSevensTable({
 }
 
 function ActiveTeamPanel({
-  row, medal, delta, lbRows,
-}: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null; delta: number | null; lbRows: LbRow[] }) {
-  const [open, setOpen] = useState(false);
+  row, medal, delta, lbRows, open, onToggle,
+}: { row: ScoreRow; medal: "gold" | "silver" | "bronze" | null; delta: number | null; lbRows: LbRow[]; open: boolean; onToggle: () => void }) {
   const { data: picks, isLoading: picksLoading } = useQuery({
     queryKey: ["tournament-score-picks", row.id],
     enabled: open,
@@ -1308,7 +1325,7 @@ function ActiveTeamPanel({
         <tbody>
           <tr
             className="cursor-pointer hover:bg-amber-100/50 transition-colors"
-            onClick={() => setOpen((o) => !o)}
+            onClick={onToggle}
           >
             <td className="px-3 py-2 text-center">
               <div className="inline-flex justify-center">
@@ -1377,9 +1394,8 @@ function PositionMedal({
 }
 
 function ExpandableTeamRow({
-  r, mine, medal, delta, lbRows,
-}: { r: ScoreRow; mine: boolean; medal: "gold" | "silver" | "bronze" | null; delta: number | null; lbRows: LbRow[] }) {
-  const [open, setOpen] = useState(false);
+  r, mine, medal, delta, lbRows, open, onToggle,
+}: { r: ScoreRow; mine: boolean; medal: "gold" | "silver" | "bronze" | null; delta: number | null; lbRows: LbRow[]; open: boolean; onToggle: () => void }) {
   const { data: picks, isLoading: picksLoading } = useQuery({
     queryKey: ["tournament-score-picks", r.id],
     enabled: open,
@@ -1398,7 +1414,7 @@ function ExpandableTeamRow({
     <>
       <tr
         className={`${rowBg} cursor-pointer hover:bg-muted/30 transition-colors`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
       >
         <td className="px-2 py-2 text-center">
           <div className="inline-flex justify-center">
