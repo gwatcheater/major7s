@@ -914,6 +914,7 @@ interface H2HScore {
   total_points: number;
   position_numeric: number;
   position_display: string | null;
+  thru_cut: number | null;
 }
 
 function useTeamsList() {
@@ -942,6 +943,8 @@ interface H2HFixture {
   tournament: { id: string; name: string; shortName: string; start_date: string; end_date: string };
   a: H2HScore;
   b: H2HScore;
+  aSpoon: boolean;
+  bSpoon: boolean;
 }
 
 function useH2HData(teamAId: string | null, teamBId: string | null) {
@@ -961,20 +964,31 @@ function useH2HData(teamAId: string | null, teamBId: string | null) {
       const completedIdList = tours.map((t) => t.id);
       if (completedIdList.length === 0) return { rows: [] };
 
-      const [{ data: a }, { data: b }] = await Promise.all([
+      const [{ data: a }, { data: b }, { data: spoons }] = await Promise.all([
         supabase
           .from("tournament_scores")
-          .select("tournament_id,team_id,total_points,position_numeric,position_display")
+          .select("tournament_id,team_id,total_points,position_numeric,position_display,thru_cut")
           .eq("team_id", teamAId!)
           .in("tournament_id", completedIdList),
         supabase
           .from("tournament_scores")
-          .select("tournament_id,team_id,total_points,position_numeric,position_display")
+          .select("tournament_id,team_id,total_points,position_numeric,position_display,thru_cut")
           .eq("team_id", teamBId!)
+          .in("tournament_id", completedIdList),
+        // Last-place finishes — same source the OOM view uses (tournament_results
+        // rows flagged result_type = 'wooden_spoon'), scoped to both teams.
+        supabase
+          .from("tournament_results")
+          .select("tournament_id,team_id,result_type")
+          .eq("result_type", "wooden_spoon")
+          .in("team_id", [teamAId!, teamBId!])
           .in("tournament_id", completedIdList),
       ]);
       const aById = new Map((a ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
       const bById = new Map((b ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
+      const spoonSet = new Set(
+        (spoons ?? []).map((r: any) => `${r.tournament_id}:${r.team_id}`)
+      );
 
       const rows: H2HFixture[] = [];
       for (const tid of aById.keys()) {
@@ -992,6 +1006,8 @@ function useH2HData(teamAId: string | null, teamBId: string | null) {
             },
             a: aRow,
             b: bRow,
+            aSpoon: spoonSet.has(`${tid}:${teamAId}`),
+            bSpoon: spoonSet.has(`${tid}:${teamBId}`),
           });
         }
       }
@@ -1019,12 +1035,10 @@ function computeDominance(rows: H2HFixture[]): DominanceResult {
     bPts += r.b.total_points;
     aAch += achPoints(r.a.position_numeric);
     bAch += achPoints(r.b.position_numeric);
-    // Last place within this fixture pair is not knowable without field size;
-    // we treat a wooden-spoon-style last only when position is clearly worst of
-    // the pair AND large. Here we use the shared head-to-head: the worse of the
-    // two only counts as a "last" if it is the higher position number — but to
-    // stay faithful to the agreed spec (last place finishes), we leave the
-    // penalty driven by the danger-stats wooden spoon count passed separately.
+    // Last-place finishes drive the shame penalty (sourced from the OOM
+    // wooden_spoon rows and attached to each fixture as aSpoon / bSpoon).
+    if (r.aSpoon) aLast++;
+    if (r.bSpoon) bLast++;
   }
   const avgAPts = aPts / rows.length;
   const avgBPts = bPts / rows.length;
@@ -1155,6 +1169,11 @@ function HeadToHeadView() {
     const bestB: Record<string, { num: number; disp: string } | null> = {};
     for (const m of MAJOR_ORDER) { bestA[m] = null; bestB[m] = null; }
 
+    // Danger-stat accumulators.
+    let cutFracSumA = 0, cutFracSumB = 0;   // sum of (7 - thru_cut)/7 per event
+    let over5CountA = 0, over5CountB = 0;    // events with thru_cut in {5,6,7}
+    let spoonA = 0, spoonB = 0;              // wooden-spoon (last place) finishes
+
     for (const r of rows) {
       const aN = r.a.position_numeric, bN = r.b.position_numeric;
       const aDisp = r.a.position_display ?? String(aN);
@@ -1187,6 +1206,16 @@ function HeadToHeadView() {
         if (!bestA[major] || aN < bestA[major]!.num) bestA[major] = { num: aN, disp: aDisp };
         if (!bestB[major] || bN < bestB[major]!.num) bestB[major] = { num: bN, disp: bDisp };
       }
+
+      // Cut-survival metrics. thru_cut = golfers through the midway cut (max 7).
+      const aThru = r.a.thru_cut ?? 0;
+      const bThru = r.b.thru_cut ?? 0;
+      cutFracSumA += (7 - aThru) / 7;
+      cutFracSumB += (7 - bThru) / 7;
+      if (aThru >= 5) over5CountA++;
+      if (bThru >= 5) over5CountB++;
+      if (r.aSpoon) spoonA++;
+      if (r.bSpoon) spoonB++;
     }
 
     const n = rows.length;
@@ -1217,6 +1246,13 @@ function HeadToHeadView() {
       eliteA: Math.round((top10A / n) * 100),
       eliteB: Math.round((top10B / n) * 100),
       bestByMajor,
+      // Average per-event cut rate = mean of (7 - thru_cut)/7 across events.
+      missedCutA: Math.round((cutFracSumA / n) * 100),
+      missedCutB: Math.round((cutFracSumB / n) * 100),
+      // % of events with 5, 6 or 7 golfers through the cut.
+      over5A: Math.round((over5CountA / n) * 100),
+      over5B: Math.round((over5CountB / n) * 100),
+      spoonA, spoonB,
       di: computeDominance(rows),
     };
   }, [rows]);
