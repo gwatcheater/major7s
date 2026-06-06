@@ -70,7 +70,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 }
 
 export function UsersDirectoryTab() {
-  const [selected, setSelected] = useState<ProfileRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(0);
@@ -90,6 +90,11 @@ export function UsersDirectoryTab() {
       return (data ?? []) as ProfileRow[];
     },
   });
+
+  const selected = useMemo(
+    () => (selectedId ? (users.find((u) => u.id === selectedId) ?? null) : null),
+    [selectedId, users],
+  );
 
   // Fetch all teams so we can resolve primary team nicknames for each user.
   const { data: allTeams = [] } = useQuery({
@@ -225,7 +230,7 @@ export function UsersDirectoryTab() {
                         <TableRow
                           key={u.id}
                           className="cursor-pointer"
-                          onClick={() => setSelected(u)}
+                          onClick={() => setSelectedId(u.id)}
                         >
                           <TableCell className="font-medium">{full}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
@@ -244,7 +249,7 @@ export function UsersDirectoryTab() {
                               className="flex justify-end gap-2"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
+                              <Button size="sm" variant="outline" onClick={() => setSelectedId(u.id)}>
                                 <Settings className="size-3.5" /> Manage
                               </Button>
                               <Button
@@ -304,7 +309,7 @@ export function UsersDirectoryTab() {
       <UserDrawer
         user={selected}
         open={!!selected}
-        onOpenChange={(open) => !open && setSelected(null)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
         primaryTeamNickname={selected ? (primaryTeamNickname.get(selected.id) ?? null) : null}
       />
     </Card>
