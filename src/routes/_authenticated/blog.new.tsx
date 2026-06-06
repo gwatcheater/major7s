@@ -34,6 +34,19 @@ function NewGeneralBlogPost() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+
+  const { data: tournaments = [] } = useQuery({
+    queryKey: ["tournaments", "for-blog-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, start_date")
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   if (!isAdmin) {
     return (
