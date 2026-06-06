@@ -298,7 +298,7 @@ function TournamentHub() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent className="border border-t-0 border-border bg-card">
-            {isAdmin && (
+            {isAdmin ? (
               <Button
                 asChild
                 variant="ghost"
@@ -312,7 +312,11 @@ function TournamentHub() {
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </Link>
               </Button>
-            )}
+            ) : import.meta.env.DEV ? (
+              <div className="p-4 text-xs text-muted-foreground border-b border-border">
+                [dev] New Post hidden — isAdmin={String(isAdmin)} user={user?.email ?? "none"}
+              </div>
+            ) : null}
             {blogPosts.length > 0 ? (
               <ul className="divide-y divide-border">
                 {blogPosts.map((p) => (
