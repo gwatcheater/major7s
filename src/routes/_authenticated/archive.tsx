@@ -1,3 +1,4 @@
+import React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +10,47 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 export const Route = createFileRoute("/_authenticated/archive")({
   component: ArchivePage,
 });
+
+function medalFor(positionNumeric: number): "gold" | "silver" | "bronze" | null {
+  if (positionNumeric === 1) return "gold";
+  if (positionNumeric === 2) return "silver";
+  if (positionNumeric === 3) return "bronze";
+  return null;
+}
+
+function PositionMedal({
+  positionDisplay, medal, size = "sm",
+}: { positionDisplay: string; medal: "gold" | "silver" | "bronze" | null; size?: "sm" | "lg" }) {
+  const dim = size === "lg" ? "w-12 h-12 text-base" : "w-9 h-9 text-xs";
+  if (!medal) {
+    return <span className="font-mono font-bold text-base md:text-lg leading-none tracking-tight text-emerald-950">{positionDisplay}</span>;
+  }
+  const styles: Record<string, React.CSSProperties> = {
+    gold: {
+      background: "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)",
+      color: "#3a2a00",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    silver: {
+      background: "radial-gradient(circle at 30% 30%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)",
+      color: "#222",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+    bronze: {
+      background: "radial-gradient(circle at 30% 30%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)",
+      color: "#2a1500",
+      boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25)",
+    },
+  };
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full font-bold leading-none ${dim}`}
+      style={styles[medal]}
+    >
+      {positionDisplay}
+    </span>
+  );
+}
 
 interface Tournament {
   id: string;
@@ -218,50 +260,38 @@ function ArchivePage() {
                   </div>
                 </div>
 
-                {/* Bottom strip — equivalent of the live cards' gold countdown.
-                   Shows the team's final result (position + points) when entered
-                   and scored, then a LEADERBOARD button on the right. */}
+                {/* Bottom strip — shows the team's final result (position + points). */}
                 <div
-                  className="relative flex items-stretch justify-between gap-3 px-5 py-3 md:px-8 md:py-4"
+                  className="relative px-5 py-3 md:px-8 md:py-4"
                   style={{
                     background: "linear-gradient(90deg, rgba(34,83,57,0.10) 0%, rgba(34,83,57,0.03) 100%)",
                     borderTop: "1px solid rgba(34,83,57,0.25)",
                   }}
                 >
-                  <div className="flex flex-col justify-center min-w-0">
-                    {score ? (
-                      <>
-                        <span className="text-[10px] font-bold text-emerald-900/70 uppercase tracking-widest leading-none mb-1.5">
-                          Your Result
-                        </span>
-                        <div className="font-mono font-bold text-base md:text-lg leading-none tracking-tight text-emerald-950 flex items-baseline gap-3">
-                          <span>{score.position_display}</span>
-                          <span className="text-sm font-normal text-muted-foreground">·</span>
-                          <span>{score.total_points} pts</span>
+                  {score ? (
+                    <>
+                      <span className="text-[10px] font-bold text-emerald-900/70 uppercase tracking-widest leading-none mb-1.5 block">
+                        Your Result
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <div className="inline-flex justify-center">
+                          <PositionMedal
+                            positionDisplay={score.position_display}
+                            medal={medalFor(score.position_numeric)}
+                            size="sm"
+                          />
                         </div>
-                      </>
-                    ) : entered ? (
-                      <span className="text-xs italic text-muted-foreground">
-                        Result pending
-                      </span>
-                    ) : (
-                      <span className="text-xs italic text-muted-foreground">
-                        Did not enter
-                      </span>
-                    )}
-                  </div>
-                  <Link
-                    to="/tournament/$id/leaderboard"
-                    params={{ id: t.id }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all"
-                    style={{
-                      backgroundColor: "var(--forest-deep)",
-                    }}
-                  >
-                    Leaderboard
-                    <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
-                  </Link>
+                        <span className="text-sm font-normal text-muted-foreground">·</span>
+                        <span className="font-mono font-bold text-base md:text-lg leading-none tracking-tight text-emerald-950">
+                          {score.total_points} pts
+                        </span>
+                      </div>
+                    </>
+                  ) : entered ? (
+                    <span className="text-xs italic text-muted-foreground">Result pending</span>
+                  ) : (
+                    <span className="text-xs italic text-muted-foreground">Did not enter</span>
+                  )}
                 </div>
               </div>
                     );
