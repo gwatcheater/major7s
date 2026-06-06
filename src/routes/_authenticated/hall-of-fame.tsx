@@ -1067,7 +1067,7 @@ const LOSE_FG = "#64748b";
 const MUTED_BG = "var(--surface-muted,#f1f5f9)";
 
 function CompareRow({
-  label, aWin, bWin, aContent, bContent, aTint, bTint, dividerBelow,
+  label, aWin, bWin, aContent, bContent, aTint, bTint, dividerBelow, leftAlign,
 }: {
   label: ReactNode;
   aWin: boolean;
@@ -1077,14 +1077,16 @@ function CompareRow({
   aTint?: string;
   bTint?: string;
   dividerBelow?: boolean;
+  leftAlign?: boolean;
 }) {
+  const align = leftAlign ? "items-start text-left" : "items-center text-center";
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] gap-1.5 items-stretch"
+      className="grid grid-cols-[minmax(0,1fr)_68px_minmax(0,1fr)] gap-1.5 items-stretch"
       style={dividerBelow ? { paddingBottom: 10, borderBottom: "0.5px solid #e2e8f0" } : undefined}
     >
       <div
-        className="rounded-lg px-2.5 py-2.5 flex flex-col items-center justify-center text-center"
+        className={`rounded-lg px-2.5 py-2.5 flex flex-col justify-center ${align}`}
         style={{ backgroundColor: aTint ?? (aWin ? WIN_BG : MUTED_BG) }}
       >
         {aContent}
@@ -1093,7 +1095,7 @@ function CompareRow({
         {label}
       </div>
       <div
-        className="rounded-lg px-2.5 py-2.5 flex flex-col items-center justify-center text-center"
+        className={`rounded-lg px-2.5 py-2.5 flex flex-col justify-center ${align}`}
         style={{ backgroundColor: bTint ?? (bWin ? WIN_BG : MUTED_BG) }}
       >
         {bContent}
@@ -1376,6 +1378,35 @@ function HeadToHeadView() {
                 <div className="text-xs mt-1" style={{ color: stats.bWins > stats.aWins ? "var(--gold)" : "#7aab8a" }}>{stats.bWinPct}%</div>
               </div>
             </div>
+            {(stats.avgPtsDeltaA !== 0 || stats.avgPosDeltaA !== 0) && (
+              <>
+                <div className="h-px my-3" style={{ backgroundColor: "#2e5c40" }} />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#234436" }}>
+                    {stats.avgPtsDeltaA !== 0 && (
+                      <>
+                        <div className="text-xl font-mono font-bold tabular-nums leading-none text-white">{Math.abs(stats.avgPtsDeltaA)}</div>
+                        <div className="text-[9px] uppercase tracking-wider mt-1.5" style={{ color: "#7aab8a" }}>avg pts delta</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: "#9fd3b4" }}>
+                          {(stats.avgPtsDeltaA < 0 ? teamA.nickname : teamB.nickname)}'s favour
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#234436" }}>
+                    {stats.avgPosDeltaA !== 0 && (
+                      <>
+                        <div className="text-xl font-mono font-bold tabular-nums leading-none text-white">{Math.abs(stats.avgPosDeltaA)}</div>
+                        <div className="text-[9px] uppercase tracking-wider mt-1.5" style={{ color: "#7aab8a" }}>avg pos delta</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: "#9fd3b4" }}>
+                          {(stats.avgPosDeltaA < 0 ? teamA.nickname : teamB.nickname)}'s favour
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Dominance index — higher is better; leader shown in gold */}
@@ -1395,20 +1426,6 @@ function HeadToHeadView() {
 
           {/* Performance margins */}
           <SectionShell title="Performance Margins">
-            <CompareRow
-              label={<>avg pts<br/>delta</>}
-              aWin={stats.avgPtsDeltaA < stats.avgPtsDeltaB}
-              bWin={stats.avgPtsDeltaB < stats.avgPtsDeltaA}
-              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPtsDeltaA > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPtsDeltaA > 0 ? "+" : ""}{stats.avgPtsDeltaA}</div>}
-              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPtsDeltaB > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPtsDeltaB > 0 ? "+" : ""}{stats.avgPtsDeltaB}</div>}
-            />
-            <CompareRow
-              label={<>avg pos<br/>delta</>}
-              aWin={stats.avgPosDeltaA < stats.avgPosDeltaB}
-              bWin={stats.avgPosDeltaB < stats.avgPosDeltaA}
-              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPosDeltaA > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPosDeltaA > 0 ? "+" : ""}{stats.avgPosDeltaA}</div>}
-              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.avgPosDeltaB > 0 ? "#c0392b" : WIN_FG }}>{stats.avgPosDeltaB > 0 ? "+" : ""}{stats.avgPosDeltaB}</div>}
-            />
             <CompareRow
               label={<>biggest<br/>margin</>}
               aWin={(stats.biggestA?.gap ?? -1) >= (stats.biggestB?.gap ?? -1) && !!stats.biggestA}
@@ -1453,10 +1470,10 @@ function HeadToHeadView() {
               aContent={<CompareVal win={stats.eliteA > stats.eliteB}>{stats.eliteA}%</CompareVal>}
               bContent={<CompareVal win={stats.eliteB > stats.eliteA}>{stats.eliteB}%</CompareVal>}
             />
+          </SectionShell>
 
-            <div className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 pt-1 border-t border-slate-100">
-              Best finish by major
-            </div>
+          {/* Best finish by major — own section, left-justified tiles */}
+          <SectionShell title="Best Finish by Major">
             {stats.bestByMajor.map((m) => {
               const aBetter = m.aNum !== null && (m.bNum === null || m.aNum < m.bNum);
               const bBetter = m.bNum !== null && (m.aNum === null || m.bNum < m.aNum);
@@ -1466,10 +1483,10 @@ function HeadToHeadView() {
                   aWin={aBetter}
                   bWin={bBetter}
                   aContent={m.aNum !== null
-                    ? <div className="inline-flex justify-center"><PositionMedal positionDisplay={m.aDisp} medal={medalFor(m.aNum)} /></div>
+                    ? <PositionMedal positionDisplay={m.aDisp} medal={medalFor(m.aNum)} />
                     : <CompareVal win={false}>{m.aDisp}</CompareVal>}
                   bContent={m.bNum !== null
-                    ? <div className="inline-flex justify-center"><PositionMedal positionDisplay={m.bDisp} medal={medalFor(m.bNum)} /></div>
+                    ? <PositionMedal positionDisplay={m.bDisp} medal={medalFor(m.bNum)} />
                     : <CompareVal win={false}>{m.bDisp}</CompareVal>}
                 />
               );
@@ -1515,7 +1532,7 @@ function HeadToHeadView() {
               const bDisp = String(r.b.position_display ?? r.b.position_numeric);
               return (
                 <CompareRow key={r.tournament.id}
-                  label={<><span className="font-semibold" style={{ color: "var(--forest-deep)" }}>{r.tournament.shortName}</span><br/><span className="text-[10px] text-slate-400">{yr}</span></>}
+                  label={<>{r.tournament.shortName}<br/>{yr}</>}
                   aWin={aWon}
                   bWin={bWon}
                   aContent={<><div className="inline-flex justify-center">{medalFor(r.a.position_numeric)
