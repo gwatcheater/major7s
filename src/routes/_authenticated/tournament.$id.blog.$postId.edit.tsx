@@ -7,7 +7,20 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, ImagePlus, X } from "lucide-react";
+import { Loader2, ArrowLeft, ImagePlus, X, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/blog/$postId/edit")({
   component: EditBlogPost,
@@ -41,6 +54,19 @@ function EditBlogPost() {
   const [preview, setPreview] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deletePost() {
+    setDeleting(true);
+    const { error } = await supabase.from("blog_posts").delete().eq("id", postId);
+    if (error) { setDeleting(false); toast.error(`Could not delete: ${error.message}`); return; }
+    setDeleting(false);
+    toast.success("Blog post deleted");
+    queryClient.invalidateQueries({ queryKey: ["blog_posts", id] });
+    queryClient.invalidateQueries({ queryKey: ["blog_posts_all"] });
+    queryClient.invalidateQueries({ queryKey: ["blog_post", postId] });
+    navigate({ to: "/tournament/$id", params: { id } });
+  }
 
   useEffect(() => {
     if (post) {
@@ -180,14 +206,39 @@ function EditBlogPost() {
           )}
         </div>
 
-        <div className="flex gap-2 pt-2">
-          <Button onClick={save} disabled={saving || !title.trim()}>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Button onClick={save} disabled={saving || deleting || !title.trim()}>
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Save Changes
           </Button>
-          <Button variant="outline" onClick={() => navigate({ to: "/tournament/$id", params: { id } })} disabled={saving}>
+          <Button variant="outline" onClick={() => navigate({ to: "/tournament/$id", params: { id } })} disabled={saving || deleting}>
             Cancel
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={saving || deleting} className="ml-auto">
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete Post
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete this blog post? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className={cn(buttonVariants({ variant: "destructive" }))}
+                  onClick={deletePost}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Card>
     </div>

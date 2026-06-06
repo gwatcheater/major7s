@@ -1,44 +1,36 @@
-# Add Tournament Context dropdown to /blog/new
-
-Enhance `src/routes/_authenticated/blog.new.tsx` so admins can optionally link a new general blog post to a specific tournament, while preserving the existing "General" (null `tournament_id`) behaviour.
+## Objective
+Add a destructive "Delete Post" action to the existing blog post editing flow in both the general and tournament-scoped edit pages.
 
 ## Scope
+1. `src/routes/_authenticated/blog.$postId.edit.tsx` — general blog post editor.
+2. `src/routes/_authenticated/tournament.$id.blog.$postId.edit.tsx` — tournament-scoped blog post editor.
 
-- Single file change: `src/routes/_authenticated/blog.new.tsx`.
-- No schema, RLS, or migration changes — `blog_posts.tournament_id` is already nullable.
-- No change to the tournament-scoped flow at `/tournament/$id/blog/new`.
+## Plan
 
-## Implementation steps
+### 1. Add destructive delete button
+In the bottom action row of each edit form (currently holds "Save Changes" + "Cancel"), append a third button styled with the existing destructive variant (`bg-destructive` / `text-destructive-foreground` via the `Button` component's `destructive` variant). This places the button directly in the form alongside the existing controls.
 
-1. **Fetch tournaments** with TanStack Query inside the component:
-   - `useQuery({ queryKey: ["tournaments", "for-blog-select"], queryFn: ... })`
-   - Query: `supabase.from("tournaments").select("id, name, start_date").order("start_date", { ascending: false })`.
+### 2. Confirmation dialog
+Use the existing `AlertDialog` component (`src/components/ui/alert-dialog.tsx`) already in the project:
+- Triggered on clicking "Delete Post".
+- Title: "Are you sure?"
+- Description: "Are you sure you want to delete this blog post? This action cannot be undone."
+- Actions: "Cancel" (outline) + "Delete" (destructive).
 
-2. **Add local state**: `const [tournamentId, setTournamentId] = useState<string | null>(null)` (default = General).
+### 3. Delete mutation
+On confirm, call:
+```ts
+await supabase.from("blog_posts").delete().eq("id", postId);
+```
+Handle errors with `toast.error(...)`.
 
-3. **Add UI field** — a new labeled section above Title:
-   - Label: "Tournament Context".
-   - Use existing `Select` from `@/components/ui/select` (already in project) for consistency with the design system.
-   - First item: `<SelectItem value="__general__">General Blog Post</SelectItem>` (sentinel — Radix Select disallows empty string values).
-   - Then map tournaments → `<SelectItem value={t.id}>{t.name} ({new Date(t.start_date).getUTCFullYear()})</SelectItem>`.
-   - `onValueChange`: set `tournamentId` to `null` when value is `__general__`, else the UUID.
-
-4. **Update `publish()` insert payload**:
-   - Replace hardcoded `tournament_id: null` with `tournament_id: tournamentId`.
-   - Image upload path: keep `general/...` when `tournamentId` is null; use `${tournamentId}/...` when set (matches the pattern in tournament-scoped flow).
-
-5. **Redirect behaviour**: unchanged — always navigate to `/blog` after success (per request: "redirect back to the main /blog index").
-
-6. **Loading/empty handling**: while tournaments are loading, show the Select with just the General option enabled; no blocking spinner.
+### 4. Post-delete redirect & cache invalidation
+- On success, invalidate the relevant query keys (`blog_posts_all`, `blog_posts`, `blog_post`) and toast a success message.
+- Redirect the user away from the stale edit page:
+  - General edit → `/blog`
+  - Tournament edit → `/tournament/$id`
 
 ## Out of scope
-
-- No Zod schema (current form uses plain `useState`, not react-hook-form/zod — no validation layer to update).
-- No changes to the admin-only guard, image upload, or button styling.
-- No changes to `/tournament/$id/blog/new`.
-
-## Verification
-
-- Open `/blog/new` as admin → dropdown shows "General Blog Post" first, then tournaments newest-first as `Name (YYYY)`.
-- Publish with General selected → row inserted with `tournament_id = null`, redirected to `/blog`.
-- Publish with a tournament selected → row inserted with that `tournament_id`, redirected to `/blog`, and post also appears in that tournament hub's Blog collapsible.
+- No changes to RLS policies or schemas.
+- No changes to the list view.
+- No changes to the creation flow.
