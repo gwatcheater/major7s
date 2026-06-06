@@ -112,6 +112,26 @@ function NewGeneralBlogPost() {
 
       <Card className="p-5 md:p-6 space-y-4">
         <div>
+          <label className="text-[10px] uppercase tracking-widest font-bold block mb-1.5">Tournament Context</label>
+          <Select
+            value={tournamentId ?? GENERAL_VALUE}
+            onValueChange={(v) => setTournamentId(v === GENERAL_VALUE ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GENERAL_VALUE}>General Blog Post</SelectItem>
+              {tournaments.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name} ({new Date(t.start_date).getUTCFullYear()})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
           <label className="text-[10px] uppercase tracking-widest font-bold block mb-1.5">Title</label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title" />
         </div>
