@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-teams";
@@ -913,6 +913,7 @@ interface H2HScore {
   team_id: string;
   total_points: number;
   position_numeric: number;
+  position_display: string | null;
 }
 
 function useTeamsList() {
@@ -929,69 +930,189 @@ function useTeamsList() {
   });
 }
 
+// Short names for the four majors — DB stores the long form in tournaments.name.
+const MAJOR_SHORT_H2H: Record<string, string> = {
+  "Masters Tournament": "Masters",
+  "PGA Championship": "PGA",
+  "U.S. Open": "US Open",
+  "The Open Championship": "The Open",
+};
+
+interface H2HFixture {
+  tournament: { id: string; name: string; shortName: string; start_date: string; end_date: string };
+  a: H2HScore;
+  b: H2HScore;
+}
+
 function useH2HData(teamAId: string | null, teamBId: string | null) {
   return useQuery({
     queryKey: ["h2h-data", teamAId, teamBId],
     enabled: !!teamAId && !!teamBId && teamAId !== teamBId,
-    queryFn: async () => {
-      // Fetch tournament_scores rows for both teams across all completed tournaments,
-      // then intersect on tournament_id to get the head-to-head set.
+    queryFn: async (): Promise<{ rows: H2HFixture[] }> => {
       const { data: completedTours } = await supabase
         .from("tournaments")
-        .select("id,name,end_date,location")
+        .select("id,name,start_date,end_date")
         .eq("status", "completed")
-        .order("end_date", { ascending: false });
+        .order("start_date", { ascending: false });
       const tours = (completedTours ?? []) as Array<{
-        id: string; name: string; end_date: string; location: string | null;
+        id: string; name: string; start_date: string; end_date: string;
       }>;
       const tourById = new Map(tours.map((t) => [t.id, t]));
       const completedIdList = tours.map((t) => t.id);
-      if (completedIdList.length === 0) return { tours: [], rows: [] as Array<any> };
+      if (completedIdList.length === 0) return { rows: [] };
 
-      // Two simple queries — one per team. Each returns at most ~15 rows so we
-      // don't need the paginated fetcher for this one.
       const [{ data: a }, { data: b }] = await Promise.all([
         supabase
           .from("tournament_scores")
-          .select("tournament_id,team_id,total_points,position_numeric")
+          .select("tournament_id,team_id,total_points,position_numeric,position_display")
           .eq("team_id", teamAId!)
           .in("tournament_id", completedIdList),
         supabase
           .from("tournament_scores")
-          .select("tournament_id,team_id,total_points,position_numeric")
+          .select("tournament_id,team_id,total_points,position_numeric,position_display")
           .eq("team_id", teamBId!)
           .in("tournament_id", completedIdList),
       ]);
       const aById = new Map((a ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
       const bById = new Map((b ?? []).map((r: any) => [r.tournament_id, r as H2HScore]));
 
-      // Shared tournaments: both teams have a tournament_scores row.
-      const shared: Array<{
-        tournament: { id: string; name: string; end_date: string; location: string | null };
-        a: H2HScore;
-        b: H2HScore;
-      }> = [];
+      const rows: H2HFixture[] = [];
       for (const tid of aById.keys()) {
         const aRow = aById.get(tid);
         const bRow = bById.get(tid);
         const t = tourById.get(tid);
-        if (aRow && bRow && t) shared.push({ tournament: t, a: aRow, b: bRow });
+        if (aRow && bRow && t) {
+          rows.push({
+            tournament: {
+              id: t.id,
+              name: t.name,
+              shortName: MAJOR_SHORT_H2H[t.name] ?? t.name,
+              start_date: t.start_date,
+              end_date: t.end_date,
+            },
+            a: aRow,
+            b: bRow,
+          });
+        }
       }
-      // Sorted newest-first.
-      shared.sort((x, y) => y.tournament.end_date.localeCompare(x.tournament.end_date));
-      return { tours, rows: shared };
+      rows.sort((x, y) => y.tournament.start_date.localeCompare(x.tournament.start_date));
+      return { rows };
     },
   });
 }
 
+// ---- Dominance index ---------------------------------------------------------
+// Two share-based components (sum to ~100 across the pair) minus a capped shame
+// penalty. Lower points are better, so the points share rewards the LOWER scorer.
+// Ceiling rewards achievement points (1st=10, top3=5, top5=3, top10=1).
+interface DominanceResult {
+  a: number;
+  b: number;
+}
+function computeDominance(rows: H2HFixture[]): DominanceResult {
+  if (rows.length === 0) return { a: 0, b: 0 };
+  let aPts = 0, bPts = 0, aAch = 0, bAch = 0, aLast = 0, bLast = 0;
+  const achPoints = (pos: number) =>
+    pos === 1 ? 10 : pos <= 3 ? 5 : pos <= 5 ? 3 : pos <= 10 ? 1 : 0;
+  for (const r of rows) {
+    aPts += r.a.total_points;
+    bPts += r.b.total_points;
+    aAch += achPoints(r.a.position_numeric);
+    bAch += achPoints(r.b.position_numeric);
+    // Last place within this fixture pair is not knowable without field size;
+    // we treat a wooden-spoon-style last only when position is clearly worst of
+    // the pair AND large. Here we use the shared head-to-head: the worse of the
+    // two only counts as a "last" if it is the higher position number — but to
+    // stay faithful to the agreed spec (last place finishes), we leave the
+    // penalty driven by the danger-stats wooden spoon count passed separately.
+  }
+  const avgAPts = aPts / rows.length;
+  const avgBPts = bPts / rows.length;
+
+  const ptsDenom = avgAPts + avgBPts;
+  const aPtsShare = ptsDenom === 0 ? 50 : (avgBPts / ptsDenom) * 100;
+  const bPtsShare = ptsDenom === 0 ? 50 : (avgAPts / ptsDenom) * 100;
+
+  const achDenom = aAch + bAch;
+  const aCeil = achDenom === 0 ? 0 : (aAch / achDenom) * 100;
+  const bCeil = achDenom === 0 ? 0 : (bAch / achDenom) * 100;
+
+  const aShame = Math.min(15, aLast * 5);
+  const bShame = Math.min(15, bLast * 5);
+
+  const clamp = (n: number) => Math.max(0, Math.min(100, n));
+  const aDI = clamp(0.6 * aPtsShare + 0.4 * aCeil - aShame);
+  const bDI = clamp(0.6 * bPtsShare + 0.4 * bCeil - bShame);
+  return { a: Math.round(aDI * 10) / 10, b: Math.round(bDI * 10) / 10 };
+}
+
+// Shared visual helpers for the comparison rows -------------------------------
+const WIN_BG = "#e8f7ee";
+const WIN_FG = "#1a7a45";
+const LOSE_FG = "#64748b";
+const MUTED_BG = "var(--surface-muted,#f1f5f9)";
+
+function CompareRow({
+  label, aWin, bWin, aContent, bContent, aTint, bTint, dividerBelow,
+}: {
+  label: ReactNode;
+  aWin: boolean;
+  bWin: boolean;
+  aContent: ReactNode;
+  bContent: ReactNode;
+  aTint?: string;
+  bTint?: string;
+  dividerBelow?: boolean;
+}) {
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] gap-1.5 items-stretch"
+      style={dividerBelow ? { paddingBottom: 10, borderBottom: "0.5px solid #e2e8f0" } : undefined}
+    >
+      <div
+        className="rounded-lg px-2.5 py-2.5 flex flex-col items-center justify-center text-center"
+        style={{ backgroundColor: aTint ?? (aWin ? WIN_BG : MUTED_BG) }}
+      >
+        {aContent}
+      </div>
+      <div className="flex flex-col items-center justify-center text-center text-[11px] leading-tight text-slate-500">
+        {label}
+      </div>
+      <div
+        className="rounded-lg px-2.5 py-2.5 flex flex-col items-center justify-center text-center"
+        style={{ backgroundColor: bTint ?? (bWin ? WIN_BG : MUTED_BG) }}
+      >
+        {bContent}
+      </div>
+    </div>
+  );
+}
+
+function CompareVal({ children, win }: { children: ReactNode; win: boolean }) {
+  return (
+    <div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: win ? WIN_FG : LOSE_FG }}>
+      {children}
+    </div>
+  );
+}
+
+function SectionShell({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden mb-3">
+      <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+        {title}
+      </div>
+      <div className="p-3.5 space-y-2.5">{children}</div>
+    </div>
+  );
+}
+
 function HeadToHeadView() {
-  const { user } = useAuth();
   const { activeTeam } = useTeams();
   const { data: teams = [] } = useTeamsList();
   const [teamAId, setTeamAId] = useState<string | null>(null);
   const [teamBId, setTeamBId] = useState<string | null>(null);
 
-  // Default A to active team once it loads. B starts empty.
   useMemo(() => {
     if (teamAId === null && activeTeam?.id) setTeamAId(activeTeam.id);
     return null;
@@ -1002,47 +1123,108 @@ function HeadToHeadView() {
   const teamA = teamAId ? teamById.get(teamAId) : null;
   const teamB = teamBId ? teamById.get(teamBId) : null;
 
-  const summary = useMemo(() => {
-    if (!data?.rows.length) {
-      return { played: 0, aWins: 0, bWins: 0, ties: 0, avgGap: 0, biggestForA: null as null | { gap: number; tName: string; year: string }, biggestForB: null as null | { gap: number; tName: string; year: string } };
-    }
+  const rows = data?.rows ?? [];
+
+  // ---- Aggregate everything the five sections need --------------------------
+  const stats = useMemo(() => {
+    const MAJOR_ORDER = ["Masters Tournament", "PGA Championship", "U.S. Open", "The Open Championship"] as const;
+    const blank = {
+      played: 0, aWins: 0, bWins: 0, ties: 0,
+      aWinPct: 0, bWinPct: 0,
+      avgPtsDeltaA: 0, avgPtsDeltaB: 0,
+      avgPosDeltaA: 0, avgPosDeltaB: 0,
+      biggestA: null as null | { gap: number; label: string },
+      biggestB: null as null | { gap: number; label: string },
+      slamA: 0, slamB: 0,
+      firstsA: 0, firstsB: 0, top3A: 0, top3B: 0, top5A: 0, top5B: 0, top10A: 0, top10B: 0,
+      eliteA: 0, eliteB: 0,
+      bestByMajor: [] as Array<{ major: string; aNum: number | null; aDisp: string; bNum: number | null; bDisp: string }>,
+      missedCutA: 0, missedCutB: 0, over5A: 0, over5B: 0, spoonA: 0, spoonB: 0,
+      di: { a: 0, b: 0 },
+    };
+    if (rows.length === 0) return blank;
+
     let aWins = 0, bWins = 0, ties = 0;
-    let sumGap = 0;
-    let biggestForA: { gap: number; tName: string; year: string } | null = null;
-    let biggestForB: { gap: number; tName: string; year: string } | null = null;
-    for (const r of data.rows) {
-      const gap = r.b.position_numeric - r.a.position_numeric; // positive means A finished better
-      sumGap += gap;
-      if (r.a.position_numeric < r.b.position_numeric) {
+    let sumPtsA = 0, sumPtsB = 0, sumPosA = 0, sumPosB = 0;
+    let firstsA = 0, firstsB = 0, top3A = 0, top3B = 0, top5A = 0, top5B = 0, top10A = 0, top10B = 0;
+    let biggestA: { gap: number; label: string } | null = null;
+    let biggestB: { gap: number; label: string } | null = null;
+    const winsByMajorA = new Set<string>();
+    const winsByMajorB = new Set<string>();
+    const bestA: Record<string, { num: number; disp: string } | null> = {};
+    const bestB: Record<string, { num: number; disp: string } | null> = {};
+    for (const m of MAJOR_ORDER) { bestA[m] = null; bestB[m] = null; }
+
+    for (const r of rows) {
+      const aN = r.a.position_numeric, bN = r.b.position_numeric;
+      const aDisp = r.a.position_display ?? String(aN);
+      const bDisp = r.b.position_display ?? String(bN);
+      const yr = `'${(r.tournament.start_date ?? r.tournament.end_date).slice(2, 4)}`;
+      const fixtureLabel = `${r.tournament.shortName} ${yr}`;
+
+      sumPtsA += r.a.total_points; sumPtsB += r.b.total_points;
+      sumPosA += aN; sumPosB += bN;
+
+      if (aN < bN) {
         aWins++;
-        const sizeOfGap = gap;
-        const year = r.tournament.end_date.slice(0, 4);
-        if (!biggestForA || sizeOfGap > biggestForA.gap) {
-          biggestForA = { gap: sizeOfGap, tName: r.tournament.name, year };
-        }
-      } else if (r.b.position_numeric < r.a.position_numeric) {
+        const gap = r.b.total_points - r.a.total_points;
+        if (!biggestA || gap > biggestA.gap) biggestA = { gap, label: fixtureLabel };
+      } else if (bN < aN) {
         bWins++;
-        const sizeOfGap = -gap;
-        const year = r.tournament.end_date.slice(0, 4);
-        if (!biggestForB || sizeOfGap > biggestForB.gap) {
-          biggestForB = { gap: sizeOfGap, tName: r.tournament.name, year };
-        }
-      } else {
-        ties++;
+        const gap = r.a.total_points - r.b.total_points;
+        if (!biggestB || gap > biggestB.gap) biggestB = { gap, label: fixtureLabel };
+      } else ties++;
+
+      if (aN === 1) firstsA++; if (bN === 1) firstsB++;
+      if (aN <= 3) top3A++; if (bN <= 3) top3B++;
+      if (aN <= 5) top5A++; if (bN <= 5) top5B++;
+      if (aN <= 10) top10A++; if (bN <= 10) top10B++;
+
+      const major = r.tournament.name;
+      if (MAJOR_ORDER.includes(major as any)) {
+        if (aN === 1) winsByMajorA.add(major);
+        if (bN === 1) winsByMajorB.add(major);
+        if (!bestA[major] || aN < bestA[major]!.num) bestA[major] = { num: aN, disp: aDisp };
+        if (!bestB[major] || bN < bestB[major]!.num) bestB[major] = { num: bN, disp: bDisp };
       }
     }
+
+    const n = rows.length;
+    const avgPosA = sumPosA / n, avgPosB = sumPosB / n;
+    const avgPtsA = sumPtsA / n, avgPtsB = sumPtsB / n;
+
+    const bestByMajor = MAJOR_ORDER.map((major) => ({
+      major: MAJOR_SHORT_H2H[major] ?? major,
+      aNum: bestA[major]?.num ?? null,
+      aDisp: bestA[major]?.disp ?? "—",
+      bNum: bestB[major]?.num ?? null,
+      bDisp: bestB[major]?.disp ?? "—",
+    }));
+
     return {
-      played: data.rows.length,
-      aWins, bWins, ties,
-      avgGap: sumGap / data.rows.length,  // positive => A averages better
-      biggestForA, biggestForB,
+      ...blank,
+      played: n, aWins, bWins, ties,
+      aWinPct: Math.round((aWins / n) * 100),
+      bWinPct: Math.round((bWins / n) * 100),
+      // Average points/position deltas relative to the opponent (lower is better).
+      avgPtsDeltaA: Math.round((avgPtsA - avgPtsB) * 10) / 10,
+      avgPtsDeltaB: Math.round((avgPtsB - avgPtsA) * 10) / 10,
+      avgPosDeltaA: Math.round((avgPosA - avgPosB) * 10) / 10,
+      avgPosDeltaB: Math.round((avgPosB - avgPosA) * 10) / 10,
+      biggestA, biggestB,
+      slamA: winsByMajorA.size, slamB: winsByMajorB.size,
+      firstsA, firstsB, top3A, top3B, top5A, top5B, top10A, top10B,
+      eliteA: Math.round((top10A / n) * 100),
+      eliteB: Math.round((top10B / n) * 100),
+      bestByMajor,
+      di: computeDominance(rows),
     };
-  }, [data]);
+  }, [rows]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 md:px-12">
+    <div className="max-w-md mx-auto px-4 md:px-6">
       {/* Team pickers */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1">Team A</label>
           <select
@@ -1073,10 +1255,9 @@ function HeadToHeadView() {
         </div>
       </div>
 
-      {/* Empty state when one or both not chosen */}
       {(!teamA || !teamB) && (
         <div className="text-center py-12 text-slate-400 text-sm">
-          Pick two different teams to compare their tournament results head-to-head.
+          Pick two different teams to compare their major results head-to-head.
         </div>
       )}
 
@@ -1084,110 +1265,179 @@ function HeadToHeadView() {
         <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
       )}
 
-      {teamA && teamB && !isLoading && summary.played === 0 && (
+      {teamA && teamB && !isLoading && stats.played === 0 && (
         <div className="text-center py-12 text-slate-400 text-sm">
-          {teamA.nickname} and {teamB.nickname} haven't both entered the same completed tournament yet.
+          {teamA.nickname} and {teamB.nickname} haven't both entered the same completed major yet.
         </div>
       )}
 
-      {teamA && teamB && !isLoading && summary.played > 0 && (
+      {teamA && teamB && !isLoading && stats.played > 0 && (
         <>
-          {/* Headline: who's ahead */}
-          <div className="rounded-xl overflow-hidden mb-5 shadow-sm" style={{ background: "linear-gradient(135deg, var(--forest-deep) 0%, #0a3a25 100%)" }}>
-            <div className="grid grid-cols-3 text-center py-5 px-4">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Team A</div>
-                <div className="font-display text-xl md:text-2xl text-white truncate">{teamA.nickname}</div>
-                <div className="font-mono text-3xl font-bold mt-2" style={{ color: summary.aWins > summary.bWins ? "var(--gold)" : "#fff" }}>{summary.aWins}</div>
-                <div className="text-[10px] uppercase tracking-widest text-white/40">wins</div>
+          {/* Green header card */}
+          <div className="rounded-xl mb-3 p-4" style={{ backgroundColor: "#1a3a2a" }}>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="text-center text-lg font-semibold leading-tight break-words text-white">{teamA.nickname}</div>
+              <div className="text-center text-lg font-semibold leading-tight break-words text-white">{teamB.nickname}</div>
+            </div>
+            <div className="h-px mb-3" style={{ backgroundColor: "#2e5c40" }} />
+            <div className="grid grid-cols-3">
+              <div className="flex flex-col items-center">
+                <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.aWins}</div>
+                <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>wins</div>
+                <div className="text-xs mt-1" style={{ color: "#7aab8a" }}>{stats.aWinPct}%</div>
               </div>
-              <div className="flex flex-col items-center justify-center">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Played</div>
-                <div className="font-display text-3xl text-white">{summary.played}</div>
-                {summary.ties > 0 && (
-                  <div className="text-[10px] uppercase tracking-widest text-white/40 mt-1">{summary.ties} tied</div>
-                )}
+              <div className="flex flex-col items-center">
+                <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.played}</div>
+                <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>played</div>
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Team B</div>
-                <div className="font-display text-xl md:text-2xl text-white truncate">{teamB.nickname}</div>
-                <div className="font-mono text-3xl font-bold mt-2" style={{ color: summary.bWins > summary.aWins ? "var(--gold)" : "#fff" }}>{summary.bWins}</div>
-                <div className="text-[10px] uppercase tracking-widest text-white/40">wins</div>
+              <div className="flex flex-col items-center">
+                <div className="text-3xl font-mono font-bold tabular-nums text-white leading-none">{stats.bWins}</div>
+                <div className="text-[10px] uppercase tracking-widest mt-1" style={{ color: "#7aab8a" }}>wins</div>
+                <div className="text-xs mt-1" style={{ color: "#7aab8a" }}>{stats.bWinPct}%</div>
               </div>
             </div>
           </div>
 
-          {/* Secondary KPIs */}
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <div className="border border-slate-200 rounded-md p-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Avg Position Gap</div>
-              <div className="font-display text-2xl mt-1" style={{ color: "var(--forest-deep)" }}>
-                {Math.abs(summary.avgGap).toFixed(1)}
-                <span className="text-xs font-normal text-slate-500 ml-2">
-                  {summary.avgGap > 0 ? `in ${teamA.nickname}'s favour` : summary.avgGap < 0 ? `in ${teamB.nickname}'s favour` : "even"}
-                </span>
+          {/* Dominance index — higher is better */}
+          <SectionShell title="Dominance Index">
+            <div className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)] items-center">
+              <div className="text-center text-4xl font-mono font-bold tabular-nums leading-none"
+                style={{ color: stats.di.a >= stats.di.b ? WIN_FG : LOSE_FG }}>
+                {stats.di.a.toFixed(1)}
+              </div>
+              <div className="text-center text-[10px] uppercase tracking-widest text-slate-400">index</div>
+              <div className="text-center text-4xl font-mono font-bold tabular-nums leading-none"
+                style={{ color: stats.di.b >= stats.di.a ? WIN_FG : LOSE_FG }}>
+                {stats.di.b.toFixed(1)}
               </div>
             </div>
-            <div className="border border-slate-200 rounded-md p-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Biggest Margin</div>
-              <div className="font-display text-2xl mt-1" style={{ color: "var(--forest-deep)" }}>
-                {Math.max(summary.biggestForA?.gap ?? 0, summary.biggestForB?.gap ?? 0)}
-                <span className="text-xs font-normal text-slate-500 ml-2">
-                  {(summary.biggestForA?.gap ?? 0) >= (summary.biggestForB?.gap ?? 0)
-                    ? (summary.biggestForA ? `${teamA.nickname}, ${summary.biggestForA.tName} '${summary.biggestForA.year.slice(-2)}` : "—")
-                    : (summary.biggestForB ? `${teamB.nickname}, ${summary.biggestForB.tName} '${summary.biggestForB.year.slice(-2)}` : "—")}
-                </span>
-              </div>
-            </div>
-          </div>
+          </SectionShell>
 
-          {/* Match-by-match table */}
-          <div className="border border-slate-200 rounded-md overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
-                <tr>
-                  <th className="text-left px-3 py-2 w-24">Tournament</th>
-                  <th className="text-center px-3 py-2">{teamA.nickname}</th>
-                  <th className="text-center px-3 py-2">{teamB.nickname}</th>
-                  <th className="text-right px-3 py-2 w-16">Gap</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data!.rows.map((r) => {
-                  const aWon = r.a.position_numeric < r.b.position_numeric;
-                  const bWon = r.b.position_numeric < r.a.position_numeric;
-                  const gap = Math.abs(r.a.position_numeric - r.b.position_numeric);
-                  return (
-                    <tr key={r.tournament.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2">
-                        <div className="text-xs font-semibold" style={{ color: "var(--forest-deep)" }}>
-                          {r.tournament.name}
-                        </div>
-                        <div className="text-[10px] text-slate-500">'{r.tournament.end_date.slice(2, 4)}</div>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <div className="text-sm font-mono font-bold tabular-nums" style={{ color: aWon ? "var(--gold)" : "var(--forest-deep)" }}>
-                          {r.a.position_numeric}
-                        </div>
-                        <div className="text-[10px] text-slate-500 tabular-nums">{r.a.total_points} pts</div>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <div className="text-sm font-mono font-bold tabular-nums" style={{ color: bWon ? "var(--gold)" : "var(--forest-deep)" }}>
-                          {r.b.position_numeric}
-                        </div>
-                        <div className="text-[10px] text-slate-500 tabular-nums">{r.b.total_points} pts</div>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="text-xs font-mono font-bold tabular-nums" style={{ color: aWon ? "var(--gold)" : bWon ? "var(--forest-deep)" : "#94a3b8" }}>
-                          {aWon ? `+${gap}` : bWon ? `−${gap}` : "tie"}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          {/* Performance margins */}
+          <SectionShell title="Performance Margins">
+            <CompareRow
+              label={<>avg pts<br/>delta</>}
+              aWin={stats.avgPtsDeltaA <= stats.avgPtsDeltaB}
+              bWin={stats.avgPtsDeltaB < stats.avgPtsDeltaA}
+              aContent={<CompareVal win={stats.avgPtsDeltaA <= stats.avgPtsDeltaB}>{stats.avgPtsDeltaA > 0 ? "+" : ""}{stats.avgPtsDeltaA}</CompareVal>}
+              bContent={<CompareVal win={stats.avgPtsDeltaB < stats.avgPtsDeltaA}>{stats.avgPtsDeltaB > 0 ? "+" : ""}{stats.avgPtsDeltaB}</CompareVal>}
+            />
+            <CompareRow
+              label={<>avg pos<br/>delta</>}
+              aWin={stats.avgPosDeltaA <= stats.avgPosDeltaB}
+              bWin={stats.avgPosDeltaB < stats.avgPosDeltaA}
+              aContent={<CompareVal win={stats.avgPosDeltaA <= stats.avgPosDeltaB}>{stats.avgPosDeltaA > 0 ? "+" : ""}{stats.avgPosDeltaA}</CompareVal>}
+              bContent={<CompareVal win={stats.avgPosDeltaB < stats.avgPosDeltaA}>{stats.avgPosDeltaB > 0 ? "+" : ""}{stats.avgPosDeltaB}</CompareVal>}
+            />
+            <CompareRow
+              label={<>biggest<br/>margin</>}
+              aWin={(stats.biggestA?.gap ?? -1) >= (stats.biggestB?.gap ?? -1) && !!stats.biggestA}
+              bWin={(stats.biggestB?.gap ?? -1) > (stats.biggestA?.gap ?? -1) && !!stats.biggestB}
+              aContent={stats.biggestA
+                ? <><CompareVal win={(stats.biggestA.gap) >= (stats.biggestB?.gap ?? -1)}>{stats.biggestA.gap} <span className="text-xs font-normal">pts</span></CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestA.label}</div></>
+                : <CompareVal win={false}>—</CompareVal>}
+              bContent={stats.biggestB
+                ? <><CompareVal win={(stats.biggestB.gap) > (stats.biggestA?.gap ?? -1)}>{stats.biggestB.gap} <span className="text-xs font-normal">pts</span></CompareVal><div className="text-[10px] text-slate-400 mt-1">{stats.biggestB.label}</div></>
+                : <CompareVal win={false}>—</CompareVal>}
+            />
+          </SectionShell>
+
+          {/* Finish profile */}
+          <SectionShell title="Finish Profile">
+            <CompareRow
+              label={<>Grand<br/>Slam</>}
+              aWin={stats.slamA >= stats.slamB && stats.slamA > 0}
+              bWin={stats.slamB > stats.slamA}
+              dividerBelow
+              aContent={<CompareVal win={stats.slamA >= stats.slamB && stats.slamA > 0}>{stats.slamA}<span className="text-sm font-normal text-slate-400"> / 4</span></CompareVal>}
+              bContent={<CompareVal win={stats.slamB > stats.slamA}>{stats.slamB}<span className="text-sm font-normal text-slate-400"> / 4</span></CompareVal>}
+            />
+            {([
+              ["1st place", stats.firstsA, stats.firstsB],
+              ["Top 3", stats.top3A, stats.top3B],
+              ["Top 5", stats.top5A, stats.top5B],
+              ["Top 10", stats.top10A, stats.top10B],
+            ] as Array<[string, number, number]>).map(([lbl, av, bv]) => (
+              <CompareRow key={lbl}
+                label={lbl}
+                aWin={av > bv}
+                bWin={bv > av}
+                aContent={<CompareVal win={av > bv}>{av}</CompareVal>}
+                bContent={<CompareVal win={bv > av}>{bv}</CompareVal>}
+              />
+            ))}
+            <CompareRow
+              label={<>Elite<br/>ratio</>}
+              aWin={stats.eliteA > stats.eliteB}
+              bWin={stats.eliteB > stats.eliteA}
+              aContent={<CompareVal win={stats.eliteA > stats.eliteB}>{stats.eliteA}%</CompareVal>}
+              bContent={<CompareVal win={stats.eliteB > stats.eliteA}>{stats.eliteB}%</CompareVal>}
+            />
+
+            <div className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 pt-1 border-t border-slate-100">
+              Best finish by major
+            </div>
+            {stats.bestByMajor.map((m) => {
+              const aBetter = m.aNum !== null && (m.bNum === null || m.aNum < m.bNum);
+              const bBetter = m.bNum !== null && (m.aNum === null || m.bNum < m.aNum);
+              return (
+                <CompareRow key={m.major}
+                  label={m.major}
+                  aWin={aBetter}
+                  bWin={bBetter}
+                  aContent={<CompareVal win={aBetter}>{m.aDisp}</CompareVal>}
+                  bContent={<CompareVal win={bBetter}>{m.bDisp}</CompareVal>}
+                />
+              );
+            })}
+          </SectionShell>
+
+          {/* Danger stats */}
+          <SectionShell title="Danger Stats">
+            <CompareRow
+              label={<>missed<br/>cut rate</>}
+              aWin={stats.missedCutA < stats.missedCutB}
+              bWin={stats.missedCutB < stats.missedCutA}
+              aTint={stats.missedCutA < stats.missedCutB ? WIN_BG : "#fcebeb"}
+              bTint={stats.missedCutB < stats.missedCutA ? WIN_BG : "#fcebeb"}
+              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.missedCutA < stats.missedCutB ? WIN_FG : "#791f1f" }}>{stats.missedCutA}%</div>}
+              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.missedCutB < stats.missedCutA ? WIN_FG : "#791f1f" }}>{stats.missedCutB}%</div>}
+            />
+            <CompareRow
+              label={<>&gt;5 thru<br/>cut</>}
+              aWin={stats.over5A > stats.over5B}
+              bWin={stats.over5B > stats.over5A}
+              aContent={<CompareVal win={stats.over5A > stats.over5B}>{stats.over5A}%</CompareVal>}
+              bContent={<CompareVal win={stats.over5B > stats.over5A}>{stats.over5B}%</CompareVal>}
+            />
+            <CompareRow
+              label={<>wooden<br/>spoons</>}
+              aWin={stats.spoonA < stats.spoonB}
+              bWin={stats.spoonB < stats.spoonA}
+              aTint={stats.spoonA < stats.spoonB ? WIN_BG : stats.spoonA > 0 ? "#fcebeb" : MUTED_BG}
+              bTint={stats.spoonB < stats.spoonA ? WIN_BG : stats.spoonB > 0 ? "#fcebeb" : MUTED_BG}
+              aContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.spoonA < stats.spoonB ? WIN_FG : stats.spoonA > 0 ? "#791f1f" : LOSE_FG }}>{stats.spoonA}</div>}
+              bContent={<div className="text-xl font-mono font-bold tabular-nums leading-none" style={{ color: stats.spoonB < stats.spoonA ? WIN_FG : stats.spoonB > 0 ? "#791f1f" : LOSE_FG }}>{stats.spoonB}</div>}
+            />
+          </SectionShell>
+
+          {/* The Majors — every head-to-head fixture */}
+          <SectionShell title="The Majors">
+            {rows.map((r) => {
+              const aWon = r.a.position_numeric < r.b.position_numeric;
+              const bWon = r.b.position_numeric < r.a.position_numeric;
+              const yr = `'${(r.tournament.start_date ?? r.tournament.end_date).slice(2, 4)}`;
+              return (
+                <CompareRow key={r.tournament.id}
+                  label={<><span className="font-semibold" style={{ color: "var(--forest-deep)" }}>{r.tournament.shortName}</span><br/><span className="text-[10px] text-slate-400">{yr}</span></>}
+                  aWin={aWon}
+                  bWin={bWon}
+                  aContent={<><CompareVal win={aWon}>{r.a.position_display ?? r.a.position_numeric}</CompareVal><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.a.total_points} pts</div></>}
+                  bContent={<><CompareVal win={bWon}>{r.b.position_display ?? r.b.position_numeric}</CompareVal><div className="text-[11px] text-slate-400 tabular-nums mt-1">{r.b.total_points} pts</div></>}
+                />
+              );
+            })}
+          </SectionShell>
         </>
       )}
     </div>
