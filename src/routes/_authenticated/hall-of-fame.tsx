@@ -1433,6 +1433,9 @@ function HeadToHeadView() {
                 {stats.di.b.toFixed(1)}
               </div>
             </div>
+            <p className="text-[11px] leading-relaxed text-slate-400 text-center mt-2">
+              A head-to-head dominance rating across the majors both teams entered. It blends how well each scored, how often they finished near the top, and penalties for last-place finishes — distilled into one number. The higher score has had the upper hand.
+            </p>
           </SectionShell>
 
           {/* Performance margins */}
