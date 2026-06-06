@@ -230,7 +230,7 @@ export function UsersDirectoryTab() {
                         <TableRow
                           key={u.id}
                           className="cursor-pointer"
-                          onClick={() => setSelected(u)}
+                          onClick={() => setSelectedId(u.id)}
                         >
                           <TableCell className="font-medium">{full}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
@@ -249,7 +249,7 @@ export function UsersDirectoryTab() {
                               className="flex justify-end gap-2"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Button size="sm" variant="outline" onClick={() => setSelected(u)}>
+                              <Button size="sm" variant="outline" onClick={() => setSelectedId(u.id)}>
                                 <Settings className="size-3.5" /> Manage
                               </Button>
                               <Button
@@ -309,7 +309,7 @@ export function UsersDirectoryTab() {
       <UserDrawer
         user={selected}
         open={!!selected}
-        onOpenChange={(open) => !open && setSelected(null)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
         primaryTeamNickname={selected ? (primaryTeamNickname.get(selected.id) ?? null) : null}
       />
     </Card>
