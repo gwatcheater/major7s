@@ -1,47 +1,44 @@
-## Findings
+# Add Tournament Context dropdown to /blog/new
 
-The button code and imports in `src/routes/_authenticated/tournament.$id.tsx` are correct. The button is gated on `isAdmin` from `useAuth()`. Your current preview route is `/login?redirect=%2Fhome`, which strongly suggests you are not authenticated as admin in this preview tab.
+Enhance `src/routes/_authenticated/blog.new.tsx` so admins can optionally link a new general blog post to a specific tournament, while preserving the existing "General" (null `tournament_id`) behaviour.
 
-`isAdmin` resolves to `true` only if your user has a row in `user_roles` with `role = 'admin'`. The check is async (deferred via setTimeout in `use-auth.tsx`), and starts as `false`.
+## Scope
 
-## Diagnostic steps (build mode)
+- Single file change: `src/routes/_authenticated/blog.new.tsx`.
+- No schema, RLS, or migration changes — `blog_posts.tournament_id` is already nullable.
+- No change to the tournament-scoped flow at `/tournament/$id/blog/new`.
 
-1. **Add temporary debug logging** to `src/routes/_authenticated/tournament.$id.tsx`:
-   - Log `{ userId: user?.id, isAdmin }` on every render so we can see the actual values in the console.
-   - Render a small visible debug chip near the Blog section showing `admin: {String(isAdmin)}` and `user: {user?.email ?? "none"}` — only when not in production.
+## Implementation steps
 
-2. **Add a dev-mode fallback** so we can distinguish "JSX never renders" from "isAdmin is false":
-   ```tsx
-   {isAdmin ? (
-     <Button asChild ...>...</Button>
-   ) : import.meta.env.DEV ? (
-     <div className="p-4 text-xs text-muted-foreground border-b border-border">
-       [dev only] Admin button hidden — isAdmin = {String(isAdmin)}
-     </div>
-   ) : null}
-   ```
-   Note: in Vite use `import.meta.env.DEV`, not `process.env.NODE_ENV` (which is undefined in the browser bundle).
+1. **Fetch tournaments** with TanStack Query inside the component:
+   - `useQuery({ queryKey: ["tournaments", "for-blog-select"], queryFn: ... })`
+   - Query: `supabase.from("tournaments").select("id, name, start_date").order("start_date", { ascending: false })`.
 
-3. **Verify admin role in the database** via `read_query`:
-   ```sql
-   SELECT ur.user_id, u.email, ur.role
-   FROM public.user_roles ur
-   JOIN auth.users u ON u.id = ur.user_id
-   WHERE ur.role = 'admin';
-   ```
-   Confirm the signed-in account appears.
+2. **Add local state**: `const [tournamentId, setTournamentId] = useState<string | null>(null)` (default = General).
 
-4. **After diagnosis**, remove the debug logging and dev-only fallback, leaving only the original `{isAdmin && ...}` button.
+3. **Add UI field** — a new labeled section above Title:
+   - Label: "Tournament Context".
+   - Use existing `Select` from `@/components/ui/select` (already in project) for consistency with the design system.
+   - First item: `<SelectItem value="__general__">General Blog Post</SelectItem>` (sentinel — Radix Select disallows empty string values).
+   - Then map tournaments → `<SelectItem value={t.id}>{t.name} ({new Date(t.start_date).getUTCFullYear()})</SelectItem>`.
+   - `onValueChange`: set `tournamentId` to `null` when value is `__general__`, else the UUID.
 
-## What I will NOT do
+4. **Update `publish()` insert payload**:
+   - Replace hardcoded `tournament_id: null` with `tournament_id: tournamentId`.
+   - Image upload path: keep `general/...` when `tournamentId` is null; use `${tournamentId}/...` when set (matches the pattern in tournament-scoped flow).
 
-- Will not change the gating to render for non-admins in production.
-- Will not touch RLS, schemas, or the general `/blog` page.
-- Will not modify `use-auth.tsx` unless step 3 proves the role check itself is broken.
+5. **Redirect behaviour**: unchanged — always navigate to `/blog` after success (per request: "redirect back to the main /blog index").
 
-## Expected outcome
+6. **Loading/empty handling**: while tournaments are loading, show the Select with just the General option enabled; no blocking spinner.
 
-One of these three:
-- Console shows `isAdmin: true` → button is actually rendering; issue is visual (collapsible closed, scroll, cache). Hard reload.
-- Console shows `isAdmin: false` but DB has admin row → auth/session issue; need to sign in or `use-auth.tsx` query is failing.
-- DB has no admin row for your user → need to insert one.
+## Out of scope
+
+- No Zod schema (current form uses plain `useState`, not react-hook-form/zod — no validation layer to update).
+- No changes to the admin-only guard, image upload, or button styling.
+- No changes to `/tournament/$id/blog/new`.
+
+## Verification
+
+- Open `/blog/new` as admin → dropdown shows "General Blog Post" first, then tournaments newest-first as `Name (YYYY)`.
+- Publish with General selected → row inserted with `tournament_id = null`, redirected to `/blog`.
+- Publish with a tournament selected → row inserted with that `tournament_id`, redirected to `/blog`, and post also appears in that tournament hub's Blog collapsible.

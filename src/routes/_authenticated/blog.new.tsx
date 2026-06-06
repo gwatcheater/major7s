@@ -1,12 +1,22 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2, ArrowLeft, ImagePlus, X } from "lucide-react";
+
+const GENERAL_VALUE = "__general__";
 
 export const Route = createFileRoute("/_authenticated/blog/new")({
   component: NewGeneralBlogPost,
@@ -24,6 +34,19 @@ function NewGeneralBlogPost() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+
+  const { data: tournaments = [] } = useQuery({
+    queryKey: ["tournaments", "for-blog-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, start_date")
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   if (!isAdmin) {
     return (
@@ -52,7 +75,8 @@ function NewGeneralBlogPost() {
     let image_url: string | null = null;
     if (file) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `general/${crypto.randomUUID()}.${ext}`;
+      const folder = tournamentId ?? "general";
+      const path = `${folder}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from("blog-images")
         .upload(path, file, { contentType: file.type, upsert: false });
@@ -63,7 +87,7 @@ function NewGeneralBlogPost() {
 
     const { error: insErr } = await supabase.from("blog_posts").insert({
       author_id: user.id,
-      tournament_id: null,
+      tournament_id: tournamentId,
       title: title.trim(),
       body: body.trim(),
       image_url,
@@ -87,6 +111,26 @@ function NewGeneralBlogPost() {
       </header>
 
       <Card className="p-5 md:p-6 space-y-4">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-bold block mb-1.5">Tournament Context</label>
+          <Select
+            value={tournamentId ?? GENERAL_VALUE}
+            onValueChange={(v) => setTournamentId(v === GENERAL_VALUE ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={GENERAL_VALUE}>General Blog Post</SelectItem>
+              {tournaments.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name} ({new Date(t.start_date).getUTCFullYear()})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div>
           <label className="text-[10px] uppercase tracking-widest font-bold block mb-1.5">Title</label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Post title" />
