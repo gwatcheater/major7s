@@ -69,13 +69,11 @@ function GeneralBlogPostView() {
           </header>
 
           {post.image_url && (
-            <div className="w-full max-h-[350px] sm:max-h-[400px] overflow-hidden rounded-md border border-border mb-6">
-              <img
-                src={post.image_url}
-                alt={post.title}
-                className="w-full h-full object-cover object-center"
-              />
-            </div>
+            <img
+              src={post.image_url}
+              alt={post.title}
+              className="max-w-[280px] sm:max-w-[340px] h-auto object-contain mx-auto block shadow-sm rounded-xl mb-8"
+            />
           )}
 
           <Card className="p-5 md:p-6">
