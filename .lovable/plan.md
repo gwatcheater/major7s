@@ -6,11 +6,12 @@ The earlier sticky-only and spacer variants were still vulnerable because Chrome
 
 ## Fix
 
-Use a deterministic mobile shell:
+Use a deterministic mobile shell with the main content as the mobile scroll container:
 
 1. `MobileTopBar` is `fixed` on mobile, with a fixed z-index and safe-area-aware height.
 2. The main content gets matching safe-area-aware `padding-top`, so content can never begin underneath the fixed menu bar.
-3. Route changes under `_authenticated` force scroll restoration to `manual` and reset all scroll containers to `0` immediately, on the next animation frame, after load, and with short delayed fallbacks.
+3. On mobile, `main` owns scrolling at `100dvh`, so Chrome iOS cannot apply a stale window scroll that places content underneath the fixed header.
+4. Route changes under `_authenticated` force scroll restoration to `manual` and reset the window plus the main scroll container to `0` immediately, on the next animation frame, after load, and with short delayed fallbacks.
 
 ## Files
 
