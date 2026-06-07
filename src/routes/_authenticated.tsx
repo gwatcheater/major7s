@@ -26,7 +26,14 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   return (
-    <div className="flex flex-col lg:flex-row min-h-[100dvh]" style={{ backgroundColor: "var(--ui-bg)" }}>
+    // FIX: replaced `min-h-[100dvh]` with `min-h-screen`.
+    // Chrome iOS has a known bug where `dvh` units don't resolve correctly on
+    // first paint — the dynamic viewport height isn't settled until a resize
+    // event fires (e.g. rotating the device or pinching to zoom). This causes
+    // the layout to miscalculate available width on first load only, which is
+    // exactly the reported symptom. `min-h-screen` (100vh) is stable on first
+    // paint across all iOS browsers and is the correct fix here.
+    <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
       <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
