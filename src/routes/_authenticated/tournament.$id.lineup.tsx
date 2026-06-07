@@ -308,7 +308,8 @@ interface PicksHelperProps {
   selections: Record<number, string>;
   setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   isLocked: boolean;
-  tournamentPickCounts: Record<string, number>; // golfer_id → pick count across all teams
+  tournamentPickCounts: Record<string, number>;
+  onDeploy: () => void;
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -324,18 +325,19 @@ interface HelperPanelProps {
   deployed: boolean;
   setDeployed: (v: boolean) => void;
   onGenerate: () => void;
-  onRerollBucket?: (b: number) => void; // undefined = no per-row reroll (top-ranked)
+  onRerollBucket?: (b: number) => void;
   isLocked: boolean;
   generateLabel: string;
   generateIcon: React.ReactNode;
   setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  onDeploy: () => void;
 }
 
 function HelperPanel({
   buckets, byBucket, targetBuckets, toggleAll, toggleBucket, allActive,
   suggestions, setSuggestions, deployed, setDeployed,
   onGenerate, onRerollBucket, isLocked,
-  generateLabel, generateIcon, setSelections,
+  generateLabel, generateIcon, setSelections, onDeploy,
 }: HelperPanelProps) {
   const activeSuggestedBuckets = suggestions
     ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
@@ -349,14 +351,18 @@ function HelperPanel({
     if (!suggestions) return;
     setSelections((prev) => ({ ...prev, ...suggestions }));
     setDeployed(true);
+    onDeploy();
   }
 
   return (
     <div className="px-5 py-4 space-y-5">
       {/* Bucket selector */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
           Apply to buckets
+        </p>
+        <p className="text-xs text-muted-foreground mb-2">
+          Select 'All' or choose any combination of individual buckets
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -468,25 +474,28 @@ function HelperPanel({
 
       {/* Deploy */}
       {suggestions && activeSuggestedBuckets.length > 0 && (
-        <div className="flex items-center gap-3">
+        <div className="space-y-2">
           <button
             onClick={deploy}
             disabled={deployed || isLocked}
             className={[
-              "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
+              "w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
               deployed
                 ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
-                : "border-border hover:bg-muted/40",
+                : "text-white border-transparent",
             ].join(" ")}
+            style={!deployed ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)", color: "#1a2a10" } : {}}
           >
             {deployed ? (
-              <><Check className="h-3.5 w-3.5" />Deployed — save your lineup to confirm</>
+              <><Check className="h-3.5 w-3.5" />Deployed</>
             ) : (
               <><Play className="h-3.5 w-3.5" />{deployLabel}</>
             )}
           </button>
-          <p className="text-xs text-muted-foreground leading-tight max-w-[140px]">
-            Other buckets unchanged. Save lineup to confirm.
+          <p className="text-xs text-muted-foreground text-center">
+            {deployed
+              ? "Picks deployed — hit Save Lineup to confirm"
+              : "Other buckets unchanged. Save lineup to confirm."}
           </p>
         </div>
       )}
@@ -496,7 +505,7 @@ function HelperPanel({
 
 // ── Mode sub-components ───────────────────────────────────────────────────────
 
-function RandomMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections">) {
+function RandomMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections"> & { onDeploy: () => void }) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -538,11 +547,12 @@ function RandomMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperProps
       isLocked={isLocked} setSelections={setSelections}
       generateLabel="Suggest picks"
       generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+      onDeploy={onDeploy}
     />
   );
 }
 
-function TopRankedMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections">) {
+function TopRankedMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections"> & { onDeploy: () => void }) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -579,11 +589,12 @@ function TopRankedMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperPr
       isLocked={isLocked} setSelections={setSelections}
       generateLabel="Apply top-ranked"
       generateIcon={<Play className="h-3.5 w-3.5" />}
+      onDeploy={onDeploy}
     />
   );
 }
 
-function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCounts }: Omit<PicksHelperProps, "selections">) {
+function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCounts, onDeploy }: Omit<PicksHelperProps, "selections"> & { onDeploy: () => void }) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -631,13 +642,14 @@ function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCount
       isLocked={isLocked} setSelections={setSelections}
       generateLabel="Find contrarians"
       generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+      onDeploy={onDeploy}
     />
   );
 }
 
 // ── Main PicksHelper shell ────────────────────────────────────────────────────
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts }: PicksHelperProps) {
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
@@ -699,11 +711,10 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
               </button>
             );
           })}
+        </div>
 
-          {/* Divider pip */}
-          <span className="inline-flex items-center text-border text-xs select-none px-0.5">·</span>
-
-          {/* Coming-soon options */}
+        {/* Coming-soon options — second row */}
+        <div className="flex flex-wrap gap-2 mt-2">
           {comingSoon.map((m) => (
             <button
               key={m.label}
@@ -722,15 +733,16 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
 
       {/* Active mode content */}
       {activeMode === "random" && (
-        <RandomMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} />
+        <RandomMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} onDeploy={onDeploy} />
       )}
       {activeMode === "top-ranked" && (
-        <TopRankedMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} />
+        <TopRankedMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} onDeploy={onDeploy} />
       )}
       {activeMode === "contrarian" && (
         <ContrarianMode
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} tournamentPickCounts={tournamentPickCounts}
+          onDeploy={onDeploy}
         />
       )}
     </Card>
@@ -827,6 +839,7 @@ function LineupPicker() {
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [openAccordion, setOpenAccordion] = useState<number | null>(null);
   const [sheetBucket, setSheetBucket] = useState<number | null>(null);
+  const [helperDeployed, setHelperDeployed] = useState(false);
 
   useEffect(() => {
     const init: Record<number, string> = {};
@@ -1066,10 +1079,17 @@ function LineupPicker() {
 
       <div className="px-5 py-4">
         <button
-          onClick={save}
+          onClick={() => { save(); setHelperDeployed(false); }}
           disabled={!impersonatingId && isLocked}
-          className="w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
-          style={{ backgroundColor: "var(--forest-deep)" }}
+          className={[
+            "w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50 transition-colors",
+            helperDeployed
+              ? "bg-red-600"
+              : hasSubmission && changedCount === 0
+              ? "bg-green-600"
+              : "",
+          ].join(" ")}
+          style={!helperDeployed && !(hasSubmission && changedCount === 0) ? { backgroundColor: "var(--forest-deep)" } : {}}
         >
           Save Lineup
         </button>
@@ -1084,6 +1104,7 @@ function LineupPicker() {
       setSelections={setSelections}
       isLocked={!impersonatingId && isLocked}
       tournamentPickCounts={tournamentPickCounts}
+      onDeploy={() => setHelperDeployed(true)}
     />
   );
 
@@ -1103,7 +1124,7 @@ function LineupPicker() {
       )}
 
       {/* ── Mobile / small desktop: stacked (< lg) ── */}
-      <div className="lg:hidden p-4 md:p-12 max-w-4xl">
+      <div className="lg:hidden p-4 md:p-12 max-w-4xl pb-16 md:pb-16">
         <Link
           to={`/tournament/${id}`}
           className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
