@@ -301,7 +301,12 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament";
+
+// golfer_id → { points, tournamentName } for best historical finish
+interface HistoricalBestByGolfer {
+  [golferId: string]: { points: number; tournamentName: string; year: number };
+}
 
 interface PicksHelperProps {
   byBucket: Record<number, Golfer[]>;
@@ -310,6 +315,9 @@ interface PicksHelperProps {
   isLocked: boolean;
   tournamentPickCounts: Record<string, number>;
   onDeploy: () => void;
+  lastMajorBest: HistoricalBestByGolfer;       // best finish in most recent completed major
+  sameTournamentBest: HistoricalBestByGolfer;   // best finish in same tournament (prior years)
+  currentTournamentName: string;
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -331,13 +339,14 @@ interface HelperPanelProps {
   generateIcon: React.ReactNode;
   setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   onDeploy: () => void;
+  historicalData?: HistoricalBestByGolfer; // if present, show finish context in suggestion rows
 }
 
 function HelperPanel({
   buckets, byBucket, targetBuckets, toggleAll, toggleBucket, allActive,
   suggestions, setSuggestions, deployed, setDeployed,
   onGenerate, onRerollBucket, isLocked,
-  generateLabel, generateIcon, setSelections, onDeploy,
+  generateLabel, generateIcon, setSelections, onDeploy, historicalData,
 }: HelperPanelProps) {
   const activeSuggestedBuckets = suggestions
     ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
@@ -450,11 +459,15 @@ function HelperPanel({
                 ) : (
                   <>
                     <span className="text-sm flex-1">{golfer?.golfer_name ?? "Unknown"}</span>
-                    {golfer?.owgr_rank && (
+                    {historicalData && golfer && historicalData[golfer.id] ? (
+                      <span className="text-xs text-muted-foreground">
+                        P{historicalData[golfer.id].points} · {historicalData[golfer.id].tournamentName} {historicalData[golfer.id].year}
+                      </span>
+                    ) : golfer?.owgr_rank ? (
                       <span className="text-xs text-muted-foreground">
                         OWGR #{golfer.owgr_rank}
                       </span>
-                    )}
+                    ) : null}
                     {onRerollBucket && (
                       <button
                         onClick={() => { onRerollBucket(b); setDeployed(false); }}
@@ -647,15 +660,99 @@ function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCount
   );
 }
 
+// ── Shared helper for deterministic historical modes ─────────────────────────
+
+function bestByBucketFromHistory(
+  buckets: number[],
+  byBucket: Record<number, Golfer[]>,
+  historical: HistoricalBestByGolfer,
+  targetBuckets: Set<number>
+): Record<number, string> {
+  const result: Record<number, string> = {};
+  for (const b of buckets) {
+    if (!targetBuckets.has(b)) continue;
+    // Use CURRENT bucket assignment (byBucket) — not the historical bucket.
+    const pool = byBucket[b] ?? [];
+    // Only golfers in this bucket who have historical data
+    const candidates = pool.filter((g) => historical[g.id] != null);
+    if (candidates.length === 0) continue;
+    // Find the best (lowest) points among candidates
+    const bestPoints = Math.min(...candidates.map((g) => historical[g.id]!.points));
+    // Collect all tied golfers at that points value
+    const tied = candidates.filter((g) => historical[g.id]!.points === bestPoints);
+    // Randomise among ties
+    result[b] = tied[Math.floor(Math.random() * tied.length)].id;
+  }
+  return result;
+}
+
+function HistoricalMode({
+  byBucket, setSelections, isLocked, onDeploy,
+  historical, modeLabel, noDataLabel,
+}: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  historical: HistoricalBestByGolfer;
+  modeLabel: string;
+  noDataLabel: string;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function generate() {
+    const result = bestByBucketFromHistory(buckets, byBucket, historical, targetBuckets);
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  // Check if any bucket in the field has historical data at all
+  const hasAnyData = Object.values(byBucket).flat().some((g) => historical[g.id] != null);
+
+  return (
+    <>
+      {!hasAnyData && (
+        <div className="px-5 pt-4 pb-2">
+          <p className="text-xs text-muted-foreground italic">{noDataLabel}</p>
+        </div>
+      )}
+      <HelperPanel
+        buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+        toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+        suggestions={suggestions} setSuggestions={setSuggestions}
+        deployed={deployed} setDeployed={setDeployed}
+        onGenerate={generate} onRerollBucket={undefined}
+        isLocked={isLocked || !hasAnyData} setSelections={setSelections}
+        generateLabel={modeLabel}
+        generateIcon={<Play className="h-3.5 w-3.5" />}
+        onDeploy={onDeploy}
+        historicalData={historical}
+      />
+    </>
+  );
+}
+
 // ── Main PicksHelper shell ────────────────────────────────────────────────────
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy }: PicksHelperProps) {
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
-    { id: "random",     label: "Random",     emoji: "🎲", desc: "Random golfer per bucket" },
-    { id: "top-ranked", label: "Top ranked", emoji: "🏆", desc: "Highest OWGR in each bucket" },
-    { id: "contrarian", label: "Contrarian", emoji: "📉", desc: "Least-picked across all teams" },
+    { id: "random",          label: "Random",                emoji: "🎲", desc: "Random golfer per bucket" },
+    { id: "top-ranked",      label: "Top ranked",            emoji: "🏆", desc: "Highest OWGR in each bucket" },
+    { id: "contrarian",      label: "Contrarian",            emoji: "📉", desc: "Least-picked across all teams" },
+    { id: "last-major",      label: "Last major",   emoji: "⚡", desc: "Best finish in most recent major" },
+    { id: "same-tournament", label: "Prior year",    emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
   ];
 
   const comingSoon = [
@@ -690,7 +787,6 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           Choose a helper
         </p>
         <div className="flex flex-wrap gap-2">
-          {/* Live options */}
           {liveModes.map((m) => {
             const isActive = activeMode === m.id;
             return (
@@ -743,6 +839,24 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} tournamentPickCounts={tournamentPickCounts}
           onDeploy={onDeploy}
+        />
+      )}
+      {activeMode === "last-major" && (
+        <HistoricalMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          historical={lastMajorBest}
+          modeLabel="Apply last major picks"
+          noDataLabel="No historical data found for golfers in this field."
+        />
+      )}
+      {activeMode === "same-tournament" && (
+        <HistoricalMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          historical={sameTournamentBest}
+          modeLabel={`Apply ${currentTournamentName} picks`}
+          noDataLabel={`No prior ${currentTournamentName} results found for golfers in this field.`}
         />
       )}
     </Card>
@@ -816,6 +930,39 @@ function LineupPicker() {
         from += PAGE;
       }
       return all;
+    },
+  });
+
+  // Historical tournament_score_picks for the current field only.
+  // Filtered to golfer_ids present in the current field — so only relevant golfers are fetched.
+  // Joins through tournament_scores → tournaments to get tournament name and date.
+  // Only STATUS_FINISH rows; excludes the current tournament.
+  // Enabled only once the field is loaded (so we have golfer IDs to filter on).
+  const fieldGolferIds = field.map((g) => g.id);
+  const { data: historicalScorePicks = [] } = useQuery({
+    queryKey: ["historical-score-picks", id, fieldGolferIds.join(",")],
+    enabled: fieldGolferIds.length > 0,
+    queryFn: async () => {
+      let all: any[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("tournament_score_picks")
+          .select("golfer_id, points, tournament_scores(tournament_id, tournaments(id, name, start_date))")
+          .eq("status_type", "STATUS_FINISH")
+          .in("golfer_id", fieldGolferIds)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data ?? []);
+        if ((data ?? []).length < PAGE) break;
+        from += PAGE;
+      }
+      // Exclude rows belonging to the current tournament
+      return all.filter((row: any) => {
+        const tid = row.tournament_scores?.tournaments?.id;
+        return tid && tid !== id;
+      });
     },
   });
 
@@ -977,6 +1124,83 @@ function LineupPicker() {
     if (p.golfer_id) tournamentPickCounts[p.golfer_id] = (tournamentPickCounts[p.golfer_id] ?? 0) + 1;
   }
 
+  // Short major name for Same Tournament chip label
+  const shortMajorName = (name: string) => {
+    if (name.includes("Masters")) return "Masters";
+    if (name.includes("PGA Championship")) return "PGA";
+    if (name.includes("U.S. Open") || name.includes("US Open")) return "US Open";
+    if (name.includes("Open Championship") || name.includes("The Open")) return "The Open";
+    return name;
+  };
+  const currentTournamentName = tournament ? shortMajorName(tournament.name) : "";
+
+  // Build historical maps from tournament_score_picks.
+  // Rules:
+  // 1. Only golfers in the current field are considered (query already filtered).
+  // 2. Current bucket assignment (byBucket) is authoritative — not the historical bucket.
+  // 3. For each mode, find each golfer's best finish (lowest points) in the relevant
+  //    tournament(s), then surface per-bucket winners. Ties resolved randomly.
+  //
+  // "Last Major" = golfer's finish in the single most recently completed major.
+  // "Same Tournament" = golfer's finish in the most recent prior edition of this tournament.
+
+  type RawHistRow = {
+    golferId: string;
+    points: number;
+    tournamentName: string;
+    startDate: string;
+    year: number;
+  };
+
+  const rawRows: RawHistRow[] = [];
+  for (const row of historicalScorePicks) {
+    const t = row.tournament_scores?.tournaments;
+    if (!t?.start_date || !t?.name || !row.golfer_id) continue;
+    rawRows.push({
+      golferId: row.golfer_id,
+      points: row.points,
+      tournamentName: shortMajorName(t.name),
+      startDate: t.start_date,
+      year: new Date(t.start_date).getFullYear(),
+    });
+  }
+
+  // Most recent completed tournament date across all historical rows
+  const allDates = [...new Set(rawRows.map((r) => r.startDate))].sort();
+  const mostRecentDate = allDates[allDates.length - 1] ?? null;
+
+  // Per-golfer best (lowest) points from the last major.
+  // A golfer may appear multiple times (picked by different teams) — keep the lowest.
+  const lastMajorByGolfer: HistoricalBestByGolfer = {};
+  if (mostRecentDate) {
+    for (const r of rawRows.filter((r) => r.startDate === mostRecentDate)) {
+      const existing = lastMajorByGolfer[r.golferId];
+      if (!existing || r.points < existing.points) {
+        lastMajorByGolfer[r.golferId] = { points: r.points, tournamentName: r.tournamentName, year: r.year };
+      }
+    }
+  }
+
+  // Per-golfer best points from the most recent prior edition of the same tournament.
+  const sameTournamentRows = rawRows.filter((r) => r.tournamentName === currentTournamentName);
+  const sameDates = [...new Set(sameTournamentRows.map((r) => r.startDate))].sort();
+  const mostRecentSameDate = sameDates[sameDates.length - 1] ?? null;
+
+  const sameTournamentByGolfer: HistoricalBestByGolfer = {};
+  if (mostRecentSameDate) {
+    for (const r of sameTournamentRows.filter((r) => r.startDate === mostRecentSameDate)) {
+      const existing = sameTournamentByGolfer[r.golferId];
+      if (!existing || r.points < existing.points) {
+        sameTournamentByGolfer[r.golferId] = { points: r.points, tournamentName: r.tournamentName, year: r.year };
+      }
+    }
+  }
+
+  // Map historical data to HistoricalBestByGolfer shape expected by PicksHelper props.
+  // These are keyed by golfer_id and contain only field golfers (query was filtered).
+  const lastMajorBest: HistoricalBestByGolfer = lastMajorByGolfer;
+  const sameTournamentBest: HistoricalBestByGolfer = sameTournamentByGolfer;
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -1105,6 +1329,9 @@ function LineupPicker() {
       isLocked={!impersonatingId && isLocked}
       tournamentPickCounts={tournamentPickCounts}
       onDeploy={() => setHelperDeployed(true)}
+      lastMajorBest={lastMajorBest}
+      sameTournamentBest={sameTournamentBest}
+      currentTournamentName={currentTournamentName}
     />
   );
 
