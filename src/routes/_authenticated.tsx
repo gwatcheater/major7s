@@ -37,15 +37,15 @@ function AuthenticatedLayout() {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
+      {/* FIX: MobileTopBar is position:fixed (Chrome iOS doesn't reliably reserve
+          sticky height on first paint). This in-flow spacer guarantees the 64px
+          offset deterministically before first paint. lg:hidden mirrors the header. */}
+      <MobileTopBarSpacer />
       <AppSidebar />
-      {/* FIX: mt-16 on mobile pushes main below the sticky MobileTopBar (h-16 = 64px).
-          A sticky element still occupies space in the flow on first render but
-          Chrome iOS doesn't always account for it correctly, so we use margin-top
-          as a guaranteed offset that doesn't depend on Chrome resolving sticky
-          positioning before first paint. lg:mt-0 removes it on desktop. */}
-      <main className="flex-1 min-w-0 overflow-x-hidden mt-20 lg:mt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
   );
+
 }
