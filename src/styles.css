@@ -102,19 +102,18 @@
 }
 
 @keyframes reveal {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* FIX: removed translateY from the animation. The vertical transform was
+     causing Chrome iOS to miscalculate the initial scroll position on first
+     paint — cards starting 8px lower than their final position, multiplied
+     across multiple cards with staggered delays, pushed the page height enough
+     for Chrome to initialise at a non-zero scroll offset. Fade only is safe. */
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-.animate-reveal { animation: reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-reveal { animation: reveal 0.4s ease-out forwards; }
 
 @layer base {
   * { border-color: var(--color-border); }
-  /* FIX: moved overflow-x: hidden from body to html.
-     Setting overflow-x: hidden on body creates a new scroll container in Chrome iOS
-     that is not sized correctly on first paint — the body becomes wider than the
-     viewport until a reflow is triggered (e.g. rotating the device or pinching).
-     Safari handles this gracefully; Chrome iOS does not. Moving it to html instead
-     fixes the sizing context without any visual difference. */
   html {
     -webkit-text-size-adjust: 100%;
     overflow-x: hidden;
