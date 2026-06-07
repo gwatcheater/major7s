@@ -941,11 +941,46 @@ function LineupPicker() {
   });
 
   // Historical tournament_score_picks for the current field only.
-  // Filtered to golfer_ids present in the current field — so only relevant golfers are fetched.
-  // Joins through tournament_scores → tournaments to get tournament name and date.
-  // Only STATUS_FINISH rows; excludes the current tournament.
-  // Enabled only once the field is loaded (so we have golfer IDs to filter on).
+  // Approach: two flat queries joined client-side to avoid PostgREST nested join ambiguity.
+  // Query 1: tournament_scores — get id → tournament_id mapping for all completed tournaments.
+  // Query 2: tournament_score_picks — get golfer results filtered to current field golfers.
+  // Join client-side: picks.tournament_score_id → scores.id → scores.tournament_id → tournament metadata.
   const fieldGolferIds = field.map((g) => g.id);
+
+  const { data: allTournamentScores = [] } = useQuery({
+    queryKey: ["tournament-scores-map"],
+    queryFn: async () => {
+      let all: any[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("tournament_scores")
+          .select("id, tournament_id")
+          .range(from, from + PAGE - 1);
+        if (error) { console.error("[PicksHelper] tournament_scores error:", error); throw error; }
+        all = all.concat(data ?? []);
+        if ((data ?? []).length < PAGE) break;
+        from += PAGE;
+      }
+      console.log(`[PicksHelper] tournament_scores loaded: ${all.length} rows, sample:`, all[0]);
+      return all as { id: string; tournament_id: string }[];
+    },
+  });
+
+  const { data: allTournaments = [] } = useQuery({
+    queryKey: ["tournaments-list"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("id, name, start_date")
+        .eq("status", "completed");
+      if (error) { console.error("[PicksHelper] tournaments error:", error); throw error; }
+      console.log(`[PicksHelper] tournaments loaded: ${data?.length} rows`);
+      return data as { id: string; name: string; start_date: string }[];
+    },
+  });
+
   const { data: historicalScorePicks = [] } = useQuery({
     queryKey: ["historical-score-picks", id, fieldGolferIds.join(",")],
     enabled: fieldGolferIds.length > 0,
@@ -956,25 +991,17 @@ function LineupPicker() {
       while (true) {
         const { data, error } = await supabase
           .from("tournament_score_picks")
-          .select("golfer_id, points, tournament_scores(tournament_id, tournaments(id, name, start_date))")
+          .select("golfer_id, points, tournament_score_id")
           .eq("status_type", "STATUS_FINISH")
           .in("golfer_id", fieldGolferIds)
           .range(from, from + PAGE - 1);
-        if (error) {
-          console.error("[PicksHelper] historicalScorePicks query error:", error);
-          throw error;
-        }
-        console.log(`[PicksHelper] historicalScorePicks page from=${from}, rows=${data?.length ?? 0}, sample:`, data?.[0]);
+        if (error) { console.error("[PicksHelper] tournament_score_picks error:", error); throw error; }
         all = all.concat(data ?? []);
         if ((data ?? []).length < PAGE) break;
         from += PAGE;
       }
-      const filtered = all.filter((row: any) => {
-        const tid = row.tournament_scores?.tournaments?.id;
-        return tid && tid !== id;
-      });
-      console.log(`[PicksHelper] historicalScorePicks total=${all.length}, after filter=${filtered.length}`);
-      return filtered;
+      console.log(`[PicksHelper] tournament_score_picks loaded: ${all.length} rows, sample:`, all[0]);
+      return all as { golfer_id: string; points: number; tournament_score_id: string }[];
     },
   });
 
@@ -1150,11 +1177,20 @@ function LineupPicker() {
   // Rules:
   // 1. Only golfers in the current field are considered (query already filtered).
   // 2. Current bucket assignment (byBucket) is authoritative — not the historical bucket.
-  // 3. For each mode, find each golfer's best finish (lowest points) in the relevant
-  //    tournament(s), then surface per-bucket winners. Ties resolved randomly.
+  // 3. For each mode, find each golfer's finish in the relevant tournament,
+  //    lowest points = best finish. Ties resolved randomly at the bucket level.
   //
-  // "Last Major" = golfer's finish in the single most recently completed major.
-  // "Same Tournament" = golfer's finish in the most recent prior edition of this tournament.
+  // "Last Major"    = golfer's finish in the single most recently completed major (by start_date
+  //                   from the tournaments table, not inferred from picks data).
+  // "Prior Year"    = golfer's finish in the most recent prior edition of THIS tournament.
+
+  // Client-side join: tournament_score_picks → tournament_scores → tournaments
+  const scoreIdToTournamentId = new Map<string, string>(
+    allTournamentScores.map((s) => [s.id, s.tournament_id])
+  );
+  const tournamentIdToMeta = new Map<string, { name: string; start_date: string }>(
+    allTournaments.map((t) => [t.id, { name: t.name, start_date: t.start_date }])
+  );
 
   type RawHistRow = {
     golferId: string;
@@ -1162,54 +1198,64 @@ function LineupPicker() {
     tournamentName: string;
     startDate: string;
     year: number;
+    tournamentId: string;
   };
 
   const rawRows: RawHistRow[] = [];
   for (const row of historicalScorePicks) {
-    const t = row.tournament_scores?.tournaments;
-    if (!t?.start_date || !t?.name || !row.golfer_id) continue;
+    const tournamentId = scoreIdToTournamentId.get(row.tournament_score_id);
+    if (!tournamentId || tournamentId === id) continue; // skip current tournament
+    const meta = tournamentIdToMeta.get(tournamentId);
+    if (!meta?.start_date || !meta?.name) continue;
     rawRows.push({
       golferId: row.golfer_id,
       points: row.points,
-      tournamentName: shortMajorName(t.name),
-      startDate: t.start_date,
-      year: new Date(t.start_date).getFullYear(),
+      tournamentName: shortMajorName(meta.name),
+      startDate: meta.start_date,
+      year: new Date(meta.start_date).getFullYear(),
+      tournamentId,
     });
   }
+  console.log(`[PicksHelper] rawRows after join: ${rawRows.length}, sample:`, rawRows[0]);
 
-  // Most recent completed tournament date across all historical rows
-  const allDates = [...new Set(rawRows.map((r) => r.startDate))].sort();
-  const mostRecentDate = allDates[allDates.length - 1] ?? null;
+  // Determine the most recent completed tournament from the tournaments table directly —
+  // authoritative source, not inferred from which golfers happened to have picks data.
+  const completedPriorTournaments = allTournaments
+    .filter((t) => t.id !== id && t.start_date < (tournament?.start_date ?? "9999"))
+    .sort((a, b) => b.start_date.localeCompare(a.start_date)); // descending
 
-  // Per-golfer best (lowest) points from the last major.
-  // A golfer may appear multiple times (picked by different teams) — keep the lowest.
+  const lastMajorTournamentId = completedPriorTournaments[0]?.id ?? null;
+
+  // Most recent prior edition of THIS tournament by name
+  const priorSameTournaments = completedPriorTournaments
+    .filter((t) => shortMajorName(t.name) === currentTournamentName);
+  const priorYearTournamentId = priorSameTournaments[0]?.id ?? null;
+
+  // Last Major: per golfer, take their result from lastMajorTournamentId only.
+  // A golfer can appear multiple times (picked by multiple teams) — keep lowest points.
   const lastMajorByGolfer: HistoricalBestByGolfer = {};
-  if (mostRecentDate) {
-    for (const r of rawRows.filter((r) => r.startDate === mostRecentDate)) {
+  if (lastMajorTournamentId) {
+    for (const r of rawRows.filter((r) => r.tournamentId === lastMajorTournamentId)) {
       const existing = lastMajorByGolfer[r.golferId];
       if (!existing || r.points < existing.points) {
         lastMajorByGolfer[r.golferId] = { points: r.points, tournamentName: r.tournamentName, year: r.year };
       }
     }
   }
+  console.log(`[PicksHelper] lastMajor tournamentId=${lastMajorTournamentId}, matches=${Object.keys(lastMajorByGolfer).length} field golfers`);
 
-  // Per-golfer best points from the most recent prior edition of the same tournament.
-  const sameTournamentRows = rawRows.filter((r) => r.tournamentName === currentTournamentName);
-  const sameDates = [...new Set(sameTournamentRows.map((r) => r.startDate))].sort();
-  const mostRecentSameDate = sameDates[sameDates.length - 1] ?? null;
-
+  // Prior Year: per golfer, take their result from priorYearTournamentId only.
   const sameTournamentByGolfer: HistoricalBestByGolfer = {};
-  if (mostRecentSameDate) {
-    for (const r of sameTournamentRows.filter((r) => r.startDate === mostRecentSameDate)) {
+  if (priorYearTournamentId) {
+    for (const r of rawRows.filter((r) => r.tournamentId === priorYearTournamentId)) {
       const existing = sameTournamentByGolfer[r.golferId];
       if (!existing || r.points < existing.points) {
         sameTournamentByGolfer[r.golferId] = { points: r.points, tournamentName: r.tournamentName, year: r.year };
       }
     }
   }
+  console.log(`[PicksHelper] priorYear tournamentId=${priorYearTournamentId}, matches=${Object.keys(sameTournamentByGolfer).length} field golfers`);
 
-  // Map historical data to HistoricalBestByGolfer shape expected by PicksHelper props.
-  // These are keyed by golfer_id and contain only field golfers (query was filtered).
   const lastMajorBest: HistoricalBestByGolfer = lastMajorByGolfer;
   const sameTournamentBest: HistoricalBestByGolfer = sameTournamentByGolfer;
 
