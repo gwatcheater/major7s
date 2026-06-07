@@ -10,20 +10,13 @@ export function MobileTopBar() {
   const [open, setOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
 
-  // Close drawer on route change
   useEffect(() => {
     setOpen(false);
   }, [path]);
 
   return (
-    // FIX: changed from `sticky` to `fixed` so the header is fully removed from
-    // the document flow. With `sticky`, the header still occupies space in the
-    // flow AND overlaps content when scrolled, requiring precise padding compensation.
-    // With `fixed` + `inset-x-0 top-0`, the header is always at the top of the
-    // viewport and the padding on <main> (pt-16 in _authenticated.tsx) provides
-    // the exact clearance needed regardless of scroll position.
     <header
-      className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-4 h-16 border-b border-white/10 lg:hidden"
+      className="sticky top-0 z-40 flex items-center justify-between px-4 h-16 border-b border-white/10 lg:hidden"
       style={{ backgroundColor: "var(--forest-deep)" }}
     >
       <Sheet open={open} onOpenChange={setOpen}>
