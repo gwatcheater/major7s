@@ -23,18 +23,17 @@ interface Tournament {
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
-  // Subtle rounded pills: muted backgrounds, colour carried in the text.
   const map: Record<Tournament["status"], { label: string; bg: string; color: string }> = {
-    upcoming:       { label: "Upcoming",        bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
-    open_for_picks: { label: "Open for Picks",  bg: "rgb(187 247 208)", color: "rgb(20 83 45)"   }, // green, deeper
-    picks_closed:   { label: "Picks Closed",    bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
-    live:           { label: "Live",            bg: "rgb(253 230 138)", color: "rgb(120 53 15)"  }, // amber, deeper
-    completed:      { label: "Completed",       bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   }, // slate, deeper
+    upcoming:       { label: "Upcoming",        bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   },
+    open_for_picks: { label: "Open for Picks",  bg: "rgb(187 247 208)", color: "rgb(20 83 45)"   },
+    picks_closed:   { label: "Picks Closed",    bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   },
+    live:           { label: "Live",            bg: "rgb(253 230 138)", color: "rgb(120 53 15)"  },
+    completed:      { label: "Completed",       bg: "rgb(226 232 240)", color: "rgb(51 65 85)"   },
   };
   const m = map[status];
   return (
     <span
-      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
+      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap"
       style={{ backgroundColor: m.bg, color: m.color }}
     >
       {m.label}
@@ -43,13 +42,12 @@ function StatusBadge({ status }: { status: Tournament["status"] }) {
 }
 
 function PicksBadge({ complete }: { complete: boolean }) {
-  // Subtle rounded pill matching the StatusBadge style.
   const styles = complete
-    ? { bg: "rgb(187 247 208)", color: "rgb(20 83 45)",  label: "Picks Selected" }       // green, deeper
-    : { bg: "rgb(254 202 202)", color: "rgb(127 29 29)", label: "Picks Not Selected" };  // red, deeper
+    ? { bg: "rgb(187 247 208)", color: "rgb(20 83 45)",  label: "Picks Selected" }
+    : { bg: "rgb(254 202 202)", color: "rgb(127 29 29)", label: "Picks Not Selected" };
   return (
     <span
-      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full inline-flex items-center gap-1"
+      className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full inline-flex items-center gap-1 whitespace-nowrap"
       style={{ backgroundColor: styles.bg, color: styles.color }}
     >
       {complete ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
@@ -92,10 +90,6 @@ function HomePage() {
   });
 
   return (
-    // FIX: added `w-full` so the container claims full available width on first paint.
-    // Without it, Chrome iOS can defer width resolution until a reflow, causing cards
-    // to render too wide before snapping into place. `max-w-6xl` alone is insufficient
-    // as a sizing anchor in Chrome's initial layout pass.
     <div className="w-full p-4 md:p-12 max-w-6xl">
       <header className="mb-6" />
 
@@ -111,9 +105,6 @@ function HomePage() {
           </p>
         </div>
       ) : (
-        // FIX: added `w-full` to the grid container for the same reason — ensures
-        // children (cards) inherit a resolved width from the start rather than
-        // relying on Chrome to infer it post-paint.
         <div className="grid gap-6 w-full">
           {tournaments.map((t, i) => {
             const picks = pickCounts[t.id] ?? 0;
@@ -125,14 +116,10 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                // FIX: added `w-full box-border` to each card. `overflow-hidden` on a
-                // card without an explicit width anchor can cause Chrome iOS to miscalculate
-                // the card's intrinsic width on first paint. `box-border` ensures padding
-                // is included in the width calculation consistently across browsers.
                 className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
-                {/* Full-card click target navigates to the hub */}
+                {/* Full-card click target */}
                 <Link
                   to={link.to}
                   params={link.params}
@@ -146,14 +133,15 @@ function HomePage() {
                 />
 
                 <div className="flex-1 p-5 md:p-8 relative pointer-events-none">
-                  {/* Status badges row — top right, both on one row */}
-                  <div className="flex justify-end gap-2 mb-4 flex-wrap">
+                  {/* FIX: badges row — overflow-hidden added so badges cannot push
+                      the card wider than its container on Chrome iOS first paint.
+                      min-w-0 ensures flex children respect the parent boundary. */}
+                  <div className="flex justify-end gap-2 mb-4 min-w-0 overflow-hidden">
                     <StatusBadge status={t.status} />
                     {activeTeam && <PicksBadge complete={complete} />}
                   </div>
 
-                  {/* Identity row — logo left, name/venue/dates stacked right.
-                     Logo gets a soft gold ring when picks are open, to feel "live". */}
+                  {/* Identity row */}
                   <div className="flex items-start gap-4 min-w-0">
                     {t.logo_url ? (
                       <img
@@ -177,16 +165,12 @@ function HomePage() {
                       </p>
                     </div>
                   </div>
-
-
                 </div>
 
-                {/* Countdown strip — coloured band running across the card bottom.
-                   Gold when picks are open, otherwise neutral. Big mono numbers, small
-                   d/h/m/s labels. The hero PICKS button sits on the right of the strip. */}
+                {/* Countdown strip */}
                 {showLineupCta ? (
                   <div
-                    className="relative flex items-stretch justify-between gap-3 px-5 py-3 md:px-8 md:py-4"
+                    className="relative flex items-stretch justify-between gap-3 px-5 py-3 md:px-8 md:py-4 min-w-0 overflow-hidden"
                     style={{
                       background: "linear-gradient(90deg, rgba(245,196,65,0.16) 0%, rgba(245,196,65,0.06) 100%)",
                       borderTop: "1px solid rgba(245,196,65,0.35)",
@@ -204,7 +188,7 @@ function HomePage() {
                       to="/tournament/$id/lineup"
                       params={{ id: t.id }}
                       onClick={(e) => e.stopPropagation()}
-                      className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all"
+                      className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all shrink-0"
                       style={{
                         backgroundColor: "var(--forest-deep)",
                       }}
