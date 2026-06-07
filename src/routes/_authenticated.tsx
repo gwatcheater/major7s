@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileTopBar } from "@/components/mobile-shell";
 
-
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
@@ -63,7 +62,10 @@ function AuthenticatedLayout() {
   }, [pathname]);
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
+    <div
+      className="flex flex-col lg:flex-row min-h-screen w-full"
+      style={{ backgroundColor: "var(--ui-bg)" }}
+    >
       <MobileTopBar />
       <AppSidebar />
       <main className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
@@ -71,5 +73,4 @@ function AuthenticatedLayout() {
       </main>
     </div>
   );
-
 }

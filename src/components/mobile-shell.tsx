@@ -38,7 +38,10 @@ export function MobileTopBar() {
         Major<span style={{ color: "var(--gold)" }}>7s</span>
       </Link>
 
-      <Link to="/profile" className="size-9 rounded-full bg-white/10 border border-white/20 grid place-items-center font-display text-xs text-white/80">
+      <Link
+        to="/profile"
+        className="size-9 rounded-full bg-white/10 border border-white/20 grid place-items-center font-display text-xs text-white/80"
+      >
         {user?.email?.[0]?.toUpperCase() ?? "?"}
       </Link>
     </header>
