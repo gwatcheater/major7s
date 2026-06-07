@@ -1478,35 +1478,6 @@ function HeadToHeadView() {
                 <div className="text-xs mt-1" style={{ color: stats.bWins > stats.aWins ? "var(--gold)" : "#7aab8a" }}>{stats.bWinPct}%</div>
               </div>
             </div>
-            {(stats.avgPtsDeltaA !== 0 || stats.avgPosDeltaA !== 0) && (
-              <>
-                <div className="h-px my-3" style={{ backgroundColor: "#2e5c40" }} />
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#234436" }}>
-                    {stats.avgPtsDeltaA !== 0 && (
-                      <>
-                        <div className="text-xl font-mono font-bold tabular-nums leading-none text-white">{Math.abs(stats.avgPtsDeltaA)}</div>
-                        <div className="text-[9px] uppercase tracking-wider mt-1.5" style={{ color: "#7aab8a" }}>avg pts delta</div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "#9fd3b4" }}>
-                          {(stats.avgPtsDeltaA < 0 ? teamA.nickname : teamB.nickname)}'s favour
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#234436" }}>
-                    {stats.avgPosDeltaA !== 0 && (
-                      <>
-                        <div className="text-xl font-mono font-bold tabular-nums leading-none text-white">{Math.abs(stats.avgPosDeltaA)}</div>
-                        <div className="text-[9px] uppercase tracking-wider mt-1.5" style={{ color: "#7aab8a" }}>avg pos delta</div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "#9fd3b4" }}>
-                          {(stats.avgPosDeltaA < 0 ? teamA.nickname : teamB.nickname)}'s favour
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
 
           {/* Dominance index — higher is better; leader shown in gold */}
@@ -1525,6 +1496,48 @@ function HeadToHeadView() {
             <p className="text-[11px] leading-relaxed text-slate-400 text-center mt-2">
               A head-to-head dominance rating across the majors both teams entered. It blends how well each scored, how often they finished near the top, and penalties for last-place finishes — distilled into one number. The higher score has had the upper hand.
             </p>
+            {(() => {
+              const ptsLevel = stats.avgPtsDeltaA === 0;
+              const posLevel = stats.avgPosDeltaA === 0;
+              if (ptsLevel && posLevel) return null;
+              // Favoured team per delta (negative delta = better = that team's favour).
+              const ptsFav = ptsLevel ? null : (stats.avgPtsDeltaA < 0 ? teamA.nickname : teamB.nickname);
+              const posFav = posLevel ? null : (stats.avgPosDeltaA < 0 ? teamA.nickname : teamB.nickname);
+              const bothSameTeam = !ptsLevel && !posLevel && ptsFav === posFav;
+              return (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="text-center">
+                      <div className="text-2xl font-mono font-bold tabular-nums leading-none" style={{ color: "var(--gold)" }}>
+                        {ptsLevel ? "—" : Math.abs(stats.avgPtsDeltaA)}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-1.5">avg pts delta</div>
+                      {!bothSameTeam && !ptsLevel && (
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          <span className="font-semibold" style={{ color: "var(--gold)" }}>{ptsFav}</span>'s favour
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-mono font-bold tabular-nums leading-none" style={{ color: "var(--gold)" }}>
+                        {posLevel ? "—" : Math.abs(stats.avgPosDeltaA)}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider text-slate-400 mt-1.5">avg pos delta</div>
+                      {!bothSameTeam && !posLevel && (
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          <span className="font-semibold" style={{ color: "var(--gold)" }}>{posFav}</span>'s favour
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {bothSameTeam && (
+                    <div className="text-center text-[11px] text-slate-400 mt-2.5">
+                      in <span className="font-semibold" style={{ color: "var(--gold)" }}>{ptsFav}</span>'s favour
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </SectionShell>
 
           {/* Performance margins */}
