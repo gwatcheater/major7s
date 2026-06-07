@@ -109,13 +109,21 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html { -webkit-text-size-adjust: 100%; }
+  /* FIX: moved overflow-x: hidden from body to html.
+     Setting overflow-x: hidden on body creates a new scroll container in Chrome iOS
+     that is not sized correctly on first paint — the body becomes wider than the
+     viewport until a reflow is triggered (e.g. rotating the device or pinching).
+     Safari handles this gracefully; Chrome iOS does not. Moving it to html instead
+     fixes the sizing context without any visual difference. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
   body {
     background-color: var(--color-ui-bg);
     color: var(--color-foreground);
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
   }
   h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
 
