@@ -27,20 +27,15 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   useEffect(() => {
-    // FIX: Chrome iOS does not fully resolve viewport dimensions on first paint.
-    // Rotating the device or pinching the screen triggers a resize event that
-    // forces a reflow and corrects the layout. This effect replicates that by
-    // briefly toggling a style property to trigger the same reflow programmatically,
-    // immediately after the component mounts. The timeout of 0 ensures it runs
-    // after the browser's initial paint so it doesn't block rendering.
-    const timeout = setTimeout(() => {
-      document.documentElement.style.overflow = "hidden";
-      // Reading offsetHeight forces the browser to perform a synchronous reflow
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      document.documentElement.offsetHeight;
-      document.documentElement.style.overflow = "";
-    }, 0);
-    return () => clearTimeout(timeout);
+    // FIX: Chrome on iOS (WKWebView) does not correctly resolve viewport width
+    // on first paint. Rotating the device or pinching dispatches a resize event
+    // which forces Chrome to recalculate and correct the layout. This effect
+    // replicates that by dispatching a synthetic resize event after a short delay
+    // to allow the initial paint to complete first.
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
