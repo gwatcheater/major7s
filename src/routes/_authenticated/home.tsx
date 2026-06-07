@@ -59,9 +59,6 @@ function PicksBadge({ complete }: { complete: boolean }) {
 function HomePage() {
   const { activeTeam } = useTeams();
 
-
-
-
   const { data: tournaments = [], isLoading } = useQuery({
     queryKey: ["tournaments-active"],
     queryFn: async () => {
@@ -126,7 +123,7 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
+                className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all"
               >
                 <Link
                   to={link.to}
