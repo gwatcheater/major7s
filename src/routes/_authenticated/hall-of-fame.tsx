@@ -143,8 +143,8 @@ function ResultMedal({ tier, tie }: { tier: "gold" | "silver" | "bronze"; tie: b
   const rank = tier === "gold" ? 1 : tier === "silver" ? 2 : 3;
   return (
     <span
-      className="inline-flex items-center justify-center rounded-full font-bold leading-none shrink-0 h-6 text-[11px]"
-      style={{ ...styles[tier], minWidth: "24px", padding: "0 6px" }}
+      className="inline-flex items-center justify-center rounded-full font-bold leading-none shrink-0 h-7 text-[13px]"
+      style={{ ...styles[tier], minWidth: "28px", padding: "0 7px" }}
     >
       {tie ? `T${rank}` : rank}
     </span>
@@ -170,30 +170,30 @@ function ResultCard({ row }: { row: AggRow }) {
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden grid grid-cols-1 sm:grid-cols-[210px_1fr]">
-      {/* Meta panel */}
-      <div className="px-4 py-3 flex flex-col justify-center" style={{ backgroundColor: "var(--forest-deep)" }}>
-        <div className="text-[10px] font-bold tracking-widest tabular-nums" style={{ color: "var(--gold)" }}>{row.year}</div>
-        <div className="text-[13px] font-semibold text-white leading-tight mt-0.5 sm:whitespace-nowrap">{row.name}</div>
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden grid grid-cols-1 sm:grid-cols-[220px_1fr]">
+      {/* Meta panel — top-aligned */}
+      <div className="px-4 py-3.5 flex flex-col justify-start" style={{ backgroundColor: "var(--forest-deep)" }}>
+        <div className="text-[40px] leading-none font-bold tabular-nums font-mono" style={{ color: "var(--gold)" }}>{row.year}</div>
+        <div className="text-base font-semibold text-white leading-tight mt-1.5 sm:whitespace-nowrap">{row.name}</div>
         {row.location && (
-          <div className="text-[10px] mt-1 leading-snug sm:whitespace-nowrap sm:overflow-hidden sm:text-ellipsis" style={{ color: "#7aab8a" }}>{row.location}</div>
+          <div className="text-[11px] mt-1 leading-snug sm:whitespace-nowrap sm:overflow-hidden sm:text-ellipsis" style={{ color: "#7aab8a" }}>{row.location}</div>
         )}
       </div>
 
       {/* Results */}
-      <div className="px-4 py-3">
-        <div className="flex flex-col gap-1.5">
+      <div className="px-4 py-3.5">
+        <div className="flex flex-col gap-2">
           {podium.map(({ tier, entries }) =>
             entries.length === 0 ? null : (
-              <div key={tier} className="flex items-start gap-2.5">
+              <div key={tier} className="flex items-start gap-3">
                 <ResultMedal tier={tier} tie={entries.length > 1} />
                 <div className="flex-1 min-w-0">
                   {entries.map((e, i) => (
-                    <div key={i} className="text-xs font-semibold leading-snug" style={{ color: "var(--forest-deep)" }}>{e.nickname}</div>
+                    <div key={i} className="text-sm font-semibold leading-snug" style={{ color: "var(--forest-deep)" }}>{e.nickname}</div>
                   ))}
                 </div>
                 {entries[0]?.points != null && (
-                  <div className="text-[11px] font-mono tabular-nums text-slate-400 shrink-0 pt-0.5">{entries[0].points} pts</div>
+                  <div className="text-[13px] font-mono tabular-nums text-slate-400 shrink-0 pt-0.5">{entries[0].points} pts</div>
                 )}
               </div>
             ),
@@ -201,16 +201,16 @@ function ResultCard({ row }: { row: AggRow }) {
         </div>
 
         {(hasBotr || hasSpoon) && (
-          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2.5 pt-2 border-t border-slate-100">
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3 pt-2.5 border-t border-slate-100">
             {hasBotr && (
-              <div className="text-[10px]">
-                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[9px]">botr</span>
+              <div className="text-xs">
+                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[10px]">botr</span>
                 <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>{fmtFoot(row.botr)}</span>
               </div>
             )}
             {hasSpoon && (
-              <div className="text-[10px]">
-                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[9px]">last</span>
+              <div className="text-xs">
+                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[10px]">last place</span>
                 <span className="font-semibold" style={{ color: "#791f1f" }}>{fmtFoot(row.spoon)}</span>
               </div>
             )}
@@ -1937,7 +1937,7 @@ function HallOfFamePage() {
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--gold)" }}>Archive</span>
         </div>
         <h1 className="font-display text-3xl md:text-5xl uppercase tracking-tight" style={{ color: "var(--forest-deep)" }}>Hall of Fame</h1>
-        <p className="text-xs md:text-sm text-slate-500 mt-2">Every tournament. Every champion. Every wooden spoon.</p>
+        <p className="text-xs md:text-sm text-slate-500 mt-2">Where the champions are finally separated from the pretenders.</p>
 
         {/* Top-level view toggle */}
         <div className="flex gap-2 mt-5 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
