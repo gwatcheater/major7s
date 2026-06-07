@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useImpersonation } from "@/context/impersonation-context";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
@@ -755,9 +756,138 @@ function LineupPicker() {
     ? ` ${getTournamentYear(tournament.start_date)}`
     : "";
 
+  // ── Sidebar: collapse on desktop for more screen space, restore on unmount ──
+  const { setOpen: setSidebarOpen } = useSidebar();
+  useEffect(() => {
+    setSidebarOpen(false);
+    return () => setSidebarOpen(true);
+  }, [setSidebarOpen]);
+
+  // ── Shared inner content blocks (used in both layout modes) ──────────────
+
+  const headerBlock = (
+    <header className="mt-4 mb-8">
+      <p
+        className="text-[10px] font-bold uppercase tracking-widest"
+        style={{ color: "var(--gold)" }}
+      >
+        Select your picks
+      </p>
+      <h1 className="font-display text-4xl uppercase mt-1">
+        {tournament.name}{yearSuffix}
+      </h1>
+      <p className="text-sm text-muted-foreground mt-1">
+        {tournament.location}
+      </p>
+      <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
+        {allSelected ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Picks selected
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800">
+            <XCircle className="h-3.5 w-3.5" />
+            Picks not selected
+          </span>
+        )}
+        {!isLocked && (
+          <>
+            <span className="text-border select-none">|</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Picks close in
+              </span>
+              <Countdown targetIso={tournament.submission_deadline} />
+            </div>
+          </>
+        )}
+      </div>
+    </header>
+  );
+
+  const lockedBanner = isLocked && (
+    <div className="mb-6 p-4 border border-border bg-destructive/10 text-sm">
+      Picks are locked for this tournament.
+    </div>
+  );
+
+  const picksCard = field.length === 0 ? (
+    <div className="border-2 border-dashed border-border p-12 text-center">
+      <p className="text-sm text-muted-foreground">
+        The admin hasn't committed a field for this tournament yet.
+      </p>
+    </div>
+  ) : (
+    <Card className="p-0 overflow-hidden">
+      <div className="px-5 pt-4 pb-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span className="font-display uppercase text-base">{teamHandle}</span>
+          {hasSubmission && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span>Tweaks: {liveTweaks}</span>
+          {lastEditedIso && (
+            <span>Last updated: {formatLastEdited(lastEditedIso)}</span>
+          )}
+        </div>
+      </div>
+
+      <div>
+        {buckets.map((b) => (
+          <BucketRow
+            key={b}
+            bucket={b}
+            golfers={byBucket[b] ?? []}
+            selectedId={selections[b]}
+            disabled={
+              (!impersonatingId && isLocked) ||
+              (byBucket[b] ?? []).length === 0
+            }
+            onChange={(golferId) =>
+              setSelections((s) => ({ ...s, [b]: golferId }))
+            }
+            isOpen={openAccordion === b}
+            onToggle={() =>
+              setOpenAccordion((prev) => (prev === b ? null : b))
+            }
+            onOpenSheet={() => setSheetBucket(b)}
+          />
+        ))}
+      </div>
+
+      {impersonatingId && (
+        <p className="px-5 pt-3 text-xs text-amber-700 font-semibold">
+          Saving as {impersonatedProfile?.nickname ?? "user"} — admin
+          override{isLocked ? " (after lock)" : ""}, logged.
+        </p>
+      )}
+
+      <div className="px-5 py-4">
+        <button
+          onClick={save}
+          disabled={!impersonatingId && isLocked}
+          className="w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
+          style={{ backgroundColor: "var(--forest-deep)" }}
+        >
+          Save Lineup
+        </button>
+      </div>
+    </Card>
+  );
+
+  const helperBlock = field.length > 0 && (
+    <PicksHelper
+      byBucket={byBucket}
+      selections={selections}
+      setSelections={setSelections}
+      isLocked={!impersonatingId && isLocked}
+    />
+  );
+
   return (
     <>
-      {/* Bottom sheet — mobile only, rendered above page content */}
+      {/* Bottom sheet — mobile only */}
       {sheetBucket !== null && (
         <BottomSheet
           bucket={sheetBucket}
@@ -770,146 +900,46 @@ function LineupPicker() {
         />
       )}
 
-      <div className="p-4 md:p-12 max-w-4xl">
+      {/* ── Mobile / small desktop: stacked (< lg) ── */}
+      <div className="lg:hidden p-4 md:p-12 max-w-4xl">
         <Link
           to={`/tournament/${id}`}
           className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
         >
           ← Tournament
         </Link>
+        {headerBlock}
+        {lockedBanner}
+        {picksCard}
+        {helperBlock}
+      </div>
 
-        {/* ── Header ── */}
-        <header className="mt-4 mb-8">
-          <p
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--gold)" }}
+      {/* ── Desktop: side-by-side (lg+) ── */}
+      <div className="hidden lg:flex flex-col h-screen overflow-hidden">
+        {/* Top bar: back link + header, full width */}
+        <div className="px-8 pt-8 pb-0 shrink-0">
+          <Link
+            to={`/tournament/${id}`}
+            className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
           >
-            Select your picks
-          </p>
-          <h1 className="font-display text-4xl uppercase mt-1">
-            {tournament.name}{yearSuffix}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {tournament.location}
-          </p>
+            ← Tournament
+          </Link>
+          {headerBlock}
+          {lockedBanner}
+        </div>
 
-          {/* Status row: pill + countdown on same line */}
-          <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
-            {allSelected ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Picks selected
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800">
-                <XCircle className="h-3.5 w-3.5" />
-                Picks not selected
-              </span>
-            )}
-
-            {!isLocked && (
-              <>
-                <span className="text-border select-none">|</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Picks close in
-                  </span>
-                  <Countdown targetIso={tournament.submission_deadline} />
-                </div>
-              </>
-            )}
+        {/* Two-column body, each side independently scrollable */}
+        <div className="flex flex-1 gap-6 px-8 pb-8 overflow-hidden">
+          {/* Left: picks card */}
+          <div className="flex-1 overflow-y-auto">
+            {picksCard}
           </div>
-        </header>
 
-        {/* ── Locked banner ── */}
-        {isLocked && (
-          <div className="mb-6 p-4 border border-border bg-destructive/10 text-sm">
-            Picks are locked for this tournament.
+          {/* Right: picks helper */}
+          <div className="flex-1 overflow-y-auto">
+            {helperBlock}
           </div>
-        )}
-
-        {/* ── Empty field state ── */}
-        {field.length === 0 ? (
-          <div className="border-2 border-dashed border-border p-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              The admin hasn't committed a field for this tournament yet.
-            </p>
-          </div>
-        ) : (
-          <Card className="p-0 overflow-hidden">
-            {/* Card header */}
-            <div className="px-5 pt-4 pb-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <span className="font-display uppercase text-base">
-                  {teamHandle}
-                </span>
-                {hasSubmission && (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                )}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                <span>Tweaks: {liveTweaks}</span>
-                {lastEditedIso && (
-                  <span>Last updated: {formatLastEdited(lastEditedIso)}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Bucket rows */}
-            <div>
-              {buckets.map((b) => (
-                <BucketRow
-                  key={b}
-                  bucket={b}
-                  golfers={byBucket[b] ?? []}
-                  selectedId={selections[b]}
-                  disabled={
-                    (!impersonatingId && isLocked) ||
-                    (byBucket[b] ?? []).length === 0
-                  }
-                  onChange={(golferId) =>
-                    setSelections((s) => ({ ...s, [b]: golferId }))
-                  }
-                  isOpen={openAccordion === b}
-                  onToggle={() =>
-                    setOpenAccordion((prev) => (prev === b ? null : b))
-                  }
-                  onOpenSheet={() => setSheetBucket(b)}
-                />
-              ))}
-            </div>
-
-            {/* Admin override notice */}
-            {impersonatingId && (
-              <p className="px-5 pt-3 text-xs text-amber-700 font-semibold">
-                Saving as {impersonatedProfile?.nickname ?? "user"} — admin
-                override{isLocked ? " (after lock)" : ""}, logged.
-              </p>
-            )}
-
-            {/* Save */}
-            <div className="px-5 py-4">
-              <button
-                onClick={save}
-                disabled={!impersonatingId && isLocked}
-                className="w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50"
-                style={{ backgroundColor: "var(--forest-deep)" }}
-              >
-                Save Lineup
-              </button>
-            </div>
-          </Card>
-        )}
-
-        {/* ── Picks Helper ── */}
-        {field.length > 0 && (
-          <PicksHelper
-            byBucket={byBucket}
-            selections={selections}
-            setSelections={setSelections}
-            isLocked={!impersonatingId && isLocked}
-          />
-        )}
+        </div>
       </div>
     </>
   );
