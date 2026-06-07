@@ -60,9 +60,6 @@ function PicksBadge({ complete }: { complete: boolean }) {
 function HomePage() {
   const { activeTeam } = useTeams();
 
-  // FIX: Chrome iOS initialises the page with a non-zero scroll offset on first
-  // load. This forces a scroll to the top immediately on mount, then once more
-  // after a short delay to catch any deferred paint corrections.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const t = setTimeout(() => {
@@ -103,6 +100,21 @@ function HomePage() {
 
   return (
     <div className="w-full p-4 md:p-12 max-w-6xl">
+      {/* Page heading — provides genuine content above the cards so any
+          Chrome iOS first-paint scroll offset clips the heading rather
+          than the card itself. */}
+      <div className="mb-6 pt-2">
+        <h1
+          className="font-display text-2xl uppercase tracking-tight"
+          style={{ color: "var(--forest-deep)" }}
+        >
+          Major Season
+        </h1>
+        <p className="text-xs text-muted-foreground mt-1 uppercase tracking-widest">
+          2026
+        </p>
+      </div>
+
       {isLoading ? (
         <div className="text-center py-20 text-muted-foreground text-sm">
           Loading the leaderboard...
@@ -115,7 +127,7 @@ function HomePage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 w-full pt-2">
+        <div className="grid gap-6 w-full">
           {tournaments.map((t) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
