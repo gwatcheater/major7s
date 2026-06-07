@@ -92,7 +92,11 @@ function HomePage() {
   });
 
   return (
-    <div className="p-4 md:p-12 max-w-6xl">
+    // FIX: added `w-full` so the container claims full available width on first paint.
+    // Without it, Chrome iOS can defer width resolution until a reflow, causing cards
+    // to render too wide before snapping into place. `max-w-6xl` alone is insufficient
+    // as a sizing anchor in Chrome's initial layout pass.
+    <div className="w-full p-4 md:p-12 max-w-6xl">
       <header className="mb-6" />
 
       {isLoading ? (
@@ -107,7 +111,10 @@ function HomePage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6">
+        // FIX: added `w-full` to the grid container for the same reason — ensures
+        // children (cards) inherit a resolved width from the start rather than
+        // relying on Chrome to infer it post-paint.
+        <div className="grid gap-6 w-full">
           {tournaments.map((t, i) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
@@ -118,7 +125,11 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                className="relative bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
+                // FIX: added `w-full box-border` to each card. `overflow-hidden` on a
+                // card without an explicit width anchor can cause Chrome iOS to miscalculate
+                // the card's intrinsic width on first paint. `box-border` ensures padding
+                // is included in the width calculation consistently across browsers.
+                className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Full-card click target navigates to the hub */}
