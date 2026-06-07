@@ -91,8 +91,9 @@ function HomePage() {
 
   return (
     <div className="w-full p-4 md:p-12 max-w-6xl">
-      <header className="mb-6" />
-
+      {/* FIX: removed empty <header className="mb-6" /> spacer and replaced with
+          simple top padding on the grid so there is no ambiguity about spacing
+          on first paint. */}
       {isLoading ? (
         <div className="text-center py-20 text-muted-foreground text-sm">
           Loading the leaderboard...
@@ -105,7 +106,7 @@ function HomePage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 w-full">
+        <div className="grid gap-6 w-full pt-2">
           {tournaments.map((t, i) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
@@ -116,8 +117,9 @@ function HomePage() {
             return (
               <div
                 key={t.id}
+                // FIX: removed animationDelay — staggered delays with translateY
+                // caused Chrome iOS to miscalculate initial scroll position.
                 className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
-                style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Full-card click target */}
                 <Link
@@ -133,15 +135,11 @@ function HomePage() {
                 />
 
                 <div className="flex-1 p-5 md:p-8 relative pointer-events-none">
-                  {/* FIX: badges row — overflow-hidden added so badges cannot push
-                      the card wider than its container on Chrome iOS first paint.
-                      min-w-0 ensures flex children respect the parent boundary. */}
                   <div className="flex justify-end gap-2 mb-4 min-w-0 overflow-hidden">
                     <StatusBadge status={t.status} />
                     {activeTeam && <PicksBadge complete={complete} />}
                   </div>
 
-                  {/* Identity row */}
                   <div className="flex items-start gap-4 min-w-0">
                     {t.logo_url ? (
                       <img
@@ -167,7 +165,6 @@ function HomePage() {
                   </div>
                 </div>
 
-                {/* Countdown strip */}
                 {showLineupCta ? (
                   <div
                     className="relative flex items-stretch justify-between gap-3 px-5 py-3 md:px-8 md:py-4 min-w-0 overflow-hidden"
@@ -189,9 +186,7 @@ function HomePage() {
                       params={{ id: t.id }}
                       onClick={(e) => e.stopPropagation()}
                       className="relative z-20 pointer-events-auto self-center inline-flex items-center gap-2 px-6 py-3 font-display text-xs uppercase tracking-widest text-white rounded-full shadow-md hover:shadow-xl hover:scale-[1.04] transition-all shrink-0"
-                      style={{
-                        backgroundColor: "var(--forest-deep)",
-                      }}
+                      style={{ backgroundColor: "var(--forest-deep)" }}
                     >
                       Picks
                       <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
