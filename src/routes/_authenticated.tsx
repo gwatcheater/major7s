@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect } from "react";
-import { createFileRoute, redirect, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileTopBar } from "@/components/mobile-shell";
@@ -26,41 +25,6 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-
-  useLayoutEffect(() => {
-    if ("scrollRestoration" in window.history) {
-      window.history.scrollRestoration = "manual";
-    }
-
-    const reset = () => {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    };
-
-    reset();
-    requestAnimationFrame(reset);
-
-    return undefined;
-  }, [pathname]);
-
-  useEffect(() => {
-    const reset = () => {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    };
-
-    const timers = [50, 150, 350, 700].map((delay) => setTimeout(reset, delay));
-    window.addEventListener("load", reset, { once: true });
-
-    return () => {
-      timers.forEach(clearTimeout);
-      window.removeEventListener("load", reset);
-    };
-  }, [pathname]);
-
   return (
     <div
       className="flex flex-col lg:flex-row min-h-screen w-full"
