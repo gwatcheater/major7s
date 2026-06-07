@@ -1,40 +1,58 @@
-
 ## Problem
 
-The `MobileTopBar` uses `position: sticky` inside the flex column layout in `src/routes/_authenticated.tsx`. On Chrome iOS first paint, the sticky element's height isn't reliably reserved in the flow, so the first tournament card renders under the header until a reflow event (rotate, reload, pinch). Current workaround (`mt-16` on `<main>` + a "Major Season" heading buffer) hides — but doesn't fix — the issue.
+Both the `sticky` and the `fixed + spacer` approaches produce the same symptom in Chrome iOS: on first load of `/home` the page is rendered with a non-zero scroll offset, so the "Major Season" heading and the top of the first card sit behind/above the chrome header.
+
+The screenshot confirms this: the "OPEN FOR PICKS" / "PICKS SELECTED" badges (which live ~100px into the card) are pinned at the top of the visible area. The card itself is not clipped — the **viewport is scrolled down** before first paint.
+
+This is a known Chrome iOS WKWebView behaviour: when the SSR HTML is taller than the hydrated DOM (fonts loading, layout shifts as React rehydrates), Chrome iOS preserves a scroll offset from the pre-hydration paint. Safari and desktop Chrome reset to 0; Chrome iOS does not.
+
+The previous fixes were targeting layout (sticky vs fixed), but the layout was never the real problem. The header was correctly sized; the page was just scrolled past it.
 
 ## Fix
 
-Replace sticky with **fixed header + explicit spacer**. A fixed header is removed from the flow entirely, and an adjacent in-flow `<div>` of the exact same height (`h-16`) guarantees the offset before first paint — no layout engine sticky resolution required. This is the most reliable Chrome iOS WKWebView pattern.
+Two changes:
 
-### Changes
+### 1. Revert `MobileTopBar` to `sticky`, remove the spacer
 
-1. **`src/components/mobile-shell.tsx`**
-   - Change header from `sticky top-0` → `fixed top-0 inset-x-0`.
-   - Export a sibling `MobileTopBarSpacer` component: `<div className="h-16 lg:hidden" aria-hidden />` that reserves vertical space in the flow.
+`fixed + spacer` adds complexity for no benefit (since the real issue isn't sticky height resolution). `sticky` is simpler, scrolls naturally, and matches the original design.
 
-2. **`src/routes/_authenticated.tsx`**
-   - Render `<MobileTopBarSpacer />` immediately after `<MobileTopBar />` and before `<AppSidebar />` / `<main>`.
-   - Remove the `mt-20 lg:mt-0` workaround from `<main>` (the spacer now handles offset, and `mt-20` was 80px for a 64px header — slightly over-compensating). Keep `paddingBottom: env(safe-area-inset-bottom)`.
+- **`src/components/mobile-shell.tsx`** — change header back to `sticky top-0`. Delete the `MobileTopBarSpacer` export.
+- **`src/routes/_authenticated.tsx`** — remove `MobileTopBarSpacer` import and its render. Remove the now-stale "FIX:" comment. `<main>` stays as-is (no `mt-*` needed because sticky reserves its own height in flow).
 
-3. **`src/routes/_authenticated/home.tsx`**
-   - Remove the `pt-4` extra padding on the "Major Season" heading wrapper that was added as part of the buffer workaround. Heading stays (it's good content), but no compensation padding needed.
-   - Remove the duplicate `window.scrollTo` `useEffect` (was a workaround attempt, now redundant).
+### 2. Force scroll to top on every route mount under `_authenticated`
 
-4. **`src/styles.css`** — no changes. The previous fixes (`overflow-x: hidden` on `html`, fade-only `animate-reveal`) stay; they're independently correct.
+Add a one-shot scroll reset that runs on layout mount and after the first paint, defeating Chrome iOS's preserved offset.
 
-5. **`src/routes/__root.tsx`** — no changes. `maximum-scale=1` viewport meta stays.
+In `src/routes/_authenticated.tsx`, replace the existing resize-dispatch `useEffect` with:
 
-### Why this works
+```ts
+useEffect(() => {
+  // Chrome iOS WKWebView occasionally preserves a non-zero scroll offset
+  // from the SSR pre-hydration paint. Force the viewport back to the top
+  // on initial mount, with rAF + a short timeout fallback to outrun
+  // font-swap and hydration layout shifts.
+  const reset = () => window.scrollTo(0, 0);
+  reset();
+  requestAnimationFrame(reset);
+  const t = setTimeout(reset, 150);
+  return () => clearTimeout(t);
+}, []);
+```
 
-- `position: fixed` is resolved by Chrome iOS pre-paint reliably (unlike sticky in a flex column).
-- The spacer is a normal block element with intrinsic height — no engine quirk involved.
-- Header sits above `<main>` via `z-40`; spacer pushes content down deterministically.
-- `lg:hidden` on both header and spacer means desktop layout is unaffected.
+This runs once per `_authenticated` layout mount (i.e. on first load and after any full reload), and is a no-op on desktop / Safari where scroll is already 0.
 
-### Verification
+### Files
 
-After change, on Chrome iOS portrait first load:
-- First tournament card top should sit ~64px below viewport top with no clipping.
-- No horizontal overflow.
-- Rotation, reload, and subsequent nav should all match first-load layout.
+1. `src/components/mobile-shell.tsx` — revert header to `sticky top-0`; remove `MobileTopBarSpacer`.
+2. `src/routes/_authenticated.tsx` — remove spacer import + render; replace `useEffect` with scroll-to-top.
+3. `.lovable/plan.md` — update with new diagnosis (Chrome iOS preserved scroll offset, not sticky height).
+
+No changes to `home.tsx`, `styles.css`, or `__root.tsx`.
+
+## Verification
+
+After the change, on Chrome iOS portrait first load of `/home`:
+- Page lands at scroll 0; "Major Season" heading visible directly under the header.
+- First tournament card sits fully below the header with no clipping.
+- Subsequent navigation, rotation, and reload all match.
+- Desktop and Safari unaffected (scroll was already 0; `scrollTo(0,0)` is idempotent).
