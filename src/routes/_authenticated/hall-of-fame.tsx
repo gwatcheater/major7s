@@ -132,6 +132,95 @@ function Cell({ entries, nameColor }: { entries: CellEntry[]; nameColor?: string
   );
 }
 
+// Medal badge for the All Results podium. Tied positions render "T1"/"T2"/"T3"
+// inside the badge; the pill widens to fit two characters.
+function ResultMedal({ tier, tie }: { tier: "gold" | "silver" | "bronze"; tie: boolean }) {
+  const styles: Record<string, CSSProperties> = {
+    gold: { background: "radial-gradient(circle at 30% 30%, #fff7c2 0%, #f5c441 35%, #b8860b 100%)", color: "#3a2a00", boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.2)" },
+    silver: { background: "radial-gradient(circle at 30% 30%, #ffffff 0%, #d3d3d3 35%, #7d7d7d 100%)", color: "#222", boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.2)" },
+    bronze: { background: "radial-gradient(circle at 30% 30%, #fadcb6 0%, #c98447 35%, #6b3a1a 100%)", color: "#2a1500", boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.2)" },
+  };
+  const rank = tier === "gold" ? 1 : tier === "silver" ? 2 : 3;
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-full font-bold leading-none shrink-0 h-6 text-[11px]"
+      style={{ ...styles[tier], minWidth: "24px", padding: "0 6px" }}
+    >
+      {tie ? `T${rank}` : rank}
+    </span>
+  );
+}
+
+// One tournament's full result set, in the V2 podium-led layout. Forest-green
+// meta panel (year / tournament / location) anchors the left; podium with medal
+// badges on the right, with BOTR and Last Place demoted to a quiet footer.
+// Fully responsive: the meta panel sits on top on narrow screens, beside on wider.
+function ResultCard({ row }: { row: AggRow }) {
+  const podium: Array<{ tier: "gold" | "silver" | "bronze"; entries: CellEntry[] }> = [
+    { tier: "gold", entries: row.p1 },
+    { tier: "silver", entries: row.p2 },
+    { tier: "bronze", entries: row.p3 },
+  ];
+  const hasBotr = row.botr.length > 0;
+  const hasSpoon = row.spoon.length > 0;
+  const fmtFoot = (entries: CellEntry[]) => {
+    const names = entries.map((e) => e.nickname).join(" / ");
+    const pts = entries[0]?.points;
+    return pts != null ? `${names} · ${pts}` : names;
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden grid grid-cols-1 sm:grid-cols-[210px_1fr]">
+      {/* Meta panel */}
+      <div className="px-4 py-3 flex flex-col justify-center" style={{ backgroundColor: "var(--forest-deep)" }}>
+        <div className="text-[10px] font-bold tracking-widest tabular-nums" style={{ color: "var(--gold)" }}>{row.year}</div>
+        <div className="text-[13px] font-semibold text-white leading-tight mt-0.5 sm:whitespace-nowrap">{row.name}</div>
+        {row.location && (
+          <div className="text-[10px] mt-1 leading-snug sm:whitespace-nowrap sm:overflow-hidden sm:text-ellipsis" style={{ color: "#7aab8a" }}>{row.location}</div>
+        )}
+      </div>
+
+      {/* Results */}
+      <div className="px-4 py-3">
+        <div className="flex flex-col gap-1.5">
+          {podium.map(({ tier, entries }) =>
+            entries.length === 0 ? null : (
+              <div key={tier} className="flex items-start gap-2.5">
+                <ResultMedal tier={tier} tie={entries.length > 1} />
+                <div className="flex-1 min-w-0">
+                  {entries.map((e, i) => (
+                    <div key={i} className="text-xs font-semibold leading-snug" style={{ color: "var(--forest-deep)" }}>{e.nickname}</div>
+                  ))}
+                </div>
+                {entries[0]?.points != null && (
+                  <div className="text-[11px] font-mono tabular-nums text-slate-400 shrink-0 pt-0.5">{entries[0].points} pts</div>
+                )}
+              </div>
+            ),
+          )}
+        </div>
+
+        {(hasBotr || hasSpoon) && (
+          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2.5 pt-2 border-t border-slate-100">
+            {hasBotr && (
+              <div className="text-[10px]">
+                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[9px]">botr</span>
+                <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>{fmtFoot(row.botr)}</span>
+              </div>
+            )}
+            {hasSpoon && (
+              <div className="text-[10px]">
+                <span className="font-bold uppercase tracking-wider text-slate-400 mr-1.5 text-[9px]">last</span>
+                <span className="font-semibold" style={{ color: "#791f1f" }}>{fmtFoot(row.spoon)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ChipButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -1891,59 +1980,21 @@ function HallOfFamePage() {
         )}
       </div>
 
-      {/* Sticky All Results table */}
+      {/* All Results — unified responsive card list */}
       {view === "results" && (
-      <div className="relative">
-        {/* Desktop: full table with sticky Year + Tournament columns. */}
-        <div className="hidden md:block overflow-x-auto overflow-y-visible">
-          <div className="min-w-[760px] pr-16 md:pr-0">
-            <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-20 bg-white">
-                <tr className="border-y border-slate-200">
-                  <th className="sticky left-0 z-30 text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-12 bg-white">Year</th>
-                  <th className="sticky left-12 z-30 text-left pl-1 pr-3 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[170px] bg-white">Tournament</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[160px]">Location</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest w-[110px]" style={{ color: "var(--gold)" }}>1st</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">2nd</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 w-[110px]">3rd</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 w-[110px]">BOTR</th>
-                  <th className="text-left px-1 py-3 text-[10px] font-bold uppercase tracking-widest w-[110px]" style={{ color: "var(--alert,#ef4444)" }}>Last Place</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-sm">Loading…</td></tr>
-                )}
-                {!isLoading && (data?.length ?? 0) === 0 && (
-                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-sm">No results yet.</td></tr>
-                )}
-                {data?.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
-                    <td className="sticky left-0 z-20 px-1 py-4 text-left text-xs font-semibold tabular-nums bg-white leading-tight text-[color:var(--forest-deep)]">{r.year}</td>
-                    <td className="sticky left-12 z-20 pl-1 pr-3 py-4 text-left text-xs font-semibold text-[color:var(--forest-deep)] whitespace-normal bg-white leading-tight">{r.name}</td>
-                    <td className="px-1 py-4 text-left text-xs font-semibold text-slate-500 whitespace-normal break-words leading-tight">{r.location}</td>
-                    <td className="px-1 py-4"><Cell entries={r.p1} nameColor="var(--gold)" /></td>
-                    <td className="px-1 py-4"><Cell entries={r.p2} /></td>
-                    <td className="px-1 py-4"><Cell entries={r.p3} /></td>
-                    <td className="px-1 py-4"><Cell entries={r.botr} /></td>
-                    <td className="px-1 py-4"><Cell entries={r.spoon} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="px-4 md:px-12 pt-4 pb-12">
+          <div className="max-w-3xl mx-auto">
+            {isLoading && (
+              <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+            )}
+            {!isLoading && (data?.length ?? 0) === 0 && (
+              <div className="text-center py-12 text-slate-400 text-sm">No results yet.</div>
+            )}
+            <div className="space-y-2.5">
+              {data?.map((r) => <ResultCard key={r.id} row={r} />)}
+            </div>
           </div>
         </div>
-        {/* Right-edge scroll affordance gradient (desktop only) */}
-        <div
-          className="hidden md:block pointer-events-none absolute top-0 right-0 h-full w-16"
-          style={{ background: "linear-gradient(to left, white, transparent)" }}
-        />
-
-        {/* Mobile: one card per tournament, vertical sections inside each card. */}
-        <div className="md:hidden space-y-3 px-4">
-          {data?.map((r) => <MobileResultCard key={r.id} row={r} />)}
-        </div>
-      </div>
       )}
 
       {/* Vault view */}
