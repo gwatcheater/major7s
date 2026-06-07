@@ -34,12 +34,15 @@ function AuthenticatedLayout() {
   }, []);
 
   return (
-    // With sticky header, MobileTopBar sits in the normal document flow so no
-    // padding offset is needed on main — the header pushes content down naturally.
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
-      <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* FIX: mt-16 on mobile pushes main below the sticky MobileTopBar (h-16 = 64px).
+          A sticky element still occupies space in the flow on first render but
+          Chrome iOS doesn't always account for it correctly, so we use margin-top
+          as a guaranteed offset that doesn't depend on Chrome resolving sticky
+          positioning before first paint. lg:mt-0 removes it on desktop. */}
+      <main className="flex-1 min-w-0 overflow-x-hidden mt-16 lg:mt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
