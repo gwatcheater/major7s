@@ -16,9 +16,17 @@ export function MobileTopBar() {
   }, [path]);
 
   return (
+    // FIX: removed `paddingTop: "env(safe-area-inset-top)"` from the inline style.
+    // Chrome iOS does not resolve env() safe-area values correctly on first paint
+    // when applied as inline styles — the value is treated as 0 initially, causing
+    // the header height to be miscalculated, which cascades into the main content
+    // area rendering at the wrong width. The fix is to use the `pt-safe` utility
+    // (or remove it entirely, since the sticky header sits below the safe area on
+    // most iPhones in portrait). The fixed h-14 height already provides sufficient
+    // clearance on all current iPhone models.
     <header
       className="sticky top-0 z-40 flex items-center justify-between px-4 h-14 border-b border-white/10 lg:hidden"
-      style={{ backgroundColor: "var(--forest-deep)", paddingTop: "env(safe-area-inset-top)" }}
+      style={{ backgroundColor: "var(--forest-deep)" }}
     >
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
