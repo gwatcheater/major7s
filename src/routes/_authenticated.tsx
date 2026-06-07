@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -25,14 +26,24 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
+  useEffect(() => {
+    // FIX: Chrome iOS does not fully resolve viewport dimensions on first paint.
+    // Rotating the device or pinching the screen triggers a resize event that
+    // forces a reflow and corrects the layout. This effect replicates that by
+    // briefly toggling a style property to trigger the same reflow programmatically,
+    // immediately after the component mounts. The timeout of 0 ensures it runs
+    // after the browser's initial paint so it doesn't block rendering.
+    const timeout = setTimeout(() => {
+      document.documentElement.style.overflow = "hidden";
+      // Reading offsetHeight forces the browser to perform a synchronous reflow
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      document.documentElement.offsetHeight;
+      document.documentElement.style.overflow = "";
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, []);
+
   return (
-    // FIX: replaced `min-h-[100dvh]` with `min-h-screen`.
-    // Chrome iOS has a known bug where `dvh` units don't resolve correctly on
-    // first paint — the dynamic viewport height isn't settled until a resize
-    // event fires (e.g. rotating the device or pinching to zoom). This causes
-    // the layout to miscalculate available width on first load only, which is
-    // exactly the reported symptom. `min-h-screen` (100vh) is stable on first
-    // paint across all iOS browsers and is the correct fix here.
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
