@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
+import { useEffect, useLayoutEffect } from "react";
+import { createFileRoute, redirect, Outlet, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileTopBar } from "@/components/mobile-shell";
@@ -27,21 +27,46 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-  useEffect(() => {
-    const reset = () => window.scrollTo(0, 0);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useLayoutEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
 
     reset();
     requestAnimationFrame(reset);
-    const timer = setTimeout(reset, 150);
 
-    return () => clearTimeout(timer);
-  }, []);
+    return undefined;
+  }, [pathname]);
+
+  useEffect(() => {
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+
+    const timers = [50, 150, 350, 700].map((delay) => setTimeout(reset, delay));
+    window.addEventListener("load", reset, { once: true });
+
+    return () => {
+      timers.forEach(clearTimeout);
+      window.removeEventListener("load", reset);
+    };
+  }, [pathname]);
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
-      <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <main className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
         <Outlet />
       </main>
     </div>

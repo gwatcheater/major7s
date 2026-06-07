@@ -112,6 +112,20 @@
 }
 .animate-reveal { animation: reveal 0.4s ease-out forwards; }
 
+.mobile-top-bar {
+  height: calc(4rem + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+}
+
+.mobile-shell-main {
+  padding-top: calc(4rem + env(safe-area-inset-top));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (min-width: 1024px) {
+  .mobile-shell-main { padding-top: 0; }
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   html {
