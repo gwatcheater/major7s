@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,13 +59,8 @@ function PicksBadge({ complete }: { complete: boolean }) {
 function HomePage() {
   const { activeTeam } = useTeams();
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
-    const t = setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: "instant" });
-    }, 150);
-    return () => clearTimeout(t);
-  }, []);
+
+
 
   const { data: tournaments = [], isLoading } = useQuery({
     queryKey: ["tournaments-active"],
@@ -100,7 +94,7 @@ function HomePage() {
 
   return (
     <div className="w-full p-4 md:p-12 max-w-6xl">
-      <div className="mb-8 pt-4">
+      <div className="mb-8">
         <h1
           className="font-display text-2xl uppercase tracking-tight"
           style={{ color: "var(--gold)" }}
