@@ -301,53 +301,221 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
+type HelperMode = "random" | "top-ranked" | "contrarian";
+
 interface PicksHelperProps {
   byBucket: Record<number, Golfer[]>;
   selections: Record<number, string>;
   setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   isLocked: boolean;
+  tournamentPickCounts: Record<string, number>; // golfer_id → pick count across all teams
 }
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked }: PicksHelperProps) {
-  const buckets = [1, 2, 3, 4, 5, 6, 7];
+// Shared bucket toggle + suggestion list + deploy UI used by all modes
+interface HelperPanelProps {
+  buckets: number[];
+  byBucket: Record<number, Golfer[]>;
+  targetBuckets: Set<number>;
+  toggleAll: () => void;
+  toggleBucket: (b: number) => void;
+  allActive: boolean;
+  suggestions: Record<number, string> | null;
+  setSuggestions: (s: Record<number, string> | null) => void;
+  deployed: boolean;
+  setDeployed: (v: boolean) => void;
+  onGenerate: () => void;
+  onRerollBucket?: (b: number) => void; // undefined = no per-row reroll (top-ranked)
+  isLocked: boolean;
+  generateLabel: string;
+  generateIcon: React.ReactNode;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+}
 
-  // Which buckets the user wants the helper to target
-  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(
-    new Set(buckets)
+function HelperPanel({
+  buckets, byBucket, targetBuckets, toggleAll, toggleBucket, allActive,
+  suggestions, setSuggestions, deployed, setDeployed,
+  onGenerate, onRerollBucket, isLocked,
+  generateLabel, generateIcon, setSelections,
+}: HelperPanelProps) {
+  const activeSuggestedBuckets = suggestions
+    ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
+    : [];
+
+  const deployLabel = activeSuggestedBuckets.length
+    ? `Deploy to ${activeSuggestedBuckets.map((b) => `B${b}`).join(", ")}`
+    : "Deploy";
+
+  function deploy() {
+    if (!suggestions) return;
+    setSelections((prev) => ({ ...prev, ...suggestions }));
+    setDeployed(true);
+  }
+
+  return (
+    <div className="px-5 py-4 space-y-5">
+      {/* Bucket selector */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+          Apply to buckets
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={toggleAll}
+            className={[
+              "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+              allActive
+                ? "text-[#1a2a10] border-transparent"
+                : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
+            ].join(" ")}
+            style={allActive ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
+          >
+            All
+          </button>
+          {buckets.map((b) => {
+            const isActive = targetBuckets.has(b);
+            const isEmpty = (byBucket[b] ?? []).length === 0;
+            return (
+              <button
+                key={b}
+                onClick={() => toggleBucket(b)}
+                disabled={isEmpty}
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                  isEmpty
+                    ? "opacity-30 cursor-not-allowed text-muted-foreground border-border"
+                    : isActive
+                    ? "text-green-100 border-transparent"
+                    : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
+                ].join(" ")}
+                style={isActive && !isEmpty ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
+              >
+                B{b}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Generate / Re-generate */}
+      <div className="flex gap-2">
+        <button
+          onClick={onGenerate}
+          disabled={isLocked || targetBuckets.size === 0}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-white rounded disabled:opacity-40 transition-colors"
+          style={{ backgroundColor: "var(--forest-deep)" }}
+        >
+          {generateIcon}
+          {suggestions ? `Re-run` : generateLabel}
+        </button>
+        {suggestions && (
+          <button
+            onClick={() => { setSuggestions(null); setDeployed(false); }}
+            className="px-3 py-2.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+            aria-label="Clear suggestions"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Suggestions preview */}
+      {suggestions && (
+        <div className="rounded border border-border overflow-hidden">
+          {buckets.map((b) => {
+            const isTargeted = targetBuckets.has(b);
+            const golferId = suggestions[b];
+            const golfer = golferId
+              ? (byBucket[b] ?? []).find((g) => g.id === golferId)
+              : null;
+
+            return (
+              <div
+                key={b}
+                className={[
+                  "flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0",
+                  !isTargeted || !golferId ? "opacity-40" : "",
+                ].join(" ")}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">
+                  B{b}
+                </span>
+                {!isTargeted || !golferId ? (
+                  <span className="text-sm text-muted-foreground flex-1">—</span>
+                ) : (
+                  <>
+                    <span className="text-sm flex-1">{golfer?.golfer_name ?? "Unknown"}</span>
+                    {golfer?.owgr_rank && (
+                      <span className="text-xs text-muted-foreground">
+                        OWGR #{golfer.owgr_rank}
+                      </span>
+                    )}
+                    {onRerollBucket && (
+                      <button
+                        onClick={() => { onRerollBucket(b); setDeployed(false); }}
+                        className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                        aria-label={`Re-roll B${b}`}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Deploy */}
+      {suggestions && activeSuggestedBuckets.length > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={deploy}
+            disabled={deployed || isLocked}
+            className={[
+              "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
+              deployed
+                ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
+                : "border-border hover:bg-muted/40",
+            ].join(" ")}
+          >
+            {deployed ? (
+              <><Check className="h-3.5 w-3.5" />Deployed — save your lineup to confirm</>
+            ) : (
+              <><Play className="h-3.5 w-3.5" />{deployLabel}</>
+            )}
+          </button>
+          <p className="text-xs text-muted-foreground leading-tight max-w-[140px]">
+            Other buckets unchanged. Save lineup to confirm.
+          </p>
+        </div>
+      )}
+    </div>
   );
+}
 
-  // Staged suggestions: bucket → golfer id. null means no suggestion yet.
+// ── Mode sub-components ───────────────────────────────────────────────────────
+
+function RandomMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections">) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
-
-  // Whether deploy just ran (for brief confirmation state)
   const [deployed, setDeployed] = useState(false);
-
   const allActive = buckets.every((b) => targetBuckets.has(b));
 
-  function toggleAll() {
-    setTargetBuckets(allActive ? new Set() : new Set(buckets));
-    setSuggestions(null);
-  }
-
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
   function toggleBucket(b: number) {
-    setTargetBuckets((prev) => {
-      const next = new Set(prev);
-      next.has(b) ? next.delete(b) : next.add(b);
-      return next;
-    });
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
     setSuggestions(null);
   }
+  function pickRandom(pool: Golfer[]) { return pool[Math.floor(Math.random() * pool.length)].id; }
 
-  function pickRandom(pool: Golfer[]): string {
-    return pool[Math.floor(Math.random() * pool.length)].id;
-  }
-
-  function generateSuggestions() {
+  function generate() {
     const result: Record<number, string> = {};
     for (const b of buckets) {
       if (!targetBuckets.has(b)) continue;
       const pool = byBucket[b] ?? [];
-      if (pool.length === 0) continue; // silently skip empty buckets
+      if (pool.length === 0) continue;
       result[b] = pickRandom(pool);
     }
     setSuggestions(result);
@@ -358,201 +526,181 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked }: PicksHel
     const pool = byBucket[b] ?? [];
     if (pool.length === 0) return;
     setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(pool) }));
+  }
+
+  return (
+    <HelperPanel
+      buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+      toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+      suggestions={suggestions} setSuggestions={setSuggestions}
+      deployed={deployed} setDeployed={setDeployed}
+      onGenerate={generate} onRerollBucket={rerollBucket}
+      isLocked={isLocked} setSelections={setSelections}
+      generateLabel="Suggest picks"
+      generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+    />
+  );
+}
+
+function TopRankedMode({ byBucket, setSelections, isLocked }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections">) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = byBucket[b] ?? [];
+      if (pool.length === 0) continue;
+      // Already sorted ascending by owgr_rank in byBucket — pick index 0
+      const best = pool.find((g) => g.owgr_rank != null) ?? pool[0];
+      result[b] = best.id;
+    }
+    setSuggestions(result);
     setDeployed(false);
   }
 
-  function deploy() {
-    if (!suggestions) return;
-    setSelections((prev) => ({ ...prev, ...suggestions }));
-    setDeployed(true);
+  return (
+    <HelperPanel
+      buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+      toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+      suggestions={suggestions} setSuggestions={setSuggestions}
+      deployed={deployed} setDeployed={setDeployed}
+      onGenerate={generate} onRerollBucket={undefined}
+      isLocked={isLocked} setSelections={setSelections}
+      generateLabel="Apply top-ranked"
+      generateIcon={<Play className="h-3.5 w-3.5" />}
+    />
+  );
+}
+
+function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCounts }: Omit<PicksHelperProps, "selections">) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
   }
 
-  const activeSuggestedBuckets = suggestions
-    ? Object.keys(suggestions).map(Number).filter((b) => suggestions[b])
-    : [];
+  function leastPickedRandom(pool: Golfer[]): string {
+    // Find the minimum pick count across the pool
+    const minCount = Math.min(...pool.map((g) => tournamentPickCounts[g.id] ?? 0));
+    const leastPicked = pool.filter((g) => (tournamentPickCounts[g.id] ?? 0) === minCount);
+    return leastPicked[Math.floor(Math.random() * leastPicked.length)].id;
+  }
 
-  const deployLabel = activeSuggestedBuckets.length
-    ? `Deploy to ${activeSuggestedBuckets.map((b) => `B${b}`).join(", ")}`
-    : "Deploy";
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = byBucket[b] ?? [];
+      if (pool.length === 0) continue;
+      result[b] = leastPickedRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = byBucket[b] ?? [];
+    if (pool.length === 0) return;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: leastPickedRandom(pool) }));
+  }
 
   return (
-    <div className="mt-6">
-      {/* Section heading */}
-      <p
-        className="text-[10px] font-bold uppercase tracking-widest mb-1"
-        style={{ color: "var(--gold)" }}
-      >
-        Picks helper
-      </p>
-      <h2 className="font-display text-xl uppercase mb-1">Random</h2>
-      <p className="text-sm text-muted-foreground mb-4">
-        Suggest a random golfer per bucket. Review the picks, then deploy into your lineup.
-      </p>
+    <HelperPanel
+      buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+      toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+      suggestions={suggestions} setSuggestions={setSuggestions}
+      deployed={deployed} setDeployed={setDeployed}
+      onGenerate={generate} onRerollBucket={rerollBucket}
+      isLocked={isLocked} setSelections={setSelections}
+      generateLabel="Find contrarians"
+      generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+    />
+  );
+}
 
-      <Card className="p-0 overflow-hidden">
-        {/* Helper header */}
-        <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-border">
-          <div
-            className="w-8 h-8 rounded flex items-center justify-center shrink-0"
-            style={{ backgroundColor: "var(--forest-deep)" }}
+// ── Main PicksHelper shell ────────────────────────────────────────────────────
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts }: PicksHelperProps) {
+  const [activeMode, setActiveMode] = useState<HelperMode>("random");
+
+  const modes: { id: HelperMode; label: string; desc: string }[] = [
+    { id: "random",      label: "Random",      desc: "Random golfer per bucket" },
+    { id: "top-ranked",  label: "Top ranked",  desc: "Highest OWGR in each bucket" },
+    { id: "contrarian",  label: "Contrarian",  desc: "Least-picked across all teams" },
+  ];
+
+  return (
+    <Card className="p-0 overflow-hidden">
+      {/* Panel header */}
+      <div className="px-5 pt-4 pb-3 border-b border-border">
+        <p
+          className="text-[10px] font-bold uppercase tracking-widest mb-2"
+          style={{ color: "var(--gold)" }}
+        >
+          Picks Helper
+        </p>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Need help? Let the Picks Helper do the heavy lifting! Use the helper options to get smart golfer recommendations for any bucket. Give the picks a quick look, deploy them to your lineup, and you're ready to conquer the Major!
+        </p>
+      </div>
+
+      {/* Mode tabs */}
+      <div className="flex border-b border-border">
+        {modes.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setActiveMode(m.id)}
+            className={[
+              "flex-1 px-3 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-r border-border last:border-r-0",
+              activeMode === m.id
+                ? "text-white"
+                : "text-muted-foreground hover:bg-muted/40",
+            ].join(" ")}
+            style={activeMode === m.id ? { backgroundColor: "var(--forest-deep)" } : {}}
           >
-            <Shuffle className="h-4 w-4" style={{ color: "var(--gold)" }} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">Random pick</p>
-            <p className="text-xs text-muted-foreground">
-              Picks a random golfer from each selected bucket
-            </p>
-          </div>
-        </div>
+            {m.label}
+          </button>
+        ))}
+      </div>
 
-        <div className="px-5 py-4 space-y-5">
-          {/* Bucket selector */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-              Apply to buckets
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {/* All toggle */}
-              <button
-                onClick={toggleAll}
-                className={[
-                  "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
-                  allActive
-                    ? "text-[#1a2a10] border-transparent"
-                    : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
-                ].join(" ")}
-                style={allActive ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
-              >
-                All
-              </button>
-              {buckets.map((b) => {
-                const isActive = targetBuckets.has(b);
-                const isEmpty = (byBucket[b] ?? []).length === 0;
-                return (
-                  <button
-                    key={b}
-                    onClick={() => toggleBucket(b)}
-                    disabled={isEmpty}
-                    className={[
-                      "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
-                      isEmpty
-                        ? "opacity-30 cursor-not-allowed text-muted-foreground border-border"
-                        : isActive
-                        ? "text-green-100 border-transparent"
-                        : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
-                    ].join(" ")}
-                    style={isActive && !isEmpty ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
-                  >
-                    B{b}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* Mode description row */}
+      <div className="px-5 py-2.5 border-b border-border bg-muted/30">
+        <p className="text-xs text-muted-foreground">
+          {modes.find((m) => m.id === activeMode)?.desc}
+        </p>
+      </div>
 
-          {/* Suggest / Re-roll all */}
-          <div className="flex gap-2">
-            <button
-              onClick={generateSuggestions}
-              disabled={isLocked || targetBuckets.size === 0}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-white rounded disabled:opacity-40 transition-colors"
-              style={{ backgroundColor: "var(--forest-deep)" }}
-            >
-              <Shuffle className="h-3.5 w-3.5" />
-              {suggestions ? "Re-roll all" : "Suggest picks"}
-            </button>
-            {suggestions && (
-              <button
-                onClick={() => { setSuggestions(null); setDeployed(false); }}
-                className="px-3 py-2.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
-                aria-label="Clear suggestions"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Suggestions preview */}
-          {suggestions && (
-            <div className="rounded border border-border overflow-hidden">
-              {buckets.map((b) => {
-                const isTargeted = targetBuckets.has(b);
-                const golferId = suggestions[b];
-                const golfer = golferId
-                  ? (byBucket[b] ?? []).find((g) => g.id === golferId)
-                  : null;
-
-                return (
-                  <div
-                    key={b}
-                    className={[
-                      "flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0",
-                      !isTargeted || !golferId ? "opacity-40" : "",
-                    ].join(" ")}
-                  >
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">
-                      B{b}
-                    </span>
-
-                    {!isTargeted || !golferId ? (
-                      <span className="text-sm text-muted-foreground flex-1">—</span>
-                    ) : (
-                      <>
-                        <span className="text-sm flex-1">{golfer?.golfer_name ?? "Unknown"}</span>
-                        {golfer?.owgr_rank && (
-                          <span className="text-xs text-muted-foreground">
-                            OWGR #{golfer.owgr_rank}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => rerollBucket(b)}
-                          className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
-                          aria-label={`Re-roll B${b}`}
-                        >
-                          <RefreshCw className="h-3 w-3" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Deploy */}
-          {suggestions && activeSuggestedBuckets.length > 0 && (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={deploy}
-                disabled={deployed || isLocked}
-                className={[
-                  "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
-                  deployed
-                    ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
-                    : "border-border hover:bg-muted/40",
-                ].join(" ")}
-              >
-                {deployed ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" />
-                    Deployed — save your lineup to confirm
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-3.5 w-3.5" />
-                    {deployLabel}
-                  </>
-                )}
-              </button>
-              <p className="text-xs text-muted-foreground leading-tight max-w-[140px]">
-                Other buckets unchanged. Save lineup to confirm.
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
-    </div>
+      {/* Active mode content */}
+      {activeMode === "random" && (
+        <RandomMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} />
+      )}
+      {activeMode === "top-ranked" && (
+        <TopRankedMode byBucket={byBucket} setSelections={setSelections} isLocked={isLocked} />
+      )}
+      {activeMode === "contrarian" && (
+        <ContrarianMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} tournamentPickCounts={tournamentPickCounts}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -601,6 +749,28 @@ function LineupPicker() {
         .eq("tournament_id", id);
       if (error) throw error;
       return data;
+    },
+  });
+
+  // All picks across all teams for this tournament — used by Contrarian helper
+  const { data: allTournamentPicks = [] } = useQuery({
+    queryKey: ["all-picks", id],
+    queryFn: async () => {
+      let all: any[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select("golfer_id")
+          .eq("tournament_id", id)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data ?? []);
+        if ((data ?? []).length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
     },
   });
 
@@ -755,6 +925,12 @@ function LineupPicker() {
     ? ` ${getTournamentYear(tournament.start_date)}`
     : "";
 
+  // Aggregate pick counts per golfer across all teams (for Contrarian mode)
+  const tournamentPickCounts: Record<string, number> = {};
+  for (const p of allTournamentPicks) {
+    if (p.golfer_id) tournamentPickCounts[p.golfer_id] = (tournamentPickCounts[p.golfer_id] ?? 0) + 1;
+  }
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -874,6 +1050,7 @@ function LineupPicker() {
       selections={selections}
       setSelections={setSelections}
       isLocked={!impersonatingId && isLocked}
+      tournamentPickCounts={tournamentPickCounts}
     />
   );
 
@@ -922,14 +1099,18 @@ function LineupPicker() {
 
         {/* Two-column body, each side independently scrollable */}
         <div className="flex flex-1 gap-6 px-8 pb-8 overflow-hidden">
-          {/* Left: picks card */}
+          {/* Left: picks card — scrollable, content anchored to top */}
           <div className="flex-1 overflow-y-auto">
-            {picksCard}
+            <div className="flex flex-col">
+              {picksCard}
+            </div>
           </div>
 
-          {/* Right: picks helper */}
+          {/* Right: picks helper — scrollable, content anchored to top */}
           <div className="flex-1 overflow-y-auto">
-            {helperBlock}
+            <div className="flex flex-col">
+              {helperBlock}
+            </div>
           </div>
         </div>
       </div>
