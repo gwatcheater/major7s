@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
-import { MobileTopBar } from "@/components/mobile-shell";
+import { MobileTopBar, MobileTopBarSpacer } from "@/components/mobile-shell";
+
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async ({ location }) => {
