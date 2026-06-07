@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -59,6 +60,17 @@ function PicksBadge({ complete }: { complete: boolean }) {
 function HomePage() {
   const { activeTeam } = useTeams();
 
+  // FIX: Chrome iOS initialises the page with a non-zero scroll offset on first
+  // load. This forces a scroll to the top immediately on mount, then once more
+  // after a short delay to catch any deferred paint corrections.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    const t = setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, []);
+
   const { data: tournaments = [], isLoading } = useQuery({
     queryKey: ["tournaments-active"],
     queryFn: async () => {
@@ -91,9 +103,6 @@ function HomePage() {
 
   return (
     <div className="w-full p-4 md:p-12 max-w-6xl">
-      {/* FIX: removed empty <header className="mb-6" /> spacer and replaced with
-          simple top padding on the grid so there is no ambiguity about spacing
-          on first paint. */}
       {isLoading ? (
         <div className="text-center py-20 text-muted-foreground text-sm">
           Loading the leaderboard...
@@ -107,7 +116,7 @@ function HomePage() {
         </div>
       ) : (
         <div className="grid gap-6 w-full pt-2">
-          {tournaments.map((t, i) => {
+          {tournaments.map((t) => {
             const picks = pickCounts[t.id] ?? 0;
             const complete = picks >= 7;
             const isOpen = t.status === "open_for_picks";
@@ -117,18 +126,14 @@ function HomePage() {
             return (
               <div
                 key={t.id}
-                // FIX: removed animationDelay — staggered delays with translateY
-                // caused Chrome iOS to miscalculate initial scroll position.
                 className="relative w-full box-border bg-card border border-border rounded-xl overflow-hidden flex flex-col group hover:border-primary/40 hover:shadow-lg transition-all animate-reveal"
               >
-                {/* Full-card click target */}
                 <Link
                   to={link.to}
                   params={link.params}
                   aria-label={`Open ${t.name}`}
                   className="absolute inset-0 z-10"
                 />
-                {/* Left accent stripe */}
                 <div
                   className="absolute top-0 left-0 w-1.5 h-full pointer-events-none"
                   style={{ backgroundColor: isOpen ? "var(--gold)" : "var(--forest)" }}
