@@ -6,7 +6,7 @@ import { useTeams } from "@/hooks/use-teams";
 import { useImpersonation } from "@/context/impersonation-context";
 import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, Check, ChevronDown, X, XCircle } from "lucide-react";
+import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/lineup")({
@@ -295,6 +295,263 @@ function BottomSheet({
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── PicksHelper ──────────────────────────────────────────────────────────────
+
+interface PicksHelperProps {
+  byBucket: Record<number, Golfer[]>;
+  selections: Record<number, string>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+}
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked }: PicksHelperProps) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+
+  // Which buckets the user wants the helper to target
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(
+    new Set(buckets)
+  );
+
+  // Staged suggestions: bucket → golfer id. null means no suggestion yet.
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+
+  // Whether deploy just ran (for brief confirmation state)
+  const [deployed, setDeployed] = useState(false);
+
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() {
+    setTargetBuckets(allActive ? new Set() : new Set(buckets));
+    setSuggestions(null);
+  }
+
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => {
+      const next = new Set(prev);
+      next.has(b) ? next.delete(b) : next.add(b);
+      return next;
+    });
+    setSuggestions(null);
+  }
+
+  function pickRandom(pool: Golfer[]): string {
+    return pool[Math.floor(Math.random() * pool.length)].id;
+  }
+
+  function generateSuggestions() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = byBucket[b] ?? [];
+      if (pool.length === 0) continue; // silently skip empty buckets
+      result[b] = pickRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = byBucket[b] ?? [];
+    if (pool.length === 0) return;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(pool) }));
+    setDeployed(false);
+  }
+
+  function deploy() {
+    if (!suggestions) return;
+    setSelections((prev) => ({ ...prev, ...suggestions }));
+    setDeployed(true);
+  }
+
+  const activeSuggestedBuckets = suggestions
+    ? Object.keys(suggestions).map(Number).filter((b) => suggestions[b])
+    : [];
+
+  const deployLabel = activeSuggestedBuckets.length
+    ? `Deploy to ${activeSuggestedBuckets.map((b) => `B${b}`).join(", ")}`
+    : "Deploy";
+
+  return (
+    <div className="mt-6">
+      {/* Section heading */}
+      <p
+        className="text-[10px] font-bold uppercase tracking-widest mb-1"
+        style={{ color: "var(--gold)" }}
+      >
+        Picks helper
+      </p>
+      <h2 className="font-display text-xl uppercase mb-1">Random</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Suggest a random golfer per bucket. Review the picks, then deploy into your lineup.
+      </p>
+
+      <Card className="p-0 overflow-hidden">
+        {/* Helper header */}
+        <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-border">
+          <div
+            className="w-8 h-8 rounded flex items-center justify-center shrink-0"
+            style={{ backgroundColor: "var(--forest-deep)" }}
+          >
+            <Shuffle className="h-4 w-4" style={{ color: "var(--gold)" }} />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">Random pick</p>
+            <p className="text-xs text-muted-foreground">
+              Picks a random golfer from each selected bucket
+            </p>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-5">
+          {/* Bucket selector */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Apply to buckets
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {/* All toggle */}
+              <button
+                onClick={toggleAll}
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                  allActive
+                    ? "text-[#1a2a10] border-transparent"
+                    : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
+                ].join(" ")}
+                style={allActive ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
+              >
+                All
+              </button>
+              {buckets.map((b) => {
+                const isActive = targetBuckets.has(b);
+                const isEmpty = (byBucket[b] ?? []).length === 0;
+                return (
+                  <button
+                    key={b}
+                    onClick={() => toggleBucket(b)}
+                    disabled={isEmpty}
+                    className={[
+                      "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                      isEmpty
+                        ? "opacity-30 cursor-not-allowed text-muted-foreground border-border"
+                        : isActive
+                        ? "text-green-100 border-transparent"
+                        : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
+                    ].join(" ")}
+                    style={isActive && !isEmpty ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
+                  >
+                    B{b}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Suggest / Re-roll all */}
+          <div className="flex gap-2">
+            <button
+              onClick={generateSuggestions}
+              disabled={isLocked || targetBuckets.size === 0}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-white rounded disabled:opacity-40 transition-colors"
+              style={{ backgroundColor: "var(--forest-deep)" }}
+            >
+              <Shuffle className="h-3.5 w-3.5" />
+              {suggestions ? "Re-roll all" : "Suggest picks"}
+            </button>
+            {suggestions && (
+              <button
+                onClick={() => { setSuggestions(null); setDeployed(false); }}
+                className="px-3 py-2.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                aria-label="Clear suggestions"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Suggestions preview */}
+          {suggestions && (
+            <div className="rounded border border-border overflow-hidden">
+              {buckets.map((b) => {
+                const isTargeted = targetBuckets.has(b);
+                const golferId = suggestions[b];
+                const golfer = golferId
+                  ? (byBucket[b] ?? []).find((g) => g.id === golferId)
+                  : null;
+
+                return (
+                  <div
+                    key={b}
+                    className={[
+                      "flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0",
+                      !isTargeted || !golferId ? "opacity-40" : "",
+                    ].join(" ")}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">
+                      B{b}
+                    </span>
+
+                    {!isTargeted || !golferId ? (
+                      <span className="text-sm text-muted-foreground flex-1">—</span>
+                    ) : (
+                      <>
+                        <span className="text-sm flex-1">{golfer?.golfer_name ?? "Unknown"}</span>
+                        {golfer?.owgr_rank && (
+                          <span className="text-xs text-muted-foreground">
+                            OWGR #{golfer.owgr_rank}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => rerollBucket(b)}
+                          className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                          aria-label={`Re-roll B${b}`}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Deploy */}
+          {suggestions && activeSuggestedBuckets.length > 0 && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={deploy}
+                disabled={deployed || isLocked}
+                className={[
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
+                  deployed
+                    ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
+                    : "border-border hover:bg-muted/40",
+                ].join(" ")}
+              >
+                {deployed ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    Deployed — save your lineup to confirm
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-3.5 w-3.5" />
+                    {deployLabel}
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-muted-foreground leading-tight max-w-[140px]">
+                Other buckets unchanged. Save lineup to confirm.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -642,6 +899,16 @@ function LineupPicker() {
               </button>
             </div>
           </Card>
+        )}
+
+        {/* ── Picks Helper ── */}
+        {field.length > 0 && (
+          <PicksHelper
+            byBucket={byBucket}
+            selections={selections}
+            setSelections={setSelections}
+            isLocked={!impersonatingId && isLocked}
+          />
         )}
       </div>
     </>
