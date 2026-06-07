@@ -60,13 +60,8 @@ function PicksBadge({ complete }: { complete: boolean }) {
 function HomePage() {
   const { activeTeam } = useTeams();
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
-    const t = setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: "instant" });
-    }, 150);
-    return () => clearTimeout(t);
-  }, []);
+
+
 
   const { data: tournaments = [], isLoading } = useQuery({
     queryKey: ["tournaments-active"],
