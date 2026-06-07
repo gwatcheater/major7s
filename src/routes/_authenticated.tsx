@@ -42,7 +42,7 @@ function AuthenticatedLayout() {
           Chrome iOS doesn't always account for it correctly, so we use margin-top
           as a guaranteed offset that doesn't depend on Chrome resolving sticky
           positioning before first paint. lg:mt-0 removes it on desktop. */}
-      <main className="flex-1 min-w-0 overflow-x-hidden mt-16 lg:mt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <main className="flex-1 min-w-0 overflow-x-hidden mt-20 lg:mt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
