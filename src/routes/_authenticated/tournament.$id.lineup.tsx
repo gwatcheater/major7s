@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useImpersonation } from "@/context/impersonation-context";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
@@ -755,13 +754,6 @@ function LineupPicker() {
   const yearSuffix = tournament.start_date
     ? ` ${getTournamentYear(tournament.start_date)}`
     : "";
-
-  // ── Sidebar: collapse on desktop for more screen space, restore on unmount ──
-  const { setOpen: setSidebarOpen } = useSidebar();
-  useEffect(() => {
-    setSidebarOpen(false);
-    return () => setSidebarOpen(true);
-  }, [setSidebarOpen]);
 
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
