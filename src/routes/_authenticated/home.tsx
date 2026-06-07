@@ -107,9 +107,6 @@ function HomePage() {
         >
           Major Season
         </h1>
-        <p className="text-xs text-muted-foreground mt-1 uppercase tracking-widest">
-          2026
-        </p>
       </div>
 
       {isLoading ? (
