@@ -27,11 +27,6 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   useEffect(() => {
-    // FIX: Chrome on iOS (WKWebView) does not correctly resolve viewport width
-    // on first paint. Rotating the device or pinching dispatches a resize event
-    // which forces Chrome to recalculate and correct the layout. This effect
-    // replicates that by dispatching a synthetic resize event after a short delay
-    // to allow the initial paint to complete first.
     const timer = setTimeout(() => {
       window.dispatchEvent(new Event("resize"));
     }, 100);
@@ -42,7 +37,11 @@ function AuthenticatedLayout() {
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
-      <main className="flex-1 min-w-0 overflow-x-hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* FIX: added pt-14 on mobile to offset the sticky MobileTopBar (h-14 = 56px).
+          Without this the main content starts at the top of the viewport and the
+          header overlaps it. pt-14 is removed at lg breakpoint since the sidebar
+          is used instead and there is no top bar. */}
+      <main className="flex-1 min-w-0 overflow-x-hidden pt-14 lg:pt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
