@@ -37,10 +37,10 @@ function AuthenticatedLayout() {
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
-      {/* FIX: pt-16 matches the fixed MobileTopBar height (h-16 = 64px) so content
-          starts below the header. lg:pt-0 removes it on desktop where the sidebar
-          is used and there is no top bar. */}
-      <main className="flex-1 min-w-0 overflow-x-hidden pt-16 lg:pt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* pt-24 (96px) = h-16 fixed header (64px) + extra clearance for the card's
+          internal top padding so the badges row is fully visible on first load.
+          lg:pt-0 removes it on desktop where there is no top bar. */}
+      <main className="flex-1 min-w-0 overflow-x-hidden pt-24 lg:pt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
