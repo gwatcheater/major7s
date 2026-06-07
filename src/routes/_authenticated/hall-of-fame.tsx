@@ -173,7 +173,7 @@ function ResultCard({ row }: { row: AggRow }) {
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden grid grid-cols-1 sm:grid-cols-[220px_1fr]">
       {/* Meta panel — top-aligned */}
       <div className="px-4 py-3.5 flex flex-col justify-start" style={{ backgroundColor: "var(--forest-deep)" }}>
-        <div className="text-[40px] leading-none font-bold tabular-nums font-mono" style={{ color: "var(--gold)" }}>{row.year}</div>
+        <div className="text-[30px] leading-none font-bold tabular-nums font-mono" style={{ color: "var(--gold)" }}>{row.year}</div>
         <div className="text-base font-semibold text-white leading-tight mt-1.5 sm:whitespace-nowrap">{row.name}</div>
         {row.location && (
           <div className="text-[11px] mt-1 leading-snug sm:whitespace-nowrap sm:overflow-hidden sm:text-ellipsis" style={{ color: "#7aab8a" }}>{row.location}</div>
