@@ -37,11 +37,10 @@ function AuthenticatedLayout() {
     <div className="flex flex-col lg:flex-row min-h-screen w-full" style={{ backgroundColor: "var(--ui-bg)" }}>
       <MobileTopBar />
       <AppSidebar />
-      {/* FIX: added pt-14 on mobile to offset the sticky MobileTopBar (h-14 = 56px).
-          Without this the main content starts at the top of the viewport and the
-          header overlaps it. pt-14 is removed at lg breakpoint since the sidebar
-          is used instead and there is no top bar. */}
-      <main className="flex-1 min-w-0 overflow-x-hidden pt-14 lg:pt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* FIX: pt-16 matches the fixed MobileTopBar height (h-16 = 64px) so content
+          starts below the header. lg:pt-0 removes it on desktop where the sidebar
+          is used and there is no top bar. */}
+      <main className="flex-1 min-w-0 overflow-x-hidden pt-16 lg:pt-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <Outlet />
       </main>
     </div>
