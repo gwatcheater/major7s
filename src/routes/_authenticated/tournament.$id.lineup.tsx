@@ -716,23 +716,30 @@ function HistoricalMode({
     setDeployed(false);
   }
 
-  // Check if any bucket in the field has historical data at all
-  const hasAnyData = Object.values(byBucket).flat().some((g) => historical[g.id] != null);
+  // How many of the historical keys are known — shown as context after loading
+  const dataCount = Object.values(byBucket).flat().filter((g) => historical[g.id] != null).length;
+  const totalCount = Object.values(byBucket).flat().length;
 
   return (
     <>
-      {!hasAnyData && (
-        <div className="px-5 pt-4 pb-2">
-          <p className="text-xs text-muted-foreground italic">{noDataLabel}</p>
-        </div>
-      )}
+      {/* Data availability indicator */}
+      <div className="px-5 pt-3 pb-0">
+        {totalCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {dataCount === 0
+              ? noDataLabel
+              : `Historical data available for ${dataCount} of ${totalCount} golfers in this field.`}
+          </p>
+        )}
+      </div>
       <HelperPanel
         buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
         toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
         suggestions={suggestions} setSuggestions={setSuggestions}
         deployed={deployed} setDeployed={setDeployed}
         onGenerate={generate} onRerollBucket={undefined}
-        isLocked={isLocked || !hasAnyData} setSelections={setSelections}
+        isLocked={isLocked}
+        setSelections={setSelections}
         generateLabel={modeLabel}
         generateIcon={<Play className="h-3.5 w-3.5" />}
         onDeploy={onDeploy}
@@ -953,16 +960,21 @@ function LineupPicker() {
           .eq("status_type", "STATUS_FINISH")
           .in("golfer_id", fieldGolferIds)
           .range(from, from + PAGE - 1);
-        if (error) throw error;
+        if (error) {
+          console.error("[PicksHelper] historicalScorePicks query error:", error);
+          throw error;
+        }
+        console.log(`[PicksHelper] historicalScorePicks page from=${from}, rows=${data?.length ?? 0}, sample:`, data?.[0]);
         all = all.concat(data ?? []);
         if ((data ?? []).length < PAGE) break;
         from += PAGE;
       }
-      // Exclude rows belonging to the current tournament
-      return all.filter((row: any) => {
+      const filtered = all.filter((row: any) => {
         const tid = row.tournament_scores?.tournaments?.id;
         return tid && tid !== id;
       });
+      console.log(`[PicksHelper] historicalScorePicks total=${all.length}, after filter=${filtered.length}`);
+      return filtered;
     },
   });
 
