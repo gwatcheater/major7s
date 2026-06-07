@@ -44,3 +44,15 @@ export function MobileTopBar() {
     </header>
   );
 }
+
+/**
+ * Reserves vertical space in the document flow equal to the fixed MobileTopBar
+ * height. Using a real in-flow block element (instead of position: sticky)
+ * guarantees the offset is resolved on first paint in Chrome iOS WKWebView,
+ * which otherwise renders sticky headers as if they take no space until a
+ * reflow event (rotation, reload, pinch).
+ */
+export function MobileTopBarSpacer() {
+  return <div className="h-16 lg:hidden" aria-hidden="true" />;
+}
+
