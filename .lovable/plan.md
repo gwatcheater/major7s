@@ -1,24 +1,48 @@
-## Problem
+## Plan: stop the trial-and-error and fix Chrome iOS safely
 
-On Chrome iOS portrait first load of `/home`, the authenticated shell can paint before the mobile header offset is stable. That makes the page content start underneath the top menu bar, hiding the "Major Season" heading and the top of the first tournament card.
+### Goal
+Make `/home` first load correctly on Chrome iOS portrait, with the mobile header visible and the “Major Season” heading + first tournament card starting below it.
 
-The earlier sticky-only and spacer variants were still vulnerable because Chrome iOS may preserve or apply a stale scroll/layout offset during hydration.
+### Approach
+1. **Rollback the risky layout experiments**
+   - Revert the recent fixed-header / isolated-scroll-container changes that made the issue worse.
+   - Return to the simpler mobile shell structure that was closest to the original working layout.
 
-## Fix
+2. **Remove likely Chrome iOS triggers**
+   - Remove first-load card reveal animation from the tournament list on mobile.
+   - Avoid changing scroll containers or using repeated forced scroll resets.
+   - Keep the page using normal document scrolling, which is generally more reliable on iOS Chrome.
 
-Use a deterministic mobile shell with the main content as the mobile scroll container:
+3. **Use a conservative header offset**
+   - Keep the mobile top bar as a normal sticky header.
+   - Add a plain, static top padding/margin only where the `/home` content begins if needed.
+   - Avoid `100dvh`, custom mobile scroll areas, and complex safe-area calculations unless strictly required.
 
-1. `MobileTopBar` is `fixed` on mobile, with a fixed z-index and safe-area-aware height.
-2. The main content gets matching safe-area-aware `padding-top`, so content can never begin underneath the fixed menu bar.
-3. On mobile, `main` owns scrolling at `100dvh`, so Chrome iOS cannot apply a stale window scroll that places content underneath the fixed header.
-4. Route changes under `_authenticated` force scroll restoration to `manual` and reset the window plus the main scroll container to `0` immediately, on the next animation frame, after load, and with short delayed fallbacks.
+4. **Add Chrome iOS-specific defensive CSS only if necessary**
+   - Use feature queries / mobile media queries to target mobile WebKit behavior.
+   - Keep the fix local to the authenticated shell and home page.
 
-## Files
+5. **Verify the outcome by checking layout state**
+   - Confirm the first visible content on `/home` is the “Major Season” heading below the top bar.
+   - Confirm the first tournament card is not underneath the header.
+   - Confirm desktop layout is unchanged.
 
-1. `src/components/mobile-shell.tsx` — mobile top bar is fixed at the top of the viewport.
-2. `src/routes/_authenticated.tsx` — route-aware scroll reset and safe mobile shell main class.
-3. `src/styles.css` — `.mobile-top-bar` and `.mobile-shell-main` reserve the exact header height including `env(safe-area-inset-top)`.
+### Technical notes
+- Files likely involved:
+  - `src/components/mobile-shell.tsx`
+  - `src/routes/_authenticated.tsx`
+  - `src/routes/_authenticated/home.tsx`
+  - `src/styles.css`
+- I will not edit generated files.
+- I will not add more scroll-reset loops unless there is direct evidence they are needed.
 
-## Verification
+### Fallback if this still fails
+If Chrome iOS still preserves a bad first-paint position after the rollback-first fix, the next step should be a user-assisted repro signal: one fresh screenshot plus exact browser state after login. At that point it may be faster to restore a known earlier version from History and reapply unrelated changes incrementally.
 
-Validated in a mobile portrait viewport: the top menu bar is visible, "Major Season" appears below it, and the first tournament card starts below the heading with no clipping.
+<presentation-actions>
+  <presentation-open-history>View History</presentation-open-history>
+</presentation-actions>
+
+<presentation-actions>
+<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
+</presentation-actions>
