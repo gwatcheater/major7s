@@ -16,16 +16,14 @@ export function MobileTopBar() {
   }, [path]);
 
   return (
-    // FIX: removed `paddingTop: "env(safe-area-inset-top)"` from the inline style.
-    // Chrome iOS does not resolve env() safe-area values correctly on first paint
-    // when applied as inline styles — the value is treated as 0 initially, causing
-    // the header height to be miscalculated, which cascades into the main content
-    // area rendering at the wrong width. The fix is to use the `pt-safe` utility
-    // (or remove it entirely, since the sticky header sits below the safe area on
-    // most iPhones in portrait). The fixed h-14 height already provides sufficient
-    // clearance on all current iPhone models.
+    // FIX: changed from `sticky` to `fixed` so the header is fully removed from
+    // the document flow. With `sticky`, the header still occupies space in the
+    // flow AND overlaps content when scrolled, requiring precise padding compensation.
+    // With `fixed` + `inset-x-0 top-0`, the header is always at the top of the
+    // viewport and the padding on <main> (pt-16 in _authenticated.tsx) provides
+    // the exact clearance needed regardless of scroll position.
     <header
-      className="sticky top-0 z-40 flex items-center justify-between px-4 h-14 border-b border-white/10 lg:hidden"
+      className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-4 h-16 border-b border-white/10 lg:hidden"
       style={{ backgroundColor: "var(--forest-deep)" }}
     >
       <Sheet open={open} onOpenChange={setOpen}>
