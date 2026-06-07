@@ -118,12 +118,21 @@
 }
 
 .mobile-shell-main {
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   padding-top: calc(4rem + env(safe-area-inset-top));
   padding-bottom: env(safe-area-inset-bottom);
 }
 
 @media (min-width: 1024px) {
-  .mobile-shell-main { padding-top: 0; }
+  .mobile-shell-main {
+    height: auto;
+    overflow-y: visible;
+    overscroll-behavior-y: auto;
+    padding-top: 0;
+  }
 }
 
 @layer base {
