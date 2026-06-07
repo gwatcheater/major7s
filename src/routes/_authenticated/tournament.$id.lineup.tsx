@@ -364,10 +364,10 @@ function HelperPanel({
             className={[
               "px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
               allActive
-                ? "text-[#1a2a10] border-transparent"
+                ? "text-white border-transparent"
                 : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
             ].join(" ")}
-            style={allActive ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
+            style={allActive ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
           >
             All
           </button>
@@ -384,10 +384,10 @@ function HelperPanel({
                   isEmpty
                     ? "opacity-30 cursor-not-allowed text-muted-foreground border-border"
                     : isActive
-                    ? "text-green-100 border-transparent"
+                    ? "border-transparent text-[#1a2a10]"
                     : "text-muted-foreground border-border bg-transparent hover:bg-muted/40",
                 ].join(" ")}
-                style={isActive && !isEmpty ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
+                style={isActive && !isEmpty ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
               >
                 B{b}
               </button>
@@ -640,16 +640,27 @@ function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCount
 function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
-  const modes: { id: HelperMode; label: string; desc: string }[] = [
-    { id: "random",      label: "Random",      desc: "Random golfer per bucket" },
-    { id: "top-ranked",  label: "Top ranked",  desc: "Highest OWGR in each bucket" },
-    { id: "contrarian",  label: "Contrarian",  desc: "Least-picked across all teams" },
+  const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
+    { id: "random",     label: "Random",     emoji: "🎲", desc: "Random golfer per bucket" },
+    { id: "top-ranked", label: "Top ranked", emoji: "🏆", desc: "Highest OWGR in each bucket" },
+    { id: "contrarian", label: "Contrarian", emoji: "📉", desc: "Least-picked across all teams" },
   ];
+
+  const comingSoon = [
+    { label: "🔥 OWGR", desc: "Form-weighted by recent ranking" },
+    { label: "Lefties",   desc: "Left-handed golfers only" },
+    { label: "Debutants", desc: "First major appearance" },
+    { label: "No Yanks",  desc: "Exclude US players" },
+    { label: "Fit WAGs",  desc: "Aesthetic-adjacent selection criteria" },
+    { label: "C@nts",     desc: "You know who they are" },
+  ];
+
+  const activeDesc = liveModes.find((m) => m.id === activeMode)?.desc ?? "";
 
   return (
     <Card className="p-0 overflow-hidden">
       {/* Panel header */}
-      <div className="px-5 pt-4 pb-3 border-b border-border">
+      <div className="px-5 pt-4 pb-4 border-b border-border">
         <p
           className="text-[10px] font-bold uppercase tracking-widest mb-2"
           style={{ color: "var(--gold)" }}
@@ -661,30 +672,52 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
         </p>
       </div>
 
-      {/* Mode tabs */}
-      <div className="flex border-b border-border">
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setActiveMode(m.id)}
-            className={[
-              "flex-1 px-3 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-r border-border last:border-r-0",
-              activeMode === m.id
-                ? "text-white"
-                : "text-muted-foreground hover:bg-muted/40",
-            ].join(" ")}
-            style={activeMode === m.id ? { backgroundColor: "var(--forest-deep)" } : {}}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Mode description row */}
-      <div className="px-5 py-2.5 border-b border-border bg-muted/30">
-        <p className="text-xs text-muted-foreground">
-          {modes.find((m) => m.id === activeMode)?.desc}
+      {/* Mode selector — chip grid */}
+      <div className="px-5 pt-4 pb-3 border-b border-border">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
+          Choose a helper
         </p>
+        <div className="flex flex-wrap gap-2">
+          {/* Live options */}
+          {liveModes.map((m) => {
+            const isActive = activeMode === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setActiveMode(m.id)}
+                title={m.desc}
+                className={[
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all",
+                  isActive
+                    ? "text-white border-transparent shadow-sm"
+                    : "border-border text-foreground hover:border-foreground/30 hover:bg-muted/40",
+                ].join(" ")}
+                style={isActive ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
+              >
+                <span>{m.emoji}</span>
+                {m.label}
+              </button>
+            );
+          })}
+
+          {/* Divider pip */}
+          <span className="inline-flex items-center text-border text-xs select-none px-0.5">·</span>
+
+          {/* Coming-soon options */}
+          {comingSoon.map((m) => (
+            <button
+              key={m.label}
+              disabled
+              title={`Coming soon: ${m.desc}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-border text-muted-foreground/50 cursor-not-allowed opacity-60"
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Active mode description */}
+        <p className="mt-3 text-xs text-muted-foreground">{activeDesc}</p>
       </div>
 
       {/* Active mode content */}
