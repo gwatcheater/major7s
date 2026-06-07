@@ -1,4 +1,3 @@
-
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -327,6 +326,7 @@ interface PicksHelperProps {
     lastMajorLeaderboardCount: number;
     priorYearLeaderboardCount: number;
     leaderboardSampleKeys: string[];
+    leaderboardSampleRow: string;
     fieldSampleIds: string[];
     allTournamentsCount: number;
     lastMajorBestCount: number;
@@ -868,10 +868,11 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           <p>prior year id: {diagnostic.priorYearTournamentId ?? "null"}</p>
           <p>leaderboard rows (last major): {diagnostic.lastMajorLeaderboardCount}</p>
           <p>leaderboard rows (prior year): {diagnostic.priorYearLeaderboardCount}</p>
-          <p>leaderboard sample cols: [{diagnostic.leaderboardSampleKeys.join(", ")}]</p>
-          <p>field sample ids: [{diagnostic.fieldSampleIds.join(", ")}]</p>
-          <p>lastMajorBest golfers: {diagnostic.lastMajorBestCount}</p>
-          <p>priorYearBest golfers: {diagnostic.priorYearBestCount}</p>
+          <p>leaderboard cols: [{diagnostic.leaderboardSampleKeys.join(", ")}]</p>
+          <p>leaderboard row[0]: {diagnostic.leaderboardSampleRow}</p>
+          <p>field golfer ids (sample): {diagnostic.fieldSampleIds.join(" | ")}</p>
+          <p>lastMajorBest matches: {diagnostic.lastMajorBestCount}</p>
+          <p>priorYearBest matches: {diagnostic.priorYearBestCount}</p>
         </div>
       )}
       {activeMode === "last-major" && (
@@ -1039,31 +1040,32 @@ function LineupPicker() {
       return data ?? [];
     },
   });
-    queryKey: ["leaderboard-last-major", lastMajorTournamentId, fieldGolferIds.join(",")],
-    enabled: !!lastMajorTournamentId && fieldGolferIds.length > 0,
+  // Query tournament_leaderboard for the last major — all golfers in that tournament,
+  // matched client-side to current field. No .in() filter to avoid ID mismatch risk.
+  const { data: lastMajorLeaderboard = [] } = useQuery({
+    queryKey: ["leaderboard-last-major", lastMajorTournamentId],
+    enabled: !!lastMajorTournamentId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("golfer_id, position_numeric")
-        .eq("tournament_id", lastMajorTournamentId!)
-        .in("golfer_id", fieldGolferIds);
+        .select("*")
+        .eq("tournament_id", lastMajorTournamentId!);
       if (error) throw error;
-      return data as { golfer_id: string; position_numeric: number }[];
+      return data ?? [];
     },
   });
 
   // Query tournament_leaderboard for the prior year same tournament
   const { data: priorYearLeaderboard = [] } = useQuery({
-    queryKey: ["leaderboard-prior-year", priorYearTournamentId, fieldGolferIds.join(",")],
-    enabled: !!priorYearTournamentId && fieldGolferIds.length > 0,
+    queryKey: ["leaderboard-prior-year", priorYearTournamentId],
+    enabled: !!priorYearTournamentId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("golfer_id, position_numeric")
-        .eq("tournament_id", priorYearTournamentId!)
-        .in("golfer_id", fieldGolferIds);
+        .select("*")
+        .eq("tournament_id", priorYearTournamentId!);
       if (error) throw error;
-      return data as { golfer_id: string; position_numeric: number }[];
+      return data ?? [];
     },
   });
 
@@ -1236,14 +1238,24 @@ function LineupPicker() {
   const currentTournamentName = tournament ? shortMajorName(tournament.name) : "";
 
   // Build HistoricalBestByGolfer maps from leaderboard data.
-  // position_numeric: lower = better finish. Only field golfers included (query filtered).
-  // A golfer may appear once per tournament in tournament_leaderboard.
+  // Queries return select("*") so we inspect actual column names at runtime.
+  // Position column may be position_numeric or position_number — try both.
+  // Match to current field golfer IDs client-side after fetching full tournament.
+
+  const fieldGolferIdSet = new Set(fieldGolferIds);
+
+  function getPosition(row: any): number | null {
+    const v = row.position_numeric ?? row.position_number ?? row.position ?? null;
+    return v == null ? null : Number(v);
+  }
 
   const lastMajorBest: HistoricalBestByGolfer = {};
   for (const row of lastMajorLeaderboard) {
-    if (row.position_numeric == null) continue;
+    if (!row.golfer_id || !fieldGolferIdSet.has(row.golfer_id)) continue;
+    const pos = getPosition(row);
+    if (pos == null) continue;
     lastMajorBest[row.golfer_id] = {
-      points: row.position_numeric,
+      points: pos,
       tournamentName: shortMajorName(lastMajorMeta?.name ?? ""),
       year: lastMajorMeta ? new Date(lastMajorMeta.start_date).getFullYear() : 0,
     };
@@ -1251,9 +1263,11 @@ function LineupPicker() {
 
   const sameTournamentBest: HistoricalBestByGolfer = {};
   for (const row of priorYearLeaderboard) {
-    if (row.position_numeric == null) continue;
+    if (!row.golfer_id || !fieldGolferIdSet.has(row.golfer_id)) continue;
+    const pos = getPosition(row);
+    if (pos == null) continue;
     sameTournamentBest[row.golfer_id] = {
-      points: row.position_numeric,
+      points: pos,
       tournamentName: shortMajorName(priorYearTournament?.name ?? ""),
       year: priorYearTournament ? new Date(priorYearTournament.start_date).getFullYear() : 0,
     };
@@ -1408,7 +1422,8 @@ function LineupPicker() {
         lastMajorLeaderboardCount: lastMajorLeaderboard.length,
         priorYearLeaderboardCount: priorYearLeaderboard.length,
         leaderboardSampleKeys: leaderboardSample.length > 0 ? Object.keys(leaderboardSample[0]) : [],
-        fieldSampleIds: fieldSample.map((g: any) => `${g.golfer_name}: ${g.id}`),
+        leaderboardSampleRow: leaderboardSample.length > 0 ? JSON.stringify(leaderboardSample[0]) : "empty",
+        fieldSampleIds: fieldSample.map((g: any) => `${g.golfer_name}:${g.id.slice(0,8)}`),
         allTournamentsCount: allTournaments.length,
         lastMajorBestCount: Object.keys(lastMajorBest).length,
         priorYearBestCount: Object.keys(sameTournamentBest).length,
