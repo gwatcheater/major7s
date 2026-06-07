@@ -57,7 +57,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" },
       { title: "Major7s" },
       { name: "description", content: "Pick smart. Tweak obsessively. Suffer beautifully. Major7s is the ultimate golf picks game across all four majors." },
       { property: "og:title", content: "Major7s" },
