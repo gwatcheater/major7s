@@ -320,18 +320,6 @@ interface PicksHelperProps {
   currentTournamentName: string;
   lastMajorLabel: string;
   priorYearLabel: string;
-  diagnostic: {
-    lastMajorTournamentId: string | null;
-    priorYearTournamentId: string | null;
-    lastMajorLeaderboardCount: number;
-    priorYearLeaderboardCount: number;
-    leaderboardSampleKeys: string[];
-    leaderboardSampleRow: string;
-    fieldSampleIds: string[];
-    allTournamentsCount: number;
-    lastMajorBestCount: number;
-    priorYearBestCount: number;
-  };
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -786,7 +774,7 @@ function HistoricalMode({
 
 // ── Main PicksHelper shell ────────────────────────────────────────────────────
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, diagnostic }: PicksHelperProps) {
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
@@ -882,21 +870,6 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           isLocked={isLocked} tournamentPickCounts={tournamentPickCounts}
           onDeploy={onDeploy}
         />
-      )}
-      {(activeMode === "last-major" || activeMode === "same-tournament") && (
-        <div className="mx-5 mt-3 mb-0 rounded border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3 space-y-1 text-[10px] font-mono text-amber-800 dark:text-amber-300">
-          <p className="font-bold text-[9px] uppercase tracking-widest mb-1">Diagnostic</p>
-          <p>tournaments loaded: {diagnostic.allTournamentsCount}</p>
-          <p>last major id: {diagnostic.lastMajorTournamentId ?? "null"}</p>
-          <p>prior year id: {diagnostic.priorYearTournamentId ?? "null"}</p>
-          <p>leaderboard rows (last major): {diagnostic.lastMajorLeaderboardCount}</p>
-          <p>leaderboard rows (prior year): {diagnostic.priorYearLeaderboardCount}</p>
-          <p>leaderboard cols: [{diagnostic.leaderboardSampleKeys.join(", ")}]</p>
-          <p>leaderboard row[0]: {diagnostic.leaderboardSampleRow}</p>
-          <p>field golfer ids (sample): {diagnostic.fieldSampleIds.join(" | ")}</p>
-          <p>lastMajorBest matches: {diagnostic.lastMajorBestCount}</p>
-          <p>priorYearBest matches: {diagnostic.priorYearBestCount}</p>
-        </div>
       )}
       {activeMode === "last-major" && (
         <HistoricalMode
@@ -1041,34 +1014,6 @@ function LineupPicker() {
   }) ?? null;
   const priorYearTournamentId = priorYearTournament?.id ?? null;
 
-  // ── DIAGNOSTIC: sample tournament_leaderboard to verify column names and data ──
-  const { data: leaderboardSample = [] } = useQuery({
-    queryKey: ["leaderboard-diagnostic", lastMajorTournamentId],
-    enabled: !!lastMajorTournamentId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tournament_leaderboard")
-        .select("*")
-        .eq("tournament_id", lastMajorTournamentId!)
-        .limit(5);
-      if (error) { console.error("[diag] leaderboard error:", error); return []; }
-      return data ?? [];
-    },
-  });
-
-  const { data: fieldSample = [] } = useQuery({
-    queryKey: ["field-diagnostic", id],
-    enabled: !!id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("golfers")
-        .select("id, golfer_name")
-        .eq("tournament_id", id)
-        .limit(3);
-      if (error) return [];
-      return data ?? [];
-    },
-  });
   // Query tournament_leaderboard for the last major — finished golfers only.
   // Matched to current field client-side via espn_display_name ↔ golfer_name.
   const { data: lastMajorLeaderboard = [] } = useQuery({
@@ -1460,18 +1405,7 @@ function LineupPicker() {
       currentTournamentName={currentTournamentName}
       lastMajorLabel={lastMajorLabel}
       priorYearLabel={priorYearLabel}
-      diagnostic={{
-        lastMajorTournamentId,
-        priorYearTournamentId,
-        lastMajorLeaderboardCount: lastMajorLeaderboard.length,
-        priorYearLeaderboardCount: priorYearLeaderboard.length,
-        leaderboardSampleKeys: leaderboardSample.length > 0 ? Object.keys(leaderboardSample[0]) : [],
-        leaderboardSampleRow: leaderboardSample.length > 0 ? JSON.stringify(leaderboardSample[0]) : "empty",
-        fieldSampleIds: fieldSample.map((g: any) => `${g.golfer_name}:${g.id.slice(0,8)}`),
-        allTournamentsCount: allTournaments.length,
-        lastMajorBestCount: Object.keys(lastMajorBest).length,
-        priorYearBestCount: Object.keys(sameTournamentBest).length,
-      }}
+    />
     />
   );
 
