@@ -541,7 +541,9 @@ function HelperPanel({
 
 // ── Mode sub-components ───────────────────────────────────────────────────────
 
-function RandomMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections"> & { onDeploy: () => void }) {
+type BasicHelperModeProps = Pick<PicksHelperProps, "byBucket" | "setSelections" | "isLocked" | "onDeploy">;
+
+function RandomMode({ byBucket, setSelections, isLocked, onDeploy }: BasicHelperModeProps) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -588,7 +590,7 @@ function RandomMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<PicksH
   );
 }
 
-function TopRankedMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<PicksHelperProps, "tournamentPickCounts" | "selections"> & { onDeploy: () => void }) {
+function TopRankedMode({ byBucket, setSelections, isLocked, onDeploy }: BasicHelperModeProps) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -630,7 +632,7 @@ function TopRankedMode({ byBucket, setSelections, isLocked, onDeploy }: Omit<Pic
   );
 }
 
-function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCounts, onDeploy }: Omit<PicksHelperProps, "selections"> & { onDeploy: () => void }) {
+function ContrarianMode({ byBucket, setSelections, isLocked, tournamentPickCounts, onDeploy }: BasicHelperModeProps & Pick<PicksHelperProps, "tournamentPickCounts">) {
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
@@ -746,8 +748,6 @@ function HistoricalMode({
     const tied = pool.filter((g) => historical[g.id].points === bestPos);
     const picked = tied[Math.floor(Math.random() * tied.length)].id;
     setSuggestions((prev) => ({ ...(prev ?? {}), [b]: picked }));
-    setDeployed(false);
-  }
     setDeployed(false);
   }
 
