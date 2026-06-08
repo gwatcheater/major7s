@@ -1090,14 +1090,11 @@ function WagsMode({ byBucket, setSelections, isLocked, onDeploy, wagsEspnIds, wa
   return (
     <>
       <div className="px-5 pt-3 pb-0">
-        <p className="text-xs text-muted-foreground italic mb-1">
-          Proof that a smooth short game fixes a rough face.
-        </p>
         {totalCount > 0 && (
           <p className="text-xs text-muted-foreground">
             {wagCount === 0
-              ? "No WAG-affiliated golfers found in this field."
-              : `${wagCount} WAG-affiliated golfer${wagCount !== 1 ? "s" : ""} in this field.`}
+              ? "No golfers with Fit WaGs found in this field."
+              : `${wagCount} golfer${wagCount !== 1 ? "s" : ""} with Fit WaGs in this field.`}
           </p>
         )}
       </div>
@@ -1108,7 +1105,7 @@ function WagsMode({ byBucket, setSelections, isLocked, onDeploy, wagsEspnIds, wa
         deployed={deployed} setDeployed={setDeployed}
         onGenerate={generate} onRerollBucket={rerollBucket}
         isLocked={isLocked} setSelections={setSelections}
-        generateLabel="Suggest WAG picks"
+        generateLabel="Suggest WaGs picks"
         generateIcon={<Shuffle className="h-3.5 w-3.5" />}
         onDeploy={onDeploy}
         countryData={golferInfoById}
@@ -1129,7 +1126,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
     { id: "lefties",         label: "Lefties",      emoji: "🤚", desc: "Left-handed golfers only" },
-    { id: "wags",            label: "Fit WAGs",     emoji: "💅", desc: "Proof that a smooth short game fixes a rough face" },
+    { id: "wags",            label: "Fit WaGs",     emoji: "💃", desc: "Proof that a smooth short game fixes a rough face" },
   ];
 
   const comingSoon = [
