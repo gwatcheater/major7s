@@ -386,6 +386,8 @@ function UserDrawer({
   const [busy, setBusy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
   const [status, setStatus] = useState<string>("pending");
+  const [emailDraft, setEmailDraft] = useState<string>("");
+  const updateUserEmailFn = useServerFn(updateUserEmail);
 
   const { data: currentRole = "user", refetch: refetchRole } = useQuery({
     queryKey: ["admin-user-role", user?.id],
