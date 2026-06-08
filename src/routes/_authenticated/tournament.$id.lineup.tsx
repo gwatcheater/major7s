@@ -1178,8 +1178,8 @@ function CuntsMode({ byBucket, setSelections, isLocked, onDeploy, cuntsEspnIds, 
         {totalCount > 0 && (
           <p className="text-xs text-muted-foreground">
             {cuntCount === 0
-              ? "None of these lot in the field. Lucky escape."
-              : `${cuntCount} of these lot in the field.`}
+              ? "None of these in the field. Lucky escape."
+              : `${cuntCount} of these in the field.`}
           </p>
         )}
       </div>
