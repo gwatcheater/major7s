@@ -1227,15 +1227,6 @@ function LineupPicker() {
     if (p.golfer_id) tournamentPickCounts[p.golfer_id] = (tournamentPickCounts[p.golfer_id] ?? 0) + 1;
   }
 
-  // Short major name for Same Tournament chip label
-  const shortMajorName = (name: string) => {
-    if (name.includes("Masters")) return "Masters";
-    if (name.includes("PGA Championship")) return "PGA";
-    if (name.includes("U.S. Open") || name.includes("US Open")) return "US Open";
-    if (name.includes("Open Championship") || name.includes("The Open")) return "The Open";
-    return name;
-  };
-  const currentTournamentName = tournament ? shortMajorName(tournament.name) : "";
 
   // Build HistoricalBestByGolfer maps from leaderboard data.
   // Queries return select("*") so we inspect actual column names at runtime.
