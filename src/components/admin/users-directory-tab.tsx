@@ -3,7 +3,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { updateUserEmail } from "@/lib/admin-users.functions";
+import {
+  updateUserEmail,
+  listUsersForAdmin,
+  sendWelcomeEmails,
+  type DirectoryRow,
+} from "@/lib/admin-users.functions";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -30,6 +35,10 @@ import {
   History,
   Download,
   Pencil,
+  Mail,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,17 +50,6 @@ import {
 } from "@/components/ui/select";
 import { useImpersonation } from "@/context/impersonation-context";
 
-interface ProfileRow {
-  id: string;
-  nickname: string;
-  email: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-  referral_name: string | null;
-  status: string;
-}
-
 interface TeamRow {
   id: string;
   owner_user_id: string;
@@ -61,9 +59,16 @@ interface TeamRow {
 }
 
 const PAGE_SIZE = 25;
+const ACTIVE_DAYS = 14;
 
 const STATUS_OPTIONS = ["all", "pending", "approved", "rejected", "suspended"] as const;
 type StatusFilter = (typeof STATUS_OPTIONS)[number];
+
+const ENGAGEMENT_OPTIONS = ["all", "active", "dormant", "never"] as const;
+type EngagementFilter = (typeof ENGAGEMENT_OPTIONS)[number];
+type Engagement = "active" | "dormant" | "never";
+
+type SortKey = "name" | "email" | "status" | "engagement" | "lastSeen" | "joined";
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "approved") return "default";
@@ -71,26 +76,105 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
   return "secondary"; // pending
 }
 
+function engagementOf(lastSignInAt: string | null): Engagement {
+  if (!lastSignInAt) return "never";
+  const days = (Date.now() - new Date(lastSignInAt).getTime()) / 86_400_000;
+  return days <= ACTIVE_DAYS ? "active" : "dormant";
+}
+
+function lastSeenLabel(s: string | null): string {
+  if (!s) return "—";
+  const days = Math.floor((Date.now() - new Date(s).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+function fmtDate(s: string | null): string {
+  if (!s) return "—";
+  return new Date(s).toLocaleDateString("en-GB");
+}
+
+function fullNameOf(u: { first_name: string | null; last_name: string | null; nickname: string }) {
+  return [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
+}
+
+function EngagementDot({ engagement }: { engagement: Engagement }) {
+  const map: Record<Engagement, { color: string; label: string }> = {
+    active: { color: "var(--color-text-success, #16a34a)", label: "Active" },
+    dormant: { color: "var(--color-text-warning, #d97706)", label: "Dormant" },
+    never: { color: "var(--color-text-info, #2563eb)", label: "Never logged in" },
+  };
+  const e = map[engagement];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm">
+      <span
+        className="inline-block size-2 rounded-full shrink-0"
+        style={{ background: e.color }}
+        aria-hidden
+      />
+      {e.label}
+    </span>
+  );
+}
+
+function SortHead({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onSort,
+  className,
+}: {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: 1 | -1;
+  onSort: (k: SortKey) => void;
+  className?: string;
+}) {
+  const active = sortKey === k;
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+      >
+        {label}
+        {active ? (
+          sortDir === 1 ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )
+        ) : (
+          <ChevronsUpDown className="size-3 opacity-40" />
+        )}
+      </button>
+    </TableHead>
+  );
+}
+
 export function UsersDirectoryTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("joined");
+  const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(0);
+  const [sending, setSending] = useState(false);
   const { startImpersonation } = useImpersonation();
   const navigate = useNavigate();
+  const listFn = useServerFn(listUsersForAdmin);
+  const sendWelcomeFn = useServerFn(sendWelcomeEmails);
 
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ["admin-users-profiles"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(
-          "id, nickname, email, first_name, last_name, phone, referral_name, status, created_at",
-        )
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as ProfileRow[];
-    },
+    queryKey: ["admin-users-directory"],
+    queryFn: async () => (await listFn({ data: {} })) as DirectoryRow[],
   });
 
   const selected = useMemo(
@@ -98,68 +182,120 @@ export function UsersDirectoryTab() {
     [selectedId, users],
   );
 
-  // Fetch all teams so we can resolve primary team nicknames for each user.
-  const { data: allTeams = [] } = useQuery({
-    queryKey: ["admin-all-teams"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("teams")
-        .select("id, owner_user_id, nickname, is_primary, created_at")
-        .order("is_primary", { ascending: false })
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as TeamRow[];
-    },
-  });
-
-  // Map user id -> primary team nickname
-  const primaryTeamNickname = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of allTeams) {
-      if (t.is_primary) m.set(t.owner_user_id, t.nickname);
-    }
-    return m;
-  }, [allTeams]);
-
   useEffect(() => {
     setPage(0);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, engagementFilter, sortKey, sortDir]);
 
   const counts = useMemo(() => {
-    const c = { total: users.length, pending: 0, approved: 0, suspended: 0, rejected: 0 };
+    const c = { total: users.length, approved: 0, pending: 0, active: 0, never: 0 };
     for (const u of users) {
-      if (u.status === "pending") c.pending++;
-      else if (u.status === "approved") c.approved++;
-      else if (u.status === "suspended") c.suspended++;
-      else if (u.status === "rejected") c.rejected++;
+      if (u.status === "approved") c.approved++;
+      else if (u.status === "pending") c.pending++;
+      const eng = engagementOf(u.last_sign_in_at);
+      if (eng === "active") c.active++;
+      if (eng === "never" && u.status === "approved") c.never++;
     }
     return c;
   }, [users]);
+
+  // Approved users who have never logged in — the migration backlog.
+  const neverLoggedIn = useMemo(
+    () => users.filter((u) => u.status === "approved" && !u.last_sign_in_at),
+    [users],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
+      if (engagementFilter !== "all" && engagementOf(u.last_sign_in_at) !== engagementFilter)
+        return false;
       if (!q) return true;
-      const teamNick = primaryTeamNickname.get(u.id) ?? "";
-      const hay = [u.first_name, u.last_name, u.nickname, teamNick, u.email]
+      const hay = [u.first_name, u.last_name, u.nickname, u.primary_team_nickname, u.email]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [users, search, statusFilter, primaryTeamNickname]);
+  }, [users, search, statusFilter, engagementFilter]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageRows = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const sorted = useMemo(() => {
+    const statusRank: Record<string, number> = { approved: 0, pending: 1, suspended: 2, rejected: 3 };
+    const engRank: Record<Engagement, number> = { active: 0, dormant: 1, never: 2 };
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      let x = 0;
+      switch (sortKey) {
+        case "name":
+          return fullNameOf(a).localeCompare(fullNameOf(b)) * sortDir;
+        case "email":
+          return (a.email ?? "").localeCompare(b.email ?? "") * sortDir;
+        case "status":
+          x = (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9);
+          break;
+        case "engagement":
+          x = engRank[engagementOf(a.last_sign_in_at)] - engRank[engagementOf(b.last_sign_in_at)];
+          break;
+        case "lastSeen": {
+          const av = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : -Infinity;
+          const bv = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : -Infinity;
+          x = av - bv;
+          break;
+        }
+        case "joined":
+          x = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+      }
+      return x * sortDir;
+    });
+    return rows;
+  }, [filtered, sortKey, sortDir]);
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const pageRows = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+  function handleSort(k: SortKey) {
+    if (sortKey === k) setSortDir((d) => (d === 1 ? -1 : 1));
+    else {
+      setSortKey(k);
+      setSortDir(k === "name" || k === "email" ? 1 : -1);
+    }
+  }
+
+  async function sendWelcome(ids: string[]) {
+    if (ids.length === 0) {
+      toast.message("No users to send to");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Send a set-password welcome email to ${ids.length} user${ids.length === 1 ? "" : "s"}? ` +
+          `They'll be prompted to set a password on first login.`,
+      )
+    )
+      return;
+    setSending(true);
+    try {
+      const res = await sendWelcomeFn({
+        data: { userIds: ids, redirectTo: `${window.location.origin}/welcome` },
+      });
+      if (res.sent > 0)
+        toast.success(`Sent ${res.sent} welcome email${res.sent === 1 ? "" : "s"}`);
+      if (res.failed > 0) toast.error(`${res.failed} failed to send`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+        <CardTitle className="flex items-center justify-between flex-wrap gap-2">
           <span>User Directory &amp; Management</span>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => exportAllUsers(users, allTeams)}>
+            <Button size="sm" variant="outline" onClick={() => exportAllUsers(users)}>
               <Download className="size-3.5" /> Export Users
             </Button>
             <span className="text-xs font-mono text-muted-foreground">{counts.total} users</span>
@@ -169,11 +305,30 @@ export function UsersDirectoryTab() {
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
           <SummaryPill label="Total" value={counts.total} />
-          <SummaryPill label="Pending" value={counts.pending} />
           <SummaryPill label="Approved" value={counts.approved} />
-          <SummaryPill label="Suspended" value={counts.suspended} />
-          <SummaryPill label="Rejected" value={counts.rejected} />
+          <SummaryPill label="Active (14d)" value={counts.active} tone="success" />
+          <SummaryPill label="Pending" value={counts.pending} />
+          <SummaryPill label="Never logged in" value={counts.never} tone="info" />
         </div>
+
+        {/* Migration backlog banner */}
+        {neverLoggedIn.length > 0 && (
+          <div className="mb-4 rounded-lg border bg-card/50 p-3 flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm">
+              <span className="font-medium">{neverLoggedIn.length}</span> approved user
+              {neverLoggedIn.length === 1 ? " has" : "s have"} never logged in.
+              <span className="text-muted-foreground"> Send the set-password welcome to get them onto the platform.</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sending}
+              onClick={() => sendWelcome(neverLoggedIn.map((u) => u.id))}
+            >
+              <Mail className="size-3.5" /> Send welcome ({neverLoggedIn.length})
+            </Button>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <div className="relative flex-1">
@@ -186,7 +341,7 @@ export function UsersDirectoryTab() {
             />
           </div>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-            <SelectTrigger className="w-full sm:w-44">
+            <SelectTrigger className="w-full sm:w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -195,6 +350,20 @@ export function UsersDirectoryTab() {
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="suspended">Suspended</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={engagementFilter}
+            onValueChange={(v) => setEngagementFilter(v as EngagementFilter)}
+          >
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All engagement</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="dormant">Dormant</SelectItem>
+              <SelectItem value="never">Never logged in</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -207,50 +376,68 @@ export function UsersDirectoryTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Team Nickname</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortHead label="User" k="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Email" k="email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Engagement" k="engagement" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Last seen" k="lastSeen" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Joined" k="joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pageRows.length === 0 ? (
                     <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center text-sm text-muted-foreground py-8"
-                      >
+                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
                         No users match.
                       </TableCell>
                     </TableRow>
                   ) : (
                     pageRows.map((u) => {
-                      const full =
-                        [u.first_name, u.last_name].filter(Boolean).join(" ") || u.nickname;
+                      const full = fullNameOf(u);
+                      const eng = engagementOf(u.last_sign_in_at);
                       return (
                         <TableRow
                           key={u.id}
                           className="cursor-pointer"
                           onClick={() => setSelectedId(u.id)}
                         >
-                          <TableCell className="font-medium">{full}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {u.email ?? "—"}
+                          <TableCell>
+                            <div className="font-medium">{full}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {u.primary_team_nickname ?? u.nickname}
+                            </div>
                           </TableCell>
-                          <TableCell className="text-sm">
-                            {primaryTeamNickname.get(u.id) ?? u.nickname}
+                          <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">
+                            {u.email ?? "—"}
                           </TableCell>
                           <TableCell>
                             <Badge variant={statusBadgeVariant(u.status)} className="capitalize">
                               {u.status}
                             </Badge>
                           </TableCell>
+                          <TableCell>
+                            <EngagementDot engagement={eng} />
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {lastSeenLabel(u.last_sign_in_at)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {fmtDate(u.created_at)}
+                          </TableCell>
                           <TableCell className="text-right">
-                            <div
-                              className="flex justify-end gap-2"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                              {eng === "never" && u.email && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={sending}
+                                  title="Send set-password welcome email"
+                                  onClick={() => sendWelcome([u.id])}
+                                >
+                                  <Mail className="size-3.5" />
+                                </Button>
+                              )}
                               <Button size="sm" variant="outline" onClick={() => setSelectedId(u.id)}>
                                 <Settings className="size-3.5" /> Manage
                               </Button>
@@ -277,18 +464,13 @@ export function UsersDirectoryTab() {
 
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
               <span>
-                {filtered.length === 0
+                {sorted.length === 0
                   ? "0"
-                  : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)}`}{" "}
-                of {filtered.length}
+                  : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, sorted.length)}`}{" "}
+                of {sorted.length}
               </span>
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
+                <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                   Previous
                 </Button>
                 <span className="px-2 py-1.5 text-xs">
@@ -312,27 +494,16 @@ export function UsersDirectoryTab() {
         user={selected}
         open={!!selected}
         onOpenChange={(open) => !open && setSelectedId(null)}
-        primaryTeamNickname={selected ? (primaryTeamNickname.get(selected.id) ?? null) : null}
+        primaryTeamNickname={selected?.primary_team_nickname ?? null}
       />
     </Card>
   );
 }
 
-function exportAllUsers(users: ProfileRow[], allTeams: TeamRow[]) {
-  const primaryByUser = new Map<string, string>();
-  const additionalByUser = new Map<string, string[]>();
-  for (const t of allTeams) {
-    if (t.is_primary) {
-      primaryByUser.set(t.owner_user_id, t.nickname);
-    } else {
-      const arr = additionalByUser.get(t.owner_user_id) ?? [];
-      arr.push(t.nickname);
-      additionalByUser.set(t.owner_user_id, arr);
-    }
-  }
+function exportAllUsers(users: DirectoryRow[]) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const headers =
-    "First Name,Last Name,Email,Phone,Primary Team Nickname,Additional Teams,Referral,Status";
+    "First Name,Last Name,Email,Phone,Primary Team Nickname,Referral,Status,Engagement,Last Seen,Joined";
   const lines = [headers];
   for (const u of users) {
     const row = [
@@ -340,10 +511,12 @@ function exportAllUsers(users: ProfileRow[], allTeams: TeamRow[]) {
       esc(u.last_name ?? ""),
       esc(u.email ?? ""),
       esc(u.phone ?? ""),
-      esc(primaryByUser.get(u.id) ?? u.nickname),
-      esc((additionalByUser.get(u.id) ?? []).join("; ")),
+      esc(u.primary_team_nickname ?? u.nickname),
       esc(u.referral_name ?? ""),
       esc(u.status),
+      esc(engagementOf(u.last_sign_in_at)),
+      esc(u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString("en-GB") : ""),
+      esc(fmtDate(u.created_at)),
     ];
     lines.push(row.join(","));
   }
@@ -356,11 +529,27 @@ function exportAllUsers(users: ProfileRow[], allTeams: TeamRow[]) {
   URL.revokeObjectURL(url);
 }
 
-function SummaryPill({ label, value }: { label: string; value: number }) {
+function SummaryPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "success" | "info";
+}) {
+  const toneStyle =
+    tone === "success"
+      ? { color: "var(--color-text-success, #16a34a)" }
+      : tone === "info"
+        ? { color: "var(--color-text-info, #2563eb)" }
+        : undefined;
   return (
     <div className="rounded-md border bg-card/50 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
+      <div className="text-xl font-semibold" style={toneStyle}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -371,7 +560,7 @@ function UserDrawer({
   onOpenChange,
   primaryTeamNickname,
 }: {
-  user: ProfileRow | null;
+  user: DirectoryRow | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   primaryTeamNickname: string | null;
@@ -423,7 +612,6 @@ function UserDrawer({
     },
   });
 
-  // Competition entries: tournaments this user's teams have entered, with pick counts.
   const { data: entries = [], isLoading: entriesLoading } = useQuery({
     queryKey: ["admin-user-entries", user?.id, teams.map((t) => t.id).join(",")],
     enabled: !!user?.id && teams.length > 0,
@@ -434,12 +622,19 @@ function UserDrawer({
         .select("team_id, bucket, tournaments(id, name, status, start_date)")
         .in("team_id", teamIds);
       if (error) throw error;
-      // Aggregate: one row per tournament, count picks (out of 7).
-      const byTournament = new Map<string, { name: string; status: string; startDate: string | null; picks: number }>();
+      const byTournament = new Map<
+        string,
+        { name: string; status: string; startDate: string | null; picks: number }
+      >();
       for (const row of (data ?? []) as any[]) {
         const t = row.tournaments;
         if (!t) continue;
-        const e = byTournament.get(t.id) ?? { name: t.name, status: t.status, startDate: t.start_date ?? null, picks: 0 };
+        const e = byTournament.get(t.id) ?? {
+          name: t.name,
+          status: t.status,
+          startDate: t.start_date ?? null,
+          picks: 0,
+        };
         e.picks += 1;
         byTournament.set(t.id, e);
       }
@@ -447,7 +642,6 @@ function UserDrawer({
     },
   });
 
-  // Account activity: admin actions taken on this account (from admin_audit).
   const { data: activity = [], isLoading: activityLoading } = useQuery({
     queryKey: ["admin-user-activity", user?.id],
     enabled: !!user?.id,
@@ -498,7 +692,7 @@ function UserDrawer({
     try {
       await updateUserEmailFn({ data: { userId: user.id, newEmail: next } });
       toast.success("Email updated");
-      qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
       qc.invalidateQueries({ queryKey: ["admin-user-activity", user.id] });
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to update email");
@@ -515,10 +709,7 @@ function UserDrawer({
   async function handleStatusChange(next: string) {
     if (!user || next === status) return;
     setBusy(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ status: next as "approved" | "pending" | "rejected" })
-      .eq("id", user.id);
+    const { error } = await supabase.from("profiles").update({ status: next }).eq("id", user.id);
     setBusy(false);
     if (error) {
       toast.error(error.message);
@@ -526,7 +717,7 @@ function UserDrawer({
     }
     toast.success(`Status set to ${next}`);
     setStatus(next);
-    qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+    qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
     qc.invalidateQueries({ queryKey: ["admin-pending-profiles"] });
     qc.invalidateQueries({ queryKey: ["admin-pending-count"] });
   }
@@ -586,6 +777,7 @@ function UserDrawer({
     refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
     qc.invalidateQueries({ queryKey: ["primary-team"] });
+    qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
   }
 
   async function handleRoleChange(newRole: "admin" | "user") {
@@ -648,7 +840,7 @@ function UserDrawer({
     toast.success("Profile details updated");
     setProfileEdits({});
     setEditingProfile(false);
-    qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+    qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
   }
 
   async function handleSaveNicknames() {
@@ -672,7 +864,7 @@ function UserDrawer({
     setEdits({});
     refetchTeams();
     qc.invalidateQueries({ queryKey: ["teams"] });
-    qc.invalidateQueries({ queryKey: ["admin-all-teams"] });
+    qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
   }
 
   return (
@@ -743,6 +935,23 @@ function UserDrawer({
                   </Select>
                 </div>
               </div>
+              {/* Engagement / onboarding readout */}
+              <div className="mt-3 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Engagement</span>
+                <EngagementDot engagement={engagementOf(user.last_sign_in_at)} />
+              </div>
+              <div className="mt-1 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Last seen</span>
+                <span>
+                  {user.last_sign_in_at
+                    ? new Date(user.last_sign_in_at).toLocaleString("en-GB")
+                    : "Never"}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Password set</span>
+                <span>{user.onboarded_at ? fmtDate(user.onboarded_at) : "Not yet"}</span>
+              </div>
             </section>
 
             {/* User Details (view / edit) */}
@@ -780,9 +989,7 @@ function UserDrawer({
                       <Input
                         className="h-9 mt-0.5"
                         value={profileEdits[field] ?? user[field] ?? ""}
-                        onChange={(e) =>
-                          setProfileEdits((s) => ({ ...s, [field]: e.target.value }))
-                        }
+                        onChange={(e) => setProfileEdits((s) => ({ ...s, [field]: e.target.value }))}
                         placeholder={label}
                       />
                     </div>
@@ -815,27 +1022,6 @@ function UserDrawer({
                       Updates the user's login email and profile. Password is unchanged.
                     </p>
                   </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Primary Team Nickname</Label>
-                    <Input
-                      className="h-9 mt-0.5"
-                      value={primaryTeamNickname ?? user.nickname}
-                      disabled
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Edit team nicknames in the Registered Teams section below.
-                    </p>
-                  </div>
-                  {Object.keys(profileEdits).length > 0 && (
-                    <Button
-                      size="sm"
-                      className="mt-2 w-full"
-                      onClick={handleSaveProfileEdits}
-                      disabled={busy}
-                    >
-                      Save Profile Changes
-                    </Button>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-1.5 text-sm">
@@ -856,9 +1042,7 @@ function UserDrawer({
             <section className="mt-4 rounded-lg border bg-card/50 p-4">
               <header className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wider">Registered Teams</h3>
-                <span className="text-xs font-mono text-muted-foreground">
-                  {teams.length} total
-                </span>
+                <span className="text-xs font-mono text-muted-foreground">{teams.length} total</span>
               </header>
 
               {teamsLoading ? (
@@ -919,13 +1103,18 @@ function UserDrawer({
                 </Button>
               </div>
               {Object.keys(edits).length > 0 && (
+                <Button size="sm" className="mt-2 w-full" onClick={handleSaveNicknames} disabled={busy}>
+                  Save nickname changes
+                </Button>
+              )}
+              {Object.keys(profileEdits).length > 0 && (
                 <Button
                   size="sm"
                   className="mt-2 w-full"
-                  onClick={handleSaveNicknames}
+                  onClick={handleSaveProfileEdits}
                   disabled={busy}
                 >
-                  Save nickname changes
+                  Save Profile Changes
                 </Button>
               )}
             </section>
