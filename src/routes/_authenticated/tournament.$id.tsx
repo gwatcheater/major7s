@@ -4,19 +4,20 @@ import { useState } from "react";
 import {
   MapPin,
   Calendar,
-  Clipboard,
   CheckCircle2,
+  XCircle,
   Trophy,
   BarChart3,
   FileText,
   ChevronRight,
+  ChevronDown,
   Plus,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -42,6 +43,16 @@ function statusMeta(status: string) {
   return STATUS_META[status] ?? { label: status, className: "bg-muted text-muted-foreground" };
 }
 
+function formatTimestamp(ts: number): string {
+  return new Date(ts).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function TournamentHub() {
   const { id } = Route.useParams();
   const { user, isAdmin } = useAuth();
@@ -50,6 +61,8 @@ function TournamentHub() {
   const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [blogOpen, setBlogOpen] = useState(false);
+  const [picksOpen, setPicksOpen] = useState(false);
+
   console.log("[tournament hub debug]", { userId: user?.id, email: user?.email, isAdmin });
 
   const { data: t, isLoading } = useQuery({
@@ -80,7 +93,7 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("golfers")
-        .select("id, golfer_name")
+        .select("id, golfer_name, owgr_rank")
         .eq("tournament_id", id);
       if (error) throw error;
       return data ?? [];
@@ -127,19 +140,24 @@ function TournamentHub() {
   const lockExpired = new Date(t.submission_deadline).getTime() <= Date.now();
   const canSubmit = t.status === "open_for_picks" && !lockExpired;
 
-  const golferNameById = new Map<string, string>(
-    golfers.map((g: any) => [g.id, g.golfer_name]),
+  const golferById = new Map<string, { name: string; owgr_rank: number | null }>(
+    golfers.map((g: any) => [g.id, { name: g.golfer_name, owgr_rank: g.owgr_rank ?? null }]),
   );
 
-  const picksByBucket = new Map<number, { name: string }>();
+  const picksByBucket = new Map<number, { name: string; owgr_rank: number | null }>();
   let lastEdited = 0;
   for (const p of picks) {
-    const name = golferNameById.get((p as any).golfer_id) ?? "—";
-    picksByBucket.set(p.bucket as number, { name });
+    const g = golferById.get((p as any).golfer_id);
+    picksByBucket.set(p.bucket as number, {
+      name: g?.name ?? "—",
+      owgr_rank: g?.owgr_rank ?? null,
+    });
     const ts = new Date(p.last_edited_at as string).getTime();
     if (ts > lastEdited) lastEdited = ts;
   }
+
   const hasPicks = picks.length > 0;
+  const allBucketsSelected = hasPicks && [1,2,3,4,5,6,7].every((b) => picksByBucket.has(b));
   const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
   const teamHandle = activeTeam?.nickname || profile?.nickname || "Your Team";
 
@@ -152,7 +170,7 @@ function TournamentHub() {
         ← {t.status === "completed" ? "Archive" : "Live & Upcoming"}
       </Link>
 
-      {/* HEADER */}
+      {/* ── HEADER ── */}
       <header className="mt-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex items-start gap-4 min-w-0">
           {t.logo_url ? (
@@ -184,80 +202,111 @@ function TournamentHub() {
         </span>
       </header>
 
-      {/* PICKS CARD */}
-      <Card className="mt-8 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Clipboard className="h-5 w-5" />
-              <span className="font-display text-lg uppercase">Picks</span>
+      {/* ── PICKS CARD (collapsible) ── */}
+      <Card className="mt-8 overflow-hidden p-0">
+        {/* Collapsed header — always visible, clicking toggles expansion */}
+        <button
+          onClick={() => setPicksOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/40 transition-colors text-left"
+          aria-expanded={picksOpen}
+        >
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              My picks
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {allBucketsSelected ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Picks selected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800">
+                  <XCircle className="h-3.5 w-3.5" />
+                  Picks not selected
+                </span>
+              )}
+              {hasPicks && lastEdited > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  Submitted {formatTimestamp(lastEdited)}
+                </span>
+              )}
             </div>
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ml-3 ${
+              picksOpen ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        {/* Expanded body */}
+        {picksOpen && (
+          <div className="border-t border-border">
+            {/* Team name + tweaks */}
+            <div className="px-5 pt-3 pb-2 border-b border-border">
+              <div className="flex items-center gap-2">
+                <span className="font-display uppercase text-base">{teamHandle}</span>
+                {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+              </div>
+              {hasPicks && (
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Tweaks: {maxTweaks}
+                </div>
+              )}
+            </div>
+
+            {/* Bucket rows */}
             {hasPicks ? (
-              <Badge className="bg-green-600 text-white hover:bg-green-600">Picks Submitted</Badge>
+              <div className="divide-y divide-border">
+                {[1, 2, 3, 4, 5, 6, 7].map((b) => {
+                  const pick = picksByBucket.get(b);
+                  return (
+                    <div key={b} className="flex items-center gap-3 px-5 py-3">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">
+                        B{b}
+                      </span>
+                      <span className="text-sm font-medium text-foreground flex-1">
+                        {pick?.name ?? <span className="text-muted-foreground">—</span>}
+                      </span>
+                      {pick?.owgr_rank && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          OWGR #{pick.owgr_rank}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <Badge variant="destructive">Not Entered</Badge>
+              <div className="px-5 py-4 text-sm text-muted-foreground">
+                No picks submitted yet.
+              </div>
             )}
           </div>
-          {hasPicks && lastEdited > 0 && (
-            <div className="text-xs text-muted-foreground">
-              Submitted: {new Date(lastEdited).toLocaleString()}
-            </div>
-          )}
-        </div>
+        )}
 
-        <div className="mt-4">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-display uppercase text-base">{teamHandle}</span>
-            {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-          </div>
-          {hasPicks && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Tweaks: {maxTweaks}
-            </div>
-          )}
-        </div>
-
-        {hasPicks ? (
-          <>
-            <div className="mt-4 divide-y divide-border border border-border">
-              {[1, 2, 3, 4, 5, 6, 7].map((b) => {
-                const pick = picksByBucket.get(b);
-                return (
-                  <div key={b} className="flex items-center justify-between px-4 py-3 gap-4">
-                    <span className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Bucket {b}
-                    </span>
-                    <span className="text-sm font-medium text-right truncate">
-                      {pick?.name ?? <span className="text-muted-foreground">—</span>}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {canSubmit && (
-              <Link
-                to="/tournament/$id/lineup"
-                params={{ id }}
-                className="mt-5 block w-full text-center py-3 font-display text-xs uppercase tracking-widest border border-border bg-background hover:bg-accent transition-colors"
-              >
-                Edit Picks
-              </Link>
-            )}
-          </>
-        ) : (
+        {/* Footer — Edit picks button always visible */}
+        <div className="border-t border-border px-5 py-3">
           <Link
             to="/tournament/$id/lineup"
             params={{ id }}
-            className="mt-5 block w-full text-center py-4 font-display text-xs uppercase tracking-widest text-white"
-            style={{ backgroundColor: "var(--forest-deep)" }}
-            aria-disabled={!canSubmit}
+            className={[
+              "flex items-center justify-center gap-2 w-full py-3 font-display text-xs uppercase tracking-widest transition-colors",
+              canSubmit
+                ? "text-white"
+                : "border border-border bg-background hover:bg-accent text-foreground",
+            ].join(" ")}
+            style={canSubmit ? { backgroundColor: "var(--forest-deep)" } : undefined}
+            aria-disabled={!canSubmit && !hasPicks}
           >
-            {canSubmit ? "Submit Team Lineup →" : "View Lineup →"}
+            <Pencil className="h-3.5 w-3.5" />
+            {hasPicks ? "Edit picks" : canSubmit ? "Submit team lineup" : "View lineup"}
           </Link>
-        )}
+        </div>
       </Card>
 
-      {/* NAV ROWS (stacked) */}
+      {/* ── NAV ROWS ── */}
       <div className="mt-6 flex flex-col gap-3">
         <Link
           to="/tournament/$id/leaderboard"
