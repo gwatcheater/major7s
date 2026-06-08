@@ -175,6 +175,27 @@ export type Database = {
           },
         ]
       }
+      picks_helper: {
+        Row: {
+          espn_player_id: string
+          golfer_name: string
+          helper_info: string
+          helper_name: string
+        }
+        Insert: {
+          espn_player_id: string
+          golfer_name: string
+          helper_info: string
+          helper_name: string
+        }
+        Update: {
+          espn_player_id?: string
+          golfer_name?: string
+          helper_info?: string
+          helper_name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
