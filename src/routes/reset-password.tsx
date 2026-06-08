@@ -123,9 +123,10 @@ function ResetPasswordPage() {
     // 3. Safari-safe fallback — manually parse the URL after a short delay
     //    if the auth listener hasn't fired yet.
     const fallback = async () => {
-      if (cancelled || attemptedRef.current || readyRef.current) return;
+      if (cancelled || readyRef.current) return;
       try {
         if (await recheckSession()) return;
+        if (attemptedRef.current) return;
 
         const { hashParams, searchParams } = readRecoveryParams(initialUrlRef.current);
 
@@ -133,7 +134,7 @@ function ResetPasswordPage() {
         const searchError = searchParams.get("error_description") || searchParams.get("error");
         if (hashError || searchError) {
           attemptedRef.current = true;
-          if (!cancelled)
+          if (!cancelled && !readyRef.current)
             setErrorMsg(hashError || searchError || "Recovery link invalid or expired.");
           return;
         }
@@ -157,7 +158,7 @@ function ResetPasswordPage() {
             }
             return;
           }
-          if (!cancelled) setErrorMsg(error.message);
+          if (!cancelled && !readyRef.current) setErrorMsg(error.message);
           return;
         }
 
@@ -175,7 +176,7 @@ function ResetPasswordPage() {
             }
             return;
           }
-          if (!cancelled) setErrorMsg(error.message);
+          if (!cancelled && !readyRef.current) setErrorMsg(error.message);
           return;
         }
 
@@ -197,7 +198,7 @@ function ResetPasswordPage() {
             }
             return;
           }
-          if (!cancelled) setErrorMsg(error.message);
+          if (!cancelled && !readyRef.current) setErrorMsg(error.message);
           return;
         }
 
@@ -218,14 +219,14 @@ function ResetPasswordPage() {
             }
             return;
           }
-          if (!cancelled) setErrorMsg(error.message);
+          if (!cancelled && !readyRef.current) setErrorMsg(error.message);
           return;
         }
 
         // Nothing to work with yet; keep polling because mobile browsers can finish
         // auth storage writes after the page becomes visible.
       } catch (err) {
-        if (!cancelled)
+        if (!cancelled && !readyRef.current)
           setErrorMsg(err instanceof Error ? err.message : "Could not process recovery link.");
       }
     };
@@ -253,7 +254,7 @@ function ResetPasswordPage() {
           (prev) => prev ?? "Recovery link could not be verified. Please request a new reset link.",
         );
       }
-    }, 9000);
+    }, 15000);
 
     return () => {
       cancelled = true;
