@@ -13,6 +13,17 @@ const RowSchema = z.object({
 
 const ConflictMode = z.enum(["skip", "overwrite", "abort"]);
 
+async function assertAdmin(context: { supabase: any; userId: string }) {
+  const { data: roleRow, error: roleErr } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (roleErr) throw new Error(roleErr.message);
+  if (!roleRow) throw new Error("Forbidden: admin role required");
+}
+
 export const updateUserEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -24,15 +35,7 @@ export const updateUserEmail = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    // Admin role check
-    const { data: roleRow, error: roleErr } = await context.supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId)
-      .eq("role", "admin")
-      .maybeSingle();
-    if (roleErr) throw new Error(roleErr.message);
-    if (!roleRow) throw new Error("Forbidden: admin role required");
+    await assertAdmin(context);
 
     const newEmail = data.newEmail.toLowerCase();
 
@@ -111,7 +114,7 @@ function isDuplicateError(msg: string | undefined): boolean {
 async function findUserIdByEmail(email: string): Promise<string | null> {
   // Paginate up to a few pages to find the matching email
   const perPage = 200;
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= 50; page++) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
     if (error) return null;
     const hit = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
@@ -132,14 +135,7 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { data: roleRow, error: roleErr } = await context.supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId)
-      .eq("role", "admin")
-      .maybeSingle();
-    if (roleErr) throw new Error(roleErr.message);
-    if (!roleRow) throw new Error("Forbidden: admin role required");
+    await assertAdmin(context);
 
     const results: RowResult[] = [];
     let aborted = false;
@@ -214,4 +210,159 @@ export const bulkCreateApprovedUsers = createServerFn({ method: "POST" })
     const succeeded = created + overwritten;
     const failed = results.filter((r) => !r.ok && r.action !== "skipped").length;
     return { succeeded, failed, created, overwritten, skipped, aborted, results };
+  });
+
+/* ============================================================
+   DIRECTORY READ — profiles + primary team + auth last-seen,
+   merged server-side. Paginated everywhere to dodge the 1000-row cap.
+   ============================================================ */
+export type DirectoryRow = {
+  id: string;
+  nickname: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  referral_name: string | null;
+  status: string;
+  created_at: string;
+  onboarded_at: string | null;
+  last_sign_in_at: string | null;
+  primary_team_nickname: string | null;
+};
+
+export const listUsersForAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DirectoryRow[]> => {
+    await assertAdmin(context);
+
+    const PAGE = 1000;
+
+    // 1) All profiles (paginated)
+    type P = Omit<DirectoryRow, "last_sign_in_at" | "primary_team_nickname">;
+    const profiles: P[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, nickname, email, first_name, last_name, phone, referral_name, status, created_at, onboarded_at",
+        )
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      profiles.push(...(data as P[]));
+      if (data.length < PAGE) break;
+    }
+
+    // 2) Primary team nickname per owner (paginated)
+    const primaryByUser = new Map<string, string>();
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabaseAdmin
+        .from("teams")
+        .select("owner_user_id, nickname, is_primary")
+        .eq("is_primary", true)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      for (const t of data as Array<{ owner_user_id: string; nickname: string }>) {
+        if (t.owner_user_id) primaryByUser.set(t.owner_user_id, t.nickname);
+      }
+      if (data.length < PAGE) break;
+    }
+
+    // 3) Auth last-seen (paginated; perPage kept well under any GoTrue cap)
+    const lastSeen = new Map<string, string | null>();
+    const perPage = 200;
+    for (let page = 1; page <= 50; page++) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (error) throw new Error(error.message);
+      for (const u of data.users) lastSeen.set(u.id, u.last_sign_in_at ?? null);
+      if (data.users.length < perPage) break;
+    }
+
+    return profiles.map((p) => ({
+      ...p,
+      last_sign_in_at: lastSeen.get(p.id) ?? null,
+      primary_team_nickname: primaryByUser.get(p.id) ?? null,
+    }));
+  });
+
+/* ============================================================
+   WELCOME / FIRST-LOGIN — issue a set-password (recovery) email.
+   Provisioned accounts already exist with no password, so the link
+   type is recovery (invite rejects existing users). The user lands
+   on /welcome with a recovery session and sets a password there.
+
+   This sends via Supabase's configured SMTP. Configure CUSTOM SMTP
+   in the Supabase dashboard before a bulk send, or the built-in
+   limiter will throttle most emails. Also add your /welcome URL to
+   Auth > URL Configuration > Redirect URLs.
+   ============================================================ */
+export const sendWelcomeEmails = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        userIds: z.array(z.string().uuid()).min(1).max(500),
+        redirectTo: z.string().url(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    // Resolve emails in id chunks (avoids huge .in() lists)
+    const emailById = new Map<string, string>();
+    const ids = [...data.userIds];
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const { data: rows, error } = await supabaseAdmin
+        .from("profiles")
+        .select("id, email")
+        .in("id", chunk);
+      if (error) throw new Error(error.message);
+      for (const r of rows ?? []) if (r.email) emailById.set(r.id, r.email);
+    }
+
+    const results: Array<{ id: string; email?: string; ok: boolean; error?: string }> = [];
+    for (const id of data.userIds) {
+      const email = emailById.get(id);
+      if (!email) {
+        results.push({ id, ok: false, error: "No email on profile" });
+        continue;
+      }
+      const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+        redirectTo: data.redirectTo,
+      });
+      results.push(error ? { id, email, ok: false, error: error.message } : { id, email, ok: true });
+      // Gentle throttle so a large blast doesn't hammer the SMTP provider.
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    const failed = results.length - sent;
+
+    await supabaseAdmin.from("admin_audit").insert({
+      actor_id: context.userId,
+      action: "user.welcome_sent",
+      detail: { requested: data.userIds.length, sent, failed },
+    });
+
+    return { sent, failed, results };
+  });
+
+/* ============================================================
+   ONBOARDING — stamp profiles.onboarded_at for the caller.
+   Uses the admin client to bypass any RLS on the column.
+   ============================================================ */
+export const completeOnboarding = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ onboarded_at: new Date().toISOString() })
+      .eq("id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
