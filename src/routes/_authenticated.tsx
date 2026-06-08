@@ -5,8 +5,11 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { MobileTopBar } from "@/components/mobile-shell";
 
 export const Route = createFileRoute("/_authenticated")({
+  // Supabase persists sessions in localStorage, which the server cannot read.
+  // Disable SSR for the entire authenticated subtree so the auth gate always
+  // runs client-side with access to the session.
+  ssr: false,
   beforeLoad: async ({ location }) => {
-    if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
