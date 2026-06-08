@@ -299,23 +299,20 @@ function TournamentHub() {
           </div>
         )}
 
-        {/* Always-visible footer: edit/submit button */}
-        <div className="border-t border-border px-5 py-3">
-          <Link
-            to="/tournament/$id/lineup"
-            params={{ id }}
-            className={[
-              "flex items-center justify-center gap-2 w-full py-3 font-display text-xs uppercase tracking-widest transition-colors",
-              canSubmit
-                ? "text-white"
-                : "border border-border bg-background hover:bg-accent text-foreground",
-            ].join(" ")}
-            style={canSubmit ? { backgroundColor: "var(--forest-deep)" } : undefined}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            {hasPicks ? "Edit picks" : canSubmit ? "Submit team lineup" : "View lineup"}
-          </Link>
-        </div>
+        {/* Footer: only visible when tournament is open for picks */}
+        {canSubmit && (
+          <div className="border-t border-border px-5 py-3">
+            <Link
+              to="/tournament/$id/lineup"
+              params={{ id }}
+              className="flex items-center justify-center gap-2 w-full py-3 font-display text-xs uppercase tracking-widest text-white transition-colors"
+              style={{ backgroundColor: "var(--forest-deep)" }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {hasPicks ? "Edit picks" : "Submit team lineup"}
+            </Link>
+          </div>
+        )}
       </Card>
 
       {/* ── NAV ROWS ── */}
