@@ -2,8 +2,8 @@ import { createFileRoute, redirect, Outlet } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/admin")({
+  // Parent _authenticated layout is ssr:false; this gate runs client-side only.
   beforeLoad: async () => {
-    if (typeof window === "undefined") return;
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session) throw redirect({ to: "/login" });
     const { data } = await supabase
