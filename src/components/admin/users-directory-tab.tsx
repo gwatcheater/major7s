@@ -472,8 +472,40 @@ function UserDrawer({
   }, [user?.id, currentRole]);
 
   useEffect(() => {
-    if (user) setStatus(user.status);
+    if (user) {
+      setStatus(user.status);
+      setEmailDraft(user.email ?? "");
+    }
   }, [user]);
+
+  async function handleUpdateEmail() {
+    if (!user) return;
+    const next = emailDraft.trim().toLowerCase();
+    const current = (user.email ?? "").toLowerCase();
+    if (!next || next === current) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Change login email from ${user.email ?? "(none)"} to ${next}? The user will sign in with the new email.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateUserEmailFn({ data: { userId: user.id, newEmail: next } });
+      toast.success("Email updated");
+      qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-user-activity", user.id] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to update email");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const fullName = useMemo(() => {
     if (!user) return "";
