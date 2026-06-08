@@ -301,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -321,6 +321,9 @@ interface PicksHelperProps {
   lastMajorLabel: string;
   priorYearLabel: string;
   golferCountries: Record<string, string>; // golfer.id → country from current tournament leaderboard
+  leftiesEspnIds: Set<string>;             // espn_player_id set for lefties helper
+  leftiesInfo: Record<string, string>;     // espn_player_id → helper_info flavour text
+  espnIdByGolfer: Record<string, string>;  // golfer.id → espn_player_id via name join
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -942,7 +945,91 @@ function TeamEuropeMode({ byBucket, setSelections, isLocked, onDeploy, golferCou
   );
 }
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries }: PicksHelperProps) {
+function LeftiesMode({ byBucket, setSelections, isLocked, onDeploy, leftiesEspnIds, leftiesInfo, espnIdByGolfer }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  leftiesEspnIds: Set<string>;
+  leftiesInfo: Record<string, string>;
+  espnIdByGolfer: Record<string, string>;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function isLeftie(g: Golfer) {
+    const eid = espnIdByGolfer[g.id];
+    return eid != null && leftiesEspnIds.has(eid);
+  }
+
+  function pickRandom(pool: Golfer[]) { return pool[Math.floor(Math.random() * pool.length)].id; }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = (byBucket[b] ?? []).filter(isLeftie);
+      if (pool.length === 0) continue;
+      result[b] = pickRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter(isLeftie);
+    if (pool.length === 0) return;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(pool) }));
+    setDeployed(false);
+  }
+
+  const leftieCount = Object.values(byBucket).flat().filter(isLeftie).length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  // Build golfer.id → helper_info map for suggestion row display
+  const golferInfoById: Record<string, string> = {};
+  for (const golfer of Object.values(byBucket).flat()) {
+    const eid = espnIdByGolfer[golfer.id];
+    if (eid && leftiesInfo[eid]) golferInfoById[golfer.id] = leftiesInfo[eid];
+  }
+
+  return (
+    <>
+      <div className="px-5 pt-3 pb-0">
+        {totalCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {leftieCount === 0
+              ? "No left-handed golfers found in this field."
+              : `${leftieCount} left-handed golfer${leftieCount !== 1 ? "s" : ""} in this field.`}
+          </p>
+        )}
+      </div>
+      <HelperPanel
+        buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+        toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+        suggestions={suggestions} setSuggestions={setSuggestions}
+        deployed={deployed} setDeployed={setDeployed}
+        onGenerate={generate} onRerollBucket={rerollBucket}
+        isLocked={isLocked} setSelections={setSelections}
+        generateLabel="Suggest left-handed picks"
+        generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+        onDeploy={onDeploy}
+        countryData={golferInfoById}
+      />
+    </>
+  );
+}
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
@@ -953,11 +1040,11 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
+    { id: "lefties",         label: "Lefties",      emoji: "🤚", desc: "Left-handed golfers only" },
   ];
 
   const comingSoon = [
     { label: "🔥 OWGR", desc: "Form-weighted by recent ranking" },
-    { label: "Lefties",   desc: "Left-handed golfers only" },
     { label: "Debutants", desc: "First major appearance" },
     { label: "Fit WAGs",  desc: "Aesthetic-adjacent selection criteria" },
     { label: "C@nts",     desc: "You know who they are" },
@@ -1070,6 +1157,15 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} onDeploy={onDeploy}
           golferCountries={golferCountries}
+        />
+      )}
+      {activeMode === "lefties" && (
+        <LeftiesMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          leftiesEspnIds={leftiesEspnIds}
+          leftiesInfo={leftiesInfo}
+          espnIdByGolfer={espnIdByGolfer}
         />
       )}
     </Card>
@@ -1244,6 +1340,18 @@ function LineupPicker() {
         .limit(2000);
       if (error) throw error;
       return data as { espn_display_name: string; country: string }[];
+    },
+  });
+
+  // picks_helper table — fetch lefties (and future helpers) keyed by helper_name
+  const { data: picksHelperRows = [] } = useQuery({
+    queryKey: ["picks-helper"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("picks_helper")
+        .select("helper_name, espn_player_id, golfer_name, helper_info");
+      if (error) throw error;
+      return data as { helper_name: string; espn_player_id: string; golfer_name: string; helper_info: string }[];
     },
   });
 
@@ -1487,6 +1595,28 @@ function LineupPicker() {
     if (country) golferCountries[golfer.id] = country;
   }
 
+  // Build golfer.id → espn_player_id map via name join through countryRows.
+  // countryRows already has espn_display_name — we need espn_player_id too,
+  // so we use picksHelperRows as the name → espn_player_id source instead.
+  const nameToEspnId = new Map<string, string>();
+  for (const r of picksHelperRows) {
+    const key = r.golfer_name?.toLowerCase().trim();
+    if (key && !nameToEspnId.has(key)) nameToEspnId.set(key, String(r.espn_player_id));
+  }
+  const espnIdByGolfer: Record<string, string> = {};
+  for (const golfer of field) {
+    const key = golfer.golfer_name?.toLowerCase().trim();
+    if (!key) continue;
+    const eid = nameToEspnId.get(key);
+    if (eid) espnIdByGolfer[golfer.id] = eid;
+  }
+
+  // Lefties — filter picks_helper rows, build id set and info map
+  const leftiesRows = picksHelperRows.filter((r) => r.helper_name === "lefties");
+  const leftiesEspnIds = new Set(leftiesRows.map((r) => String(r.espn_player_id)));
+  const leftiesInfo: Record<string, string> = {};
+  for (const r of leftiesRows) leftiesInfo[String(r.espn_player_id)] = r.helper_info;
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -1621,6 +1751,9 @@ function LineupPicker() {
       lastMajorLabel={lastMajorLabel}
       priorYearLabel={priorYearLabel}
       golferCountries={golferCountries}
+      leftiesEspnIds={leftiesEspnIds}
+      leftiesInfo={leftiesInfo}
+      espnIdByGolfer={espnIdByGolfer}
     />
   );
 
