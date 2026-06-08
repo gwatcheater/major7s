@@ -301,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -855,7 +855,92 @@ function NoYanksMode({ byBucket, setSelections, isLocked, onDeploy, golferCountr
   );
 }
 
-// ── Main PicksHelper shell ────────────────────────────────────────────────────
+const TEAM_EUROPE_COUNTRIES = new Set([
+  "Albania", "Andorra", "Austria", "Belarus", "Belgium",
+  "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Czech Republic", "Czechia",
+  "Denmark", "England", "Estonia", "Finland", "France", "Germany", "Greece",
+  "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein",
+  "Lithuania", "Luxembourg", "Malta", "Moldova", "Monaco", "Montenegro",
+  "Netherlands", "North Macedonia", "Northern Ireland", "Norway", "Poland",
+  "Portugal", "Romania", "San Marino", "Scotland", "Serbia", "Slovakia",
+  "Slovenia", "Spain", "Sweden", "Switzerland", "Ukraine",
+  "United Kingdom", "Wales",
+]);
+
+function TeamEuropeMode({ byBucket, setSelections, isLocked, onDeploy, golferCountries }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  golferCountries: Record<string, string>;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function isEuropean(g: Golfer) {
+    const c = golferCountries[g.id];
+    return c != null && TEAM_EUROPE_COUNTRIES.has(c);
+  }
+
+  function pickRandom(pool: Golfer[]) { return pool[Math.floor(Math.random() * pool.length)].id; }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = (byBucket[b] ?? []).filter(isEuropean);
+      if (pool.length === 0) continue;
+      result[b] = pickRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter(isEuropean);
+    if (pool.length === 0) return;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(pool) }));
+    setDeployed(false);
+  }
+
+  const euroCount = Object.values(byBucket).flat().filter(isEuropean).length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  return (
+    <>
+      <div className="px-5 pt-3 pb-0">
+        {totalCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {euroCount === 0
+              ? "No European golfers found in this field."
+              : `${euroCount} European golfers available across all buckets.`}
+          </p>
+        )}
+      </div>
+      <HelperPanel
+        buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+        toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+        suggestions={suggestions} setSuggestions={setSuggestions}
+        deployed={deployed} setDeployed={setDeployed}
+        onGenerate={generate} onRerollBucket={rerollBucket}
+        isLocked={isLocked} setSelections={setSelections}
+        generateLabel="Suggest European picks"
+        generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+        onDeploy={onDeploy}
+        countryData={golferCountries}
+      />
+    </>
+  );
+}
 
 function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
@@ -867,6 +952,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "last-major",      label: "Last major",   emoji: "⚡", desc: "Best finish in most recent major" },
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
+    { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
   ];
 
   const comingSoon = [
@@ -974,6 +1060,13 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
       )}
       {activeMode === "no-yanks" && (
         <NoYanksMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          golferCountries={golferCountries}
+        />
+      )}
+      {activeMode === "team-europe" && (
+        <TeamEuropeMode
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} onDeploy={onDeploy}
           golferCountries={golferCountries}
