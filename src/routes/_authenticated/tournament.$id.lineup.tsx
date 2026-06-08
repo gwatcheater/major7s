@@ -1406,7 +1406,6 @@ function LineupPicker() {
       lastMajorLabel={lastMajorLabel}
       priorYearLabel={priorYearLabel}
     />
-    />
   );
 
   return (
