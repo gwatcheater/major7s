@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MapPin,
   Calendar,
@@ -73,6 +73,11 @@ function TournamentHub() {
       return data;
     },
   });
+
+  // Open picks panel by default when tournament is open for picks
+  useEffect(() => {
+    if (t?.status === "open_for_picks") setPicksOpen(true);
+  }, [t?.status]);
 
   const { data: picks = [] } = useQuery({
     queryKey: ["picks", activeTeam?.id, id],
@@ -157,7 +162,7 @@ function TournamentHub() {
   }
 
   const hasPicks = picks.length > 0;
-  const allBucketsSelected = hasPicks && [1,2,3,4,5,6,7].every((b) => picksByBucket.has(b));
+  const allBucketsSelected = hasPicks && [1, 2, 3, 4, 5, 6, 7].every((b) => picksByBucket.has(b));
   const maxTweaks = picks.reduce((m, p: any) => Math.max(m, p.tweak_count ?? 0), 0);
   const teamHandle = activeTeam?.nickname || profile?.nickname || "Your Team";
 
@@ -204,17 +209,17 @@ function TournamentHub() {
 
       {/* ── PICKS CARD (collapsible) ── */}
       <Card className="mt-8 overflow-hidden p-0">
-        {/* Collapsed header — always visible, clicking toggles expansion */}
+
+        {/* Always-visible header trigger */}
         <button
           onClick={() => setPicksOpen((o) => !o)}
           className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/40 transition-colors text-left"
           aria-expanded={picksOpen}
         >
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              My picks
-            </span>
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-col gap-[10px] flex-1 min-w-0">
+
+            {/* Row 1: picks status pill */}
+            <div>
               {allBucketsSelected ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800">
                   <CheckCircle2 className="h-3.5 w-3.5" />
@@ -226,12 +231,34 @@ function TournamentHub() {
                   Picks not selected
                 </span>
               )}
+            </div>
+
+            {/* Row 2: team nickname + check + | + tweaks + | + last update */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium uppercase tracking-wide text-foreground">
+                {teamHandle}
+              </span>
+              {hasPicks && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+              )}
+              {hasPicks && (
+                <>
+                  <span className="text-border select-none text-xs">|</span>
+                  <span className="text-xs text-muted-foreground">
+                    Tweaks: {maxTweaks}
+                  </span>
+                </>
+              )}
               {hasPicks && lastEdited > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  Submitted {formatTimestamp(lastEdited)}
-                </span>
+                <>
+                  <span className="text-border select-none text-xs">|</span>
+                  <span className="text-xs text-muted-foreground">
+                    Last update: {formatTimestamp(lastEdited)}
+                  </span>
+                </>
               )}
             </div>
+
           </div>
           <ChevronDown
             className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ml-3 ${
@@ -243,20 +270,6 @@ function TournamentHub() {
         {/* Expanded body */}
         {picksOpen && (
           <div className="border-t border-border">
-            {/* Team name + tweaks */}
-            <div className="px-5 pt-3 pb-2 border-b border-border">
-              <div className="flex items-center gap-2">
-                <span className="font-display uppercase text-base">{teamHandle}</span>
-                {hasPicks && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-              </div>
-              {hasPicks && (
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  Tweaks: {maxTweaks}
-                </div>
-              )}
-            </div>
-
-            {/* Bucket rows */}
             {hasPicks ? (
               <div className="divide-y divide-border">
                 {[1, 2, 3, 4, 5, 6, 7].map((b) => {
@@ -286,7 +299,7 @@ function TournamentHub() {
           </div>
         )}
 
-        {/* Footer — Edit picks button always visible */}
+        {/* Always-visible footer: edit/submit button */}
         <div className="border-t border-border px-5 py-3">
           <Link
             to="/tournament/$id/lineup"
@@ -298,7 +311,6 @@ function TournamentHub() {
                 : "border border-border bg-background hover:bg-accent text-foreground",
             ].join(" ")}
             style={canSubmit ? { backgroundColor: "var(--forest-deep)" } : undefined}
-            aria-disabled={!canSubmit && !hasPicks}
           >
             <Pencil className="h-3.5 w-3.5" />
             {hasPicks ? "Edit picks" : canSubmit ? "Submit team lineup" : "View lineup"}
@@ -321,7 +333,7 @@ function TournamentHub() {
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
 
-        {(["picks_closed", "live", "completed"].includes(t.status)) && (
+        {["picks_closed", "live", "completed"].includes(t.status) && (
           <Link
             to="/tournament/$id/stats"
             params={{ id }}
