@@ -748,8 +748,6 @@ function HistoricalMode({
     setSuggestions((prev) => ({ ...(prev ?? {}), [b]: picked }));
     setDeployed(false);
   }
-    setDeployed(false);
-  }
 
   const dataCount = Object.values(byBucket).flat().filter((g) => historical[g.id] != null).length;
   const totalCount = Object.values(byBucket).flat().length;
