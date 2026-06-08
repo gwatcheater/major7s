@@ -1204,9 +1204,9 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
     { id: "random",          label: "Random",       emoji: "🎲", desc: "Random golfer per bucket" },
-    { id: "top-ranked",      label: "Top ranked",   emoji: "🏆", desc: "Highest OWGR in each bucket" },
+    { id: "top-ranked",      label: "Top ranked",   emoji: "🔝", desc: "Highest OWGR in each bucket" },
     { id: "contrarian",      label: "Contrarian",   emoji: "📉", desc: "Least-picked across all teams" },
-    { id: "last-major",      label: "Last major",   emoji: "⚡", desc: "Best finish in most recent major" },
+    { id: "last-major",      label: "Last major",   emoji: "🏆", desc: "Best finish in most recent major" },
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
