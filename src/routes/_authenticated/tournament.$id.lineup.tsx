@@ -1105,6 +1105,7 @@ function LineupPicker() {
   const priorYearTournamentId = priorYearTournament?.id ?? null;
 
   // Query tournament_leaderboard for the last major — finished golfers only.
+  // Also fetches country for use by No Yanks helper (same pool of top golfers).
   // Matched to current field client-side via espn_display_name ↔ golfer_name.
   const { data: lastMajorLeaderboard = [] } = useQuery({
     queryKey: ["leaderboard-last-major", lastMajorTournamentId],
@@ -1137,17 +1138,17 @@ function LineupPicker() {
     },
   });
 
-  // Query current tournament leaderboard for country data — used by No Yanks helper.
-  // Joins to current field by espn_display_name ↔ golfer_name (same name-join pattern).
-  const { data: currentLeaderboard = [] } = useQuery({
-    queryKey: ["leaderboard-countries", id],
-    enabled: !!id,
+  // Country lookup for No Yanks helper — no tournament filter needed since
+  // a golfer's country is constant. Pull a broad sample and deduplicate by name.
+  const { data: countryRows = [] } = useQuery({
+    queryKey: ["golfer-countries"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
         .select("espn_display_name, country")
-        .eq("tournament_id", id)
-        .not("country", "is", null);
+        .not("country", "is", null)
+        .not("espn_display_name", "is", null)
+        .limit(2000);
       if (error) throw error;
       return data as { espn_display_name: string; country: string }[];
     },
@@ -1379,10 +1380,12 @@ function LineupPicker() {
     : "Prior Year Highest Finish";
 
   // Build golfer.id → country map for No Yanks helper.
-  // Joined by espn_display_name ↔ golfer_name (same name-join pattern as historical helpers).
-  const nameToCountry = new Map<string, string>(
-    currentLeaderboard.map((r) => [r.espn_display_name?.toLowerCase().trim(), r.country])
-  );
+  // Uses the broad countryRows query (no tournament filter) — country is constant per golfer.
+  const nameToCountry = new Map<string, string>();
+  for (const r of countryRows) {
+    const key = r.espn_display_name?.toLowerCase().trim();
+    if (key && !nameToCountry.has(key)) nameToCountry.set(key, r.country);
+  }
   const golferCountries: Record<string, string> = {};
   for (const golfer of field) {
     const key = golfer.golfer_name?.toLowerCase().trim();
