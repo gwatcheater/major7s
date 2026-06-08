@@ -301,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -320,6 +320,7 @@ interface PicksHelperProps {
   currentTournamentName: string;
   lastMajorLabel: string;
   priorYearLabel: string;
+  golferCountries: Record<string, string>; // golfer.id → country from current tournament leaderboard
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -343,13 +344,14 @@ interface HelperPanelProps {
   setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   onDeploy: () => void;
   historicalData?: HistoricalBestByGolfer; // if present, show finish context in suggestion rows
+  countryData?: Record<string, string>; // if present, show country after golfer name
 }
 
 function HelperPanel({
   buckets, byBucket, targetBuckets, toggleAll, toggleBucket, allActive,
   suggestions, setSuggestions, deployed, setDeployed,
   onGenerate, onRerollBucket, tiedBuckets,
-  isLocked, generateLabel, generateIcon, setSelections, onDeploy, historicalData,
+  isLocked, generateLabel, generateIcon, setSelections, onDeploy, historicalData, countryData,
 }: HelperPanelProps) {
   const activeSuggestedBuckets = suggestions
     ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
@@ -466,6 +468,11 @@ function HelperPanel({
                       {historicalData && golfer && historicalData[golfer.id] && (
                         <span className="text-muted-foreground font-normal">
                           {" "}({historicalData[golfer.id].points})
+                        </span>
+                      )}
+                      {countryData && golfer && countryData[golfer.id] && (
+                        <span className="text-muted-foreground font-normal">
+                          {" "}({countryData[golfer.id]})
                         </span>
                       )}
                     </span>
@@ -772,24 +779,100 @@ function HistoricalMode({
   );
 }
 
+function NoYanksMode({ byBucket, setSelections, isLocked, onDeploy, golferCountries }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  golferCountries: Record<string, string>;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function pickRandom(pool: Golfer[]) { return pool[Math.floor(Math.random() * pool.length)].id; }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      // Filter to non-USA golfers who have a known country
+      const pool = (byBucket[b] ?? []).filter(
+        (g) => golferCountries[g.id] != null && golferCountries[g.id] !== "USA"
+      );
+      if (pool.length === 0) continue;
+      result[b] = pickRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter(
+      (g) => golferCountries[g.id] != null && golferCountries[g.id] !== "USA"
+    );
+    if (pool.length === 0) return;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(pool) }));
+    setDeployed(false);
+  }
+
+  const nonUsaCount = Object.values(byBucket).flat()
+    .filter((g) => golferCountries[g.id] != null && golferCountries[g.id] !== "USA").length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  return (
+    <>
+      <div className="px-5 pt-3 pb-0">
+        {totalCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {nonUsaCount === 0
+              ? "No non-USA golfers found in this field."
+              : `${nonUsaCount} non-USA golfers available across all buckets.`}
+          </p>
+        )}
+      </div>
+      <HelperPanel
+        buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+        toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+        suggestions={suggestions} setSuggestions={setSuggestions}
+        deployed={deployed} setDeployed={setDeployed}
+        onGenerate={generate} onRerollBucket={rerollBucket}
+        isLocked={isLocked} setSelections={setSelections}
+        generateLabel="Suggest non-USA picks"
+        generateIcon={<Shuffle className="h-3.5 w-3.5" />}
+        onDeploy={onDeploy}
+        countryData={golferCountries}
+      />
+    </>
+  );
+}
+
 // ── Main PicksHelper shell ────────────────────────────────────────────────────
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel }: PicksHelperProps) {
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries }: PicksHelperProps) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
-    { id: "random",          label: "Random",                emoji: "🎲", desc: "Random golfer per bucket" },
-    { id: "top-ranked",      label: "Top ranked",            emoji: "🏆", desc: "Highest OWGR in each bucket" },
-    { id: "contrarian",      label: "Contrarian",            emoji: "📉", desc: "Least-picked across all teams" },
+    { id: "random",          label: "Random",       emoji: "🎲", desc: "Random golfer per bucket" },
+    { id: "top-ranked",      label: "Top ranked",   emoji: "🏆", desc: "Highest OWGR in each bucket" },
+    { id: "contrarian",      label: "Contrarian",   emoji: "📉", desc: "Least-picked across all teams" },
     { id: "last-major",      label: "Last major",   emoji: "⚡", desc: "Best finish in most recent major" },
-    { id: "same-tournament", label: "Prior year",    emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
+    { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
+    { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
   ];
 
   const comingSoon = [
     { label: "🔥 OWGR", desc: "Form-weighted by recent ranking" },
     { label: "Lefties",   desc: "Left-handed golfers only" },
     { label: "Debutants", desc: "First major appearance" },
-    { label: "No Yanks",  desc: "Exclude US players" },
     { label: "Fit WAGs",  desc: "Aesthetic-adjacent selection criteria" },
     { label: "C@nts",     desc: "You know who they are" },
   ];
@@ -887,6 +970,13 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           historical={sameTournamentBest}
           modeLabel={priorYearLabel}
           noDataLabel={`No prior ${currentTournamentName} results found for golfers in this field.`}
+        />
+      )}
+      {activeMode === "no-yanks" && (
+        <NoYanksMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          golferCountries={golferCountries}
         />
       )}
     </Card>
@@ -1044,6 +1134,22 @@ function LineupPicker() {
         .not("position_numeric", "is", null);
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  // Query current tournament leaderboard for country data — used by No Yanks helper.
+  // Joins to current field by espn_display_name ↔ golfer_name (same name-join pattern).
+  const { data: currentLeaderboard = [] } = useQuery({
+    queryKey: ["leaderboard-countries", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_leaderboard")
+        .select("espn_display_name, country")
+        .eq("tournament_id", id)
+        .not("country", "is", null);
+      if (error) throw error;
+      return data as { espn_display_name: string; country: string }[];
     },
   });
 
@@ -1272,6 +1378,19 @@ function LineupPicker() {
     ? `Show Prior Year ${shortMajorName(priorYearTournament.name)} ${priorYearYear} Highest Finish`
     : "Prior Year Highest Finish";
 
+  // Build golfer.id → country map for No Yanks helper.
+  // Joined by espn_display_name ↔ golfer_name (same name-join pattern as historical helpers).
+  const nameToCountry = new Map<string, string>(
+    currentLeaderboard.map((r) => [r.espn_display_name?.toLowerCase().trim(), r.country])
+  );
+  const golferCountries: Record<string, string> = {};
+  for (const golfer of field) {
+    const key = golfer.golfer_name?.toLowerCase().trim();
+    if (!key) continue;
+    const country = nameToCountry.get(key);
+    if (country) golferCountries[golfer.id] = country;
+  }
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -1405,6 +1524,7 @@ function LineupPicker() {
       currentTournamentName={currentTournamentName}
       lastMajorLabel={lastMajorLabel}
       priorYearLabel={priorYearLabel}
+      golferCountries={golferCountries}
     />
   );
 
