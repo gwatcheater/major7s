@@ -303,9 +303,9 @@ function BottomSheet({
 
 type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament";
 
-// golfer_id → { points, tournamentName } for best historical finish
+// golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
-  [golferId: string]: { points: number; tournamentName: string; year: number };
+  [golferId: string]: { points: number; tournamentName: string; year: number; tied: boolean };
 }
 
 interface PicksHelperProps {
@@ -348,6 +348,7 @@ interface HelperPanelProps {
   setDeployed: (v: boolean) => void;
   onGenerate: () => void;
   onRerollBucket?: (b: number) => void;
+  tiedBuckets?: Set<number>; // buckets where re-roll button appears (tied result)
   isLocked: boolean;
   generateLabel: string;
   generateIcon: React.ReactNode;
@@ -359,8 +360,8 @@ interface HelperPanelProps {
 function HelperPanel({
   buckets, byBucket, targetBuckets, toggleAll, toggleBucket, allActive,
   suggestions, setSuggestions, deployed, setDeployed,
-  onGenerate, onRerollBucket, isLocked,
-  generateLabel, generateIcon, setSelections, onDeploy, historicalData,
+  onGenerate, onRerollBucket, tiedBuckets,
+  isLocked, generateLabel, generateIcon, setSelections, onDeploy, historicalData,
 }: HelperPanelProps) {
   const activeSuggestedBuckets = suggestions
     ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
@@ -472,21 +473,29 @@ function HelperPanel({
                   <span className="text-sm text-muted-foreground flex-1">—</span>
                 ) : (
                   <>
-                    <span className="text-sm flex-1">{golfer?.golfer_name ?? "Unknown"}</span>
+                    <span className="text-sm flex-1">
+                      {golfer?.golfer_name ?? "Unknown"}
+                      {historicalData && golfer && historicalData[golfer.id] && (
+                        <span className="text-muted-foreground font-normal">
+                          {" "}({historicalData[golfer.id].points})
+                        </span>
+                      )}
+                    </span>
                     {historicalData && golfer && historicalData[golfer.id] ? (
                       <span className="text-xs text-muted-foreground">
-                        P{historicalData[golfer.id].points} · {historicalData[golfer.id].tournamentName} {historicalData[golfer.id].year}
+                        {historicalData[golfer.id].tournamentName} {historicalData[golfer.id].year}
                       </span>
                     ) : golfer?.owgr_rank ? (
                       <span className="text-xs text-muted-foreground">
                         OWGR #{golfer.owgr_rank}
                       </span>
                     ) : null}
-                    {onRerollBucket && (
+                    {onRerollBucket && (!tiedBuckets || tiedBuckets.has(b)) && (
                       <button
                         onClick={() => { onRerollBucket(b); setDeployed(false); }}
                         className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
                         aria-label={`Re-roll B${b}`}
+                        title={tiedBuckets?.has(b) ? "Tied — click to pick another" : "Re-roll"}
                       >
                         <RefreshCw className="h-3 w-3" />
                       </button>
@@ -681,23 +690,21 @@ function bestByBucketFromHistory(
   byBucket: Record<number, Golfer[]>,
   historical: HistoricalBestByGolfer,
   targetBuckets: Set<number>
-): Record<number, string> {
-  const result: Record<number, string> = {};
+): { suggestions: Record<number, string>; tiedBuckets: Set<number> } {
+  const suggestions: Record<number, string> = {};
+  const tiedBuckets = new Set<number>();
+
   for (const b of buckets) {
     if (!targetBuckets.has(b)) continue;
-    // Use CURRENT bucket assignment (byBucket) — not the historical bucket.
-    const pool = byBucket[b] ?? [];
-    // Only golfers in this bucket who have historical data
-    const candidates = pool.filter((g) => historical[g.id] != null);
-    if (candidates.length === 0) continue;
-    // Find the best (lowest) points among candidates
-    const bestPoints = Math.min(...candidates.map((g) => historical[g.id]!.points));
-    // Collect all tied golfers at that points value
-    const tied = candidates.filter((g) => historical[g.id]!.points === bestPoints);
-    // Randomise among ties
-    result[b] = tied[Math.floor(Math.random() * tied.length)].id;
+    const pool = (byBucket[b] ?? []).filter((g) => historical[g.id] != null);
+    if (pool.length === 0) continue;
+    const bestPos = Math.min(...pool.map((g) => historical[g.id].points));
+    const tied = pool.filter((g) => historical[g.id].points === bestPos);
+    suggestions[b] = tied[Math.floor(Math.random() * tied.length)].id;
+    if (tied.length > 1) tiedBuckets.add(b);
   }
-  return result;
+
+  return { suggestions, tiedBuckets };
 }
 
 function HistoricalMode({
@@ -715,6 +722,7 @@ function HistoricalMode({
   const buckets = [1, 2, 3, 4, 5, 6, 7];
   const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
   const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [tiedBuckets, setTiedBuckets] = useState<Set<number>>(new Set());
   const [deployed, setDeployed] = useState(false);
   const allActive = buckets.every((b) => targetBuckets.has(b));
 
@@ -725,8 +733,21 @@ function HistoricalMode({
   }
 
   function generate() {
-    const result = bestByBucketFromHistory(buckets, byBucket, historical, targetBuckets);
-    setSuggestions(result);
+    const { suggestions: s, tiedBuckets: t } = bestByBucketFromHistory(buckets, byBucket, historical, targetBuckets);
+    setSuggestions(s);
+    setTiedBuckets(t);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter((g) => historical[g.id] != null);
+    if (pool.length === 0) return;
+    const bestPos = Math.min(...pool.map((g) => historical[g.id].points));
+    const tied = pool.filter((g) => historical[g.id].points === bestPos);
+    const picked = tied[Math.floor(Math.random() * tied.length)].id;
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: picked }));
+    setDeployed(false);
+  }
     setDeployed(false);
   }
 
@@ -749,7 +770,9 @@ function HistoricalMode({
         toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
         suggestions={suggestions} setSuggestions={setSuggestions}
         deployed={deployed} setDeployed={setDeployed}
-        onGenerate={generate} onRerollBucket={undefined}
+        onGenerate={generate}
+        onRerollBucket={(b) => { if (tiedBuckets.has(b)) rerollBucket(b); }}
+        tiedBuckets={tiedBuckets}
         isLocked={isLocked}
         setSelections={setSelections}
         generateLabel={modeLabel}
@@ -1006,10 +1029,16 @@ function LineupPicker() {
   const lastMajorTournamentId = completedPrior[0]?.id ?? null;
   const lastMajorMeta = completedPrior[0];
 
-  // Prior year = most recent prior edition of same tournament name
-  const priorYearTournament = completedPrior.find(
-    (t) => shortMajorName(t.name) === currentTournamentName
-  ) ?? null;
+  // Prior year = same tournament name, start_date year = current tournament year - 1
+  const currentYear = tournament?.start_date
+    ? new Date(tournament.start_date).getFullYear()
+    : new Date().getFullYear();
+  const priorYear = currentYear - 1;
+
+  const priorYearTournament = completedPrior.find((t) => {
+    const tYear = new Date(t.start_date).getFullYear();
+    return shortMajorName(t.name) === currentTournamentName && tYear === priorYear;
+  }) ?? null;
   const priorYearTournamentId = priorYearTournament?.id ?? null;
 
   // ── DIAGNOSTIC: sample tournament_leaderboard to verify column names and data ──
@@ -1040,16 +1069,18 @@ function LineupPicker() {
       return data ?? [];
     },
   });
-  // Query tournament_leaderboard for the last major — all golfers in that tournament,
-  // matched client-side to current field. No .in() filter to avoid ID mismatch risk.
+  // Query tournament_leaderboard for the last major — finished golfers only.
+  // Matched to current field client-side via espn_display_name ↔ golfer_name.
   const { data: lastMajorLeaderboard = [] } = useQuery({
     queryKey: ["leaderboard-last-major", lastMajorTournamentId],
     enabled: !!lastMajorTournamentId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("*")
-        .eq("tournament_id", lastMajorTournamentId!);
+        .select("espn_display_name, position_numeric")
+        .eq("tournament_id", lastMajorTournamentId!)
+        .eq("status_type", "STATUS_FINISH")
+        .not("position_numeric", "is", null);
       if (error) throw error;
       return data ?? [];
     },
@@ -1062,8 +1093,10 @@ function LineupPicker() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tournament_leaderboard")
-        .select("*")
-        .eq("tournament_id", priorYearTournamentId!);
+        .select("espn_display_name, position_numeric")
+        .eq("tournament_id", priorYearTournamentId!)
+        .eq("status_type", "STATUS_FINISH")
+        .not("position_numeric", "is", null);
       if (error) throw error;
       return data ?? [];
     },
@@ -1228,48 +1261,68 @@ function LineupPicker() {
   }
 
 
-  // Build HistoricalBestByGolfer maps from leaderboard data.
-  // Queries return select("*") so we inspect actual column names at runtime.
-  // Position column may be position_numeric or position_number — try both.
-  // Match to current field golfer IDs client-side after fetching full tournament.
+  // Join current field to historical leaderboard by name (case-insensitive).
+  // tournament_leaderboard.espn_display_name ↔ golfers.golfer_name
+  // Golfer IDs differ between tables — name is the only reliable join key.
+  // Queries already filter to STATUS_FINISH + non-null position_numeric.
+  // Result keyed by current field golfer.id so byBucket lookups work directly.
 
-  const fieldGolferIdSet = new Set(fieldGolferIds);
+  function buildHistoricalMap(
+    leaderboard: { espn_display_name: string; position_numeric: number }[],
+    tournamentName: string,
+    year: number
+  ): HistoricalBestByGolfer {
+    const nameToPos = new Map<string, number>();
+    for (const row of leaderboard) {
+      const key = row.espn_display_name?.toLowerCase().trim();
+      if (!key) continue;
+      const existing = nameToPos.get(key);
+      if (existing == null || row.position_numeric < existing) {
+        nameToPos.set(key, row.position_numeric);
+      }
+    }
 
-  function getPosition(row: any): number | null {
-    const v = row.position_numeric ?? row.position_number ?? row.position ?? null;
-    return v == null ? null : Number(v);
+    const result: HistoricalBestByGolfer = {};
+    for (const golfer of field) {
+      const key = golfer.golfer_name?.toLowerCase().trim();
+      if (!key) continue;
+      const pos = nameToPos.get(key);
+      if (pos == null) continue;
+      result[golfer.id] = { points: pos, tournamentName, year, tied: false };
+    }
+
+    // Mark ties within each bucket
+    for (const b of [1, 2, 3, 4, 5, 6, 7]) {
+      const pool = (byBucket[b] ?? []).filter((g) => result[g.id] != null);
+      if (pool.length < 2) continue;
+      const bestPos = Math.min(...pool.map((g) => result[g.id].points));
+      const tiedGolfers = pool.filter((g) => result[g.id].points === bestPos);
+      if (tiedGolfers.length > 1) {
+        for (const g of tiedGolfers) result[g.id] = { ...result[g.id], tied: true };
+      }
+    }
+
+    return result;
   }
 
-  const lastMajorBest: HistoricalBestByGolfer = {};
-  for (const row of lastMajorLeaderboard) {
-    if (!row.golfer_id || !fieldGolferIdSet.has(row.golfer_id)) continue;
-    const pos = getPosition(row);
-    if (pos == null) continue;
-    lastMajorBest[row.golfer_id] = {
-      points: pos,
-      tournamentName: shortMajorName(lastMajorMeta?.name ?? ""),
-      year: lastMajorMeta ? new Date(lastMajorMeta.start_date).getFullYear() : 0,
-    };
-  }
+  const lastMajorYear = lastMajorMeta ? new Date(lastMajorMeta.start_date).getFullYear() : 0;
+  const lastMajorBest = buildHistoricalMap(
+    lastMajorLeaderboard,
+    shortMajorName(lastMajorMeta?.name ?? ""),
+    lastMajorYear
+  );
 
-  const sameTournamentBest: HistoricalBestByGolfer = {};
-  for (const row of priorYearLeaderboard) {
-    if (!row.golfer_id || !fieldGolferIdSet.has(row.golfer_id)) continue;
-    const pos = getPosition(row);
-    if (pos == null) continue;
-    sameTournamentBest[row.golfer_id] = {
-      points: pos,
-      tournamentName: shortMajorName(priorYearTournament?.name ?? ""),
-      year: priorYearTournament ? new Date(priorYearTournament.start_date).getFullYear() : 0,
-    };
-  }
+  const priorYearYear = priorYearTournament ? new Date(priorYearTournament.start_date).getFullYear() : 0;
+  const sameTournamentBest = buildHistoricalMap(
+    priorYearLeaderboard,
+    shortMajorName(priorYearTournament?.name ?? ""),
+    priorYearYear
+  );
 
-  const lastMajorYear = lastMajorMeta ? new Date(lastMajorMeta.start_date).getFullYear() : null;
   const lastMajorLabel = lastMajorMeta
     ? `Show ${shortMajorName(lastMajorMeta.name)} ${lastMajorYear} Highest Finish`
     : "Last Major Highest Finish";
 
-  const priorYearYear = priorYearTournament ? new Date(priorYearTournament.start_date).getFullYear() : null;
   const priorYearLabel = priorYearTournament
     ? `Show Prior Year ${shortMajorName(priorYearTournament.name)} ${priorYearYear} Highest Finish`
     : "Prior Year Highest Finish";
