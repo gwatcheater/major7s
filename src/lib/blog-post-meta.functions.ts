@@ -83,14 +83,22 @@ export const getBlogPostMeta = createServerFn({ method: "GET" })
     return await fetchMeta(data.postId);
   });
 
+export type ResolveResult =
+  | { kind: "bot"; html: string }
+  | { kind: "human"; meta: BlogPostMeta | null };
+
 /**
- * Loader helper that branches on User-Agent. Bots get an OG-only HTML
- * response (thrown as a Response so TanStack short-circuits rendering).
- * Everyone else gets the meta payload for the page <head>.
+ * Loader helper. Inspects the request User-Agent on the server.
+ * - For unfurl scrapers, returns `{ kind: "bot", html }` so the route
+ *   loader can throw it as a Response (short-circuiting render).
+ * - For real browsers, returns `{ kind: "human", meta }` for <head> use.
+ *
+ * Called from a route loader; on the client the call is RPC'd to the
+ * server, which will of course see the real browser UA and return "human".
  */
 export const resolveBlogPostRequest = createServerFn({ method: "GET" })
   .inputValidator((input) => InputSchema.parse(input))
-  .handler(async ({ data }): Promise<{ meta: BlogPostMeta | null }> => {
+  .handler(async ({ data }): Promise<ResolveResult> => {
     const ua = getRequestHeader("user-agent") ?? getRequestHeader("User-Agent");
     const meta = await fetchMeta(data.postId);
 
@@ -105,14 +113,8 @@ export const resolveBlogPostRequest = createServerFn({ method: "GET" })
         imageUrl: meta?.imageUrl ?? `${origin}${blogDefault.url}`,
         absoluteUrl,
       });
-      throw new Response(html, {
-        status: 200,
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "public, max-age=300",
-        },
-      });
+      return { kind: "bot", html };
     }
 
-    return { meta };
+    return { kind: "human", meta };
   });

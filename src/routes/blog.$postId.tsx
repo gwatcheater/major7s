@@ -5,9 +5,17 @@ import { resolveBlogPostRequest } from "@/lib/blog-post-meta.functions";
 
 export const Route = createFileRoute("/blog/$postId")({
   loader: async ({ params }) => {
-    // Server-side: bot UAs are short-circuited inside resolveBlogPostRequest
-    // (it throws a Response with OG-only HTML). Real browsers get { meta }.
-    return await resolveBlogPostRequest({ data: { postId: params.postId } });
+    const result = await resolveBlogPostRequest({ data: { postId: params.postId } });
+    if (result.kind === "bot") {
+      throw new Response(result.html, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=300",
+        },
+      });
+    }
+    return { meta: result.meta };
   },
   head: ({ loaderData, params }) => {
     const meta = loaderData?.meta;
