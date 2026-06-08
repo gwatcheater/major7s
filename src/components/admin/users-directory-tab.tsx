@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { updateUserEmail } from "@/lib/admin-users.functions";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -384,6 +386,8 @@ function UserDrawer({
   const [busy, setBusy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
   const [status, setStatus] = useState<string>("pending");
+  const [emailDraft, setEmailDraft] = useState<string>("");
+  const updateUserEmailFn = useServerFn(updateUserEmail);
 
   const { data: currentRole = "user", refetch: refetchRole } = useQuery({
     queryKey: ["admin-user-role", user?.id],
@@ -468,8 +472,40 @@ function UserDrawer({
   }, [user?.id, currentRole]);
 
   useEffect(() => {
-    if (user) setStatus(user.status);
+    if (user) {
+      setStatus(user.status);
+      setEmailDraft(user.email ?? "");
+    }
   }, [user]);
+
+  async function handleUpdateEmail() {
+    if (!user) return;
+    const next = emailDraft.trim().toLowerCase();
+    const current = (user.email ?? "").toLowerCase();
+    if (!next || next === current) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Change login email from ${user.email ?? "(none)"} to ${next}? The user will sign in with the new email.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateUserEmailFn({ data: { userId: user.id, newEmail: next } });
+      toast.success("Email updated");
+      qc.invalidateQueries({ queryKey: ["admin-users-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-user-activity", user.id] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to update email");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const fullName = useMemo(() => {
     if (!user) return "";
@@ -752,10 +788,31 @@ function UserDrawer({
                     </div>
                   ))}
                   <div>
-                    <Label className="text-xs text-muted-foreground">Email</Label>
-                    <Input className="h-9 mt-0.5" value={user.email ?? ""} disabled />
+                    <Label className="text-xs text-muted-foreground">Email (Login)</Label>
+                    <div className="flex gap-2 mt-0.5">
+                      <Input
+                        className="h-9 flex-1"
+                        value={emailDraft}
+                        onChange={(e) => setEmailDraft(e.target.value)}
+                        placeholder="user@example.com"
+                        type="email"
+                        autoComplete="off"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          busy ||
+                          !emailDraft.trim() ||
+                          emailDraft.trim().toLowerCase() === (user.email ?? "").toLowerCase()
+                        }
+                        onClick={handleUpdateEmail}
+                      >
+                        Update
+                      </Button>
+                    </div>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Email is tied to auth and cannot be changed here.
+                      Updates the user's login email and profile. Password is unchanged.
                     </p>
                   </div>
                   <div>

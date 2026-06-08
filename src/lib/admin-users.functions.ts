@@ -13,6 +13,83 @@ const RowSchema = z.object({
 
 const ConflictMode = z.enum(["skip", "overwrite", "abort"]);
 
+export const updateUserEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        newEmail: z.string().trim().email().max(255),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    // Admin role check
+    const { data: roleRow, error: roleErr } = await context.supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", context.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleErr) throw new Error(roleErr.message);
+    if (!roleRow) throw new Error("Forbidden: admin role required");
+
+    const newEmail = data.newEmail.toLowerCase();
+
+    // Read current email for audit + no-op detection
+    const { data: existing, error: getErr } =
+      await supabaseAdmin.auth.admin.getUserById(data.userId);
+    if (getErr || !existing?.user) {
+      throw new Error(getErr?.message ?? "User not found");
+    }
+    const fromEmail = existing.user.email ?? null;
+    if (fromEmail && fromEmail.toLowerCase() === newEmail) {
+      return { ok: true, from: fromEmail, to: newEmail, unchanged: true };
+    }
+
+    // Update auth (source of truth)
+    const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(
+      data.userId,
+      { email: newEmail, email_confirm: true },
+    );
+    if (updErr) {
+      const m = updErr.message?.toLowerCase() ?? "";
+      if (
+        m.includes("already registered") ||
+        m.includes("already been registered") ||
+        m.includes("already exists") ||
+        m.includes("duplicate")
+      ) {
+        throw new Error("That email is already in use by another account");
+      }
+      throw new Error(updErr.message);
+    }
+
+    // Mirror to profiles
+    const { error: pErr } = await supabaseAdmin
+      .from("profiles")
+      .update({ email: newEmail })
+      .eq("id", data.userId);
+
+    // Audit log
+    await supabaseAdmin.from("admin_audit").insert({
+      actor_id: context.userId,
+      action: "profile.email_change",
+      target_user: data.userId,
+      detail: { from: fromEmail, to: newEmail },
+    });
+
+    if (pErr) {
+      return {
+        ok: true,
+        from: fromEmail,
+        to: newEmail,
+        profileMirrorError: pErr.message,
+      };
+    }
+    return { ok: true, from: fromEmail, to: newEmail };
+  });
+
 type RowResult = {
   email: string;
   ok: boolean;
