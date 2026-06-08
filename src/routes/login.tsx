@@ -10,6 +10,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { redirect: redirectTarget } = Route.useSearch();
   const [mode, setMode] = useState<"signin" | "signup" | "forgot-password">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +35,8 @@ function LoginPage() {
     }
     const status = (data?.status ?? "pending") as "pending" | "approved" | "rejected";
     if (status === "approved") {
-      navigate({ to: "/home" });
+      const target = redirectTarget && redirectTarget.startsWith("/") ? redirectTarget : "/home";
+      navigate({ to: target });
       return;
     }
     await supabase.auth.signOut();

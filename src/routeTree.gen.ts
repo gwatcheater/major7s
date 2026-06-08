@@ -13,6 +13,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BlogPostIdRouteImport } from './routes/blog.$postId'
 import { Route as AuthenticatedStatsRouteImport } from './routes/_authenticated/stats'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
@@ -24,7 +25,6 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedBlogNewRouteImport } from './routes/_authenticated/blog.new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
-import { Route as AuthenticatedBlogPostIdIndexRouteImport } from './routes/_authenticated/blog.$postId.index'
 import { Route as AuthenticatedTournamentIdStatsRouteImport } from './routes/_authenticated/tournament.$id.stats'
 import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_authenticated/tournament.$id.lineup'
 import { Route as AuthenticatedTournamentIdLeaderboardRouteImport } from './routes/_authenticated/tournament.$id.leaderboard'
@@ -51,6 +51,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogPostIdRoute = BlogPostIdRouteImport.update({
+  id: '/blog/$postId',
+  path: '/blog/$postId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedStatsRoute = AuthenticatedStatsRouteImport.update({
@@ -109,12 +114,6 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
-const AuthenticatedBlogPostIdIndexRoute =
-  AuthenticatedBlogPostIdIndexRouteImport.update({
-    id: '/blog/$postId/',
-    path: '/blog/$postId/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedTournamentIdStatsRoute =
   AuthenticatedTournamentIdStatsRouteImport.update({
     id: '/stats',
@@ -174,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
+  '/blog/$postId': typeof BlogPostIdRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -183,7 +183,6 @@ export interface FileRoutesByFullPath {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
-  '/blog/$postId/': typeof AuthenticatedBlogPostIdIndexRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -198,6 +197,7 @@ export interface FileRoutesByTo {
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
+  '/blog/$postId': typeof BlogPostIdRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -207,7 +207,6 @@ export interface FileRoutesByTo {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
-  '/blog/$postId': typeof AuthenticatedBlogPostIdIndexRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -225,6 +224,7 @@ export interface FileRoutesById {
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
+  '/blog/$postId': typeof BlogPostIdRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/blog/new': typeof AuthenticatedBlogNewRoute
   '/_authenticated/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -234,7 +234,6 @@ export interface FileRoutesById {
   '/_authenticated/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/_authenticated/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
-  '/_authenticated/blog/$postId/': typeof AuthenticatedBlogPostIdIndexRoute
   '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/_authenticated/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/_authenticated/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -252,6 +251,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/profile'
     | '/stats'
+    | '/blog/$postId'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
@@ -261,7 +261,6 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
-    | '/blog/$postId/'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -276,6 +275,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/profile'
     | '/stats'
+    | '/blog/$postId'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
@@ -285,7 +285,6 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
-    | '/blog/$postId'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -302,6 +301,7 @@ export interface FileRouteTypes {
     | '/_authenticated/home'
     | '/_authenticated/profile'
     | '/_authenticated/stats'
+    | '/blog/$postId'
     | '/_authenticated/admin/users'
     | '/_authenticated/blog/new'
     | '/_authenticated/tournament/$id'
@@ -311,7 +311,6 @@ export interface FileRouteTypes {
     | '/_authenticated/tournament/$id/leaderboard'
     | '/_authenticated/tournament/$id/lineup'
     | '/_authenticated/tournament/$id/stats'
-    | '/_authenticated/blog/$postId/'
     | '/_authenticated/admin/tournament/$id/field'
     | '/_authenticated/tournament/$id/blog/new'
     | '/_authenticated/tournament/$id/blog/$postId/edit'
@@ -323,6 +322,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  BlogPostIdRoute: typeof BlogPostIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -353,6 +353,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$postId': {
+      id: '/blog/$postId'
+      path: '/blog/$postId'
+      fullPath: '/blog/$postId'
+      preLoaderRoute: typeof BlogPostIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/stats': {
@@ -431,13 +438,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/users'
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
-    }
-    '/_authenticated/blog/$postId/': {
-      id: '/_authenticated/blog/$postId/'
-      path: '/blog/$postId'
-      fullPath: '/blog/$postId/'
-      preLoaderRoute: typeof AuthenticatedBlogPostIdIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/tournament/$id/stats': {
       id: '/_authenticated/tournament/$id/stats'
@@ -553,7 +553,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedTournamentIdRoute: typeof AuthenticatedTournamentIdRouteWithChildren
   AuthenticatedBlogIndexRoute: typeof AuthenticatedBlogIndexRoute
   AuthenticatedBlogPostIdEditRoute: typeof AuthenticatedBlogPostIdEditRoute
-  AuthenticatedBlogPostIdIndexRoute: typeof AuthenticatedBlogPostIdIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -567,7 +566,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedTournamentIdRoute: AuthenticatedTournamentIdRouteWithChildren,
   AuthenticatedBlogIndexRoute: AuthenticatedBlogIndexRoute,
   AuthenticatedBlogPostIdEditRoute: AuthenticatedBlogPostIdEditRoute,
-  AuthenticatedBlogPostIdIndexRoute: AuthenticatedBlogPostIdIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -579,7 +577,18 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  BlogPostIdRoute: BlogPostIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
