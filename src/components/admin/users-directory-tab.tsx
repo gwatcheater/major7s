@@ -174,7 +174,7 @@ export function UsersDirectoryTab() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-directory"],
-    queryFn: async () => (await listFn({ data: {} })) as DirectoryRow[],
+    queryFn: async () => (await listFn()) as DirectoryRow[],
   });
 
   const selected = useMemo(
@@ -709,7 +709,7 @@ function UserDrawer({
   async function handleStatusChange(next: string) {
     if (!user || next === status) return;
     setBusy(true);
-    const { error } = await supabase.from("profiles").update({ status: next }).eq("id", user.id);
+    const { error } = await supabase.from("profiles").update({ status: next as "approved" | "pending" | "rejected" | "suspended" }).eq("id", user.id);
     setBusy(false);
     if (error) {
       toast.error(error.message);
