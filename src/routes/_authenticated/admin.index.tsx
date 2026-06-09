@@ -97,6 +97,8 @@ function AdminConsole() {
           </h1>
         </header>
 
+        <MigrationSetupCard />
+
         <Tabs defaultValue="users" className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="users" className="text-xs gap-1.5">
