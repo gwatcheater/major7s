@@ -3,6 +3,7 @@ import { createFileRoute, redirect, Outlet, useRouterState } from "@tanstack/rea
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileTopBar } from "@/components/mobile-shell";
+import { OnboardingGate } from "@/components/onboarding-gate";
 
 export const Route = createFileRoute("/_authenticated")({
   // Supabase persists sessions in localStorage, which the server cannot read.
@@ -70,7 +71,9 @@ function AuthenticatedLayout() {
       <MobileTopBar />
       <AppSidebar />
       <main ref={mainRef} className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
-        <Outlet />
+        <OnboardingGate>
+          <Outlet />
+        </OnboardingGate>
       </main>
     </div>
   );
