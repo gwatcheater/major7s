@@ -90,7 +90,7 @@ function WelcomePage() {
       return;
     }
     try {
-      await completeOnboardingFn({ data: {} });
+      await completeOnboardingFn();
     } catch {
       // Non-fatal: the gate will retry on next load if this didn't stamp.
     }
