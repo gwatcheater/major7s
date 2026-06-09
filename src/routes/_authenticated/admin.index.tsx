@@ -46,6 +46,7 @@ import { EspnLeaderboardSection } from "@/components/admin/espn-leaderboard-sect
 import { BulkPickUpload } from "@/components/admin/bulk-pick-upload";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
+import { runAuthConfigMigration } from "@/lib/auth-config-migration.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminConsole,
