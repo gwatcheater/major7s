@@ -112,14 +112,42 @@ export const runAuthConfigMigration = createServerFn({ method: "POST" })
       mailer_templates_recovery_content: RECOVERY_HTML,
     };
 
+    console.log("[auth-migration] PATCH endpoint:", endpoint);
+    console.log("[auth-migration] PATCH body keys:", Object.keys(patchBody));
+    console.log("[auth-migration] recovery_subject:", RECOVERY_SUBJECT);
+    console.log("[auth-migration] recovery_html_length:", RECOVERY_HTML.length);
+    console.log("[auth-migration] uri_allow_list:", mergedCsv);
+    console.log("[auth-migration] PATCH body (full JSON):", JSON.stringify(patchBody));
+
     const patchRes = await fetch(endpoint, {
       method: "PATCH",
       headers,
       body: JSON.stringify(patchBody),
     });
+    const patchText = await patchRes.text();
+    console.log("[auth-migration] PATCH status:", patchRes.status);
+    console.log("[auth-migration] PATCH content-type:", patchRes.headers.get("content-type"));
+    console.log("[auth-migration] PATCH response body:", patchText);
+
     if (!patchRes.ok) {
-      const text = await patchRes.text();
-      throw new Error(`Failed to update auth config (${patchRes.status}): ${text}`);
+      throw new Error(`Failed to update auth config (${patchRes.status}): ${patchText}`);
+    }
+
+    // Parse echo to confirm what GoTrue actually accepted
+    let echoedSubject: string | null = null;
+    let echoedTemplatePreview = "";
+    let echoedTemplateLength = 0;
+    try {
+      const echoed = JSON.parse(patchText) as Record<string, unknown>;
+      echoedSubject = (echoed.mailer_subjects_recovery as string | undefined) ?? null;
+      const tmpl = (echoed.mailer_templates_recovery_content as string | undefined) ?? "";
+      echoedTemplatePreview = tmpl.slice(0, 100);
+      echoedTemplateLength = tmpl.length;
+      console.log("[auth-migration] echoed subject:", echoedSubject);
+      console.log("[auth-migration] echoed template length:", echoedTemplateLength);
+      console.log("[auth-migration] echoed template preview:", echoedTemplatePreview);
+    } catch (e) {
+      console.log("[auth-migration] could not parse PATCH response as JSON");
     }
 
     // Audit
@@ -133,6 +161,9 @@ export const runAuthConfigMigration = createServerFn({ method: "POST" })
         allow_list_after: merged,
         allow_list_added: !already,
         recovery_template_updated: true,
+        patch_status: patchRes.status,
+        echoed_subject: echoedSubject,
+        echoed_template_length: echoedTemplateLength,
       },
     });
 
@@ -141,5 +172,59 @@ export const runAuthConfigMigration = createServerFn({ method: "POST" })
       allowListAdded: !already,
       allowListAfter: merged,
       templateUpdated: true,
+      patchStatus: patchRes.status,
+      echoedSubject,
+      echoedTemplatePreview,
+      echoedTemplateLength,
+      sentTemplateLength: RECOVERY_HTML.length,
     };
   });
+
+export const verifyAuthConfig = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: roleRow, error: roleErr } = await context.supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", context.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleErr) throw new Error(roleErr.message);
+    if (!roleRow) throw new Error("Forbidden: admin role required");
+
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+
+    const endpoint = `${url}/auth/v1/admin/config`;
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+    });
+    const text = await res.text();
+    console.log("[auth-verify] GET status:", res.status);
+    console.log("[auth-verify] GET body:", text);
+
+    if (!res.ok) throw new Error(`Failed to read auth config (${res.status}): ${text}`);
+
+    const cfg = JSON.parse(text) as Record<string, unknown>;
+    const tmpl = (cfg.mailer_templates_recovery_content as string | undefined) ?? "";
+    const allow = (cfg.uri_allow_list as string | undefined) ?? "";
+
+    return {
+      status: res.status,
+      recoverySubject: (cfg.mailer_subjects_recovery as string | undefined) ?? null,
+      recoveryTemplatePreview: tmpl.slice(0, 100),
+      recoveryTemplateLength: tmpl.length,
+      uriAllowList: allow,
+      welcomeUrlPresent: allow
+        .split(",")
+        .map((s) => s.trim())
+        .includes(WELCOME_URL),
+      sendMethod:
+        "supabaseAdmin.auth.resetPasswordForEmail → uses RECOVERY template slot (confirmed in src/lib/admin-users.functions.ts)",
+    };
+  });
+

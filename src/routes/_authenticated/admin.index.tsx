@@ -46,7 +46,7 @@ import { EspnLeaderboardSection } from "@/components/admin/espn-leaderboard-sect
 import { BulkPickUpload } from "@/components/admin/bulk-pick-upload";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
-import { runAuthConfigMigration } from "@/lib/auth-config-migration.functions";
+import { runAuthConfigMigration, verifyAuthConfig } from "@/lib/auth-config-migration.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminConsole,
@@ -132,12 +132,20 @@ function AdminConsole() {
 
 function MigrationSetupCard() {
   const runMigration = useServerFn(runAuthConfigMigration);
+  const verify = useServerFn(verifyAuthConfig);
   const [running, setRunning] = useState(false);
+  const [lastRun, setLastRun] = useState<Awaited<ReturnType<typeof runAuthConfigMigration>> | null>(
+    null,
+  );
+  const [verifyResult, setVerifyResult] = useState<Awaited<
+    ReturnType<typeof verifyAuthConfig>
+  > | null>(null);
 
   async function handleRun() {
     setRunning(true);
     try {
       const res = await runMigration();
+      setLastRun(res);
       toast.success(
         res.allowListAdded
           ? "Migration complete — welcome URL added and email template updated"
@@ -150,23 +158,76 @@ function MigrationSetupCard() {
     }
   }
 
+  async function handleVerify() {
+    setRunning(true);
+    try {
+      const res = await verify();
+      setVerifyResult(res);
+      toast.success(`Config read OK (${res.status})`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Verify failed");
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <Card className="mb-6">
       <CardHeader>
         <CardTitle className="text-sm uppercase tracking-wide">One-time migration setup</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Adds <code>https://major7s.com/welcome</code> to the auth redirect allowlist and installs the
-          Major7s password recovery email template. Safe to re-run.
-        </p>
-        <Button onClick={handleRun} disabled={running}>
-          {running ? "Running…" : "Run migration setup"}
-        </Button>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Adds <code>https://major7s.com/welcome</code> to the auth redirect allowlist and installs
+            the Major7s password recovery email template. Safe to re-run.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={handleRun} disabled={running}>
+              {running ? "Working…" : "Run migration setup"}
+            </Button>
+            <Button onClick={handleVerify} disabled={running} variant="outline">
+              Verify config
+            </Button>
+          </div>
+        </div>
+
+        {lastRun && (
+          <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+            <div className="font-semibold uppercase tracking-wide">Last PATCH result</div>
+            <div>PATCH status: <code>{lastRun.patchStatus}</code></div>
+            <div>Sent template length: <code>{lastRun.sentTemplateLength}</code> chars</div>
+            <div>Echoed subject: <code>{lastRun.echoedSubject ?? "(none in response)"}</code></div>
+            <div>Echoed template length: <code>{lastRun.echoedTemplateLength}</code> chars</div>
+            <div>
+              Echoed template preview:{" "}
+              <code className="break-all">{lastRun.echoedTemplatePreview || "(empty)"}</code>
+            </div>
+          </div>
+        )}
+
+        {verifyResult && (
+          <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+            <div className="font-semibold uppercase tracking-wide">Current GoTrue config (GET)</div>
+            <div>HTTP status: <code>{verifyResult.status}</code></div>
+            <div>Recovery subject: <code>{verifyResult.recoverySubject ?? "(unset)"}</code></div>
+            <div>Recovery template length: <code>{verifyResult.recoveryTemplateLength}</code> chars</div>
+            <div>
+              Recovery template preview:{" "}
+              <code className="break-all">{verifyResult.recoveryTemplatePreview || "(empty)"}</code>
+            </div>
+            <div>
+              Welcome URL in allowlist:{" "}
+              <code>{verifyResult.welcomeUrlPresent ? "✓ yes" : "✗ no"}</code>
+            </div>
+            <div className="pt-1 text-muted-foreground">Send method: {verifyResult.sendMethod}</div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
+
 
 /* ============================================================
    USERS — stacked: Approvals (top) · Directory (middle) · Bulk Import (bottom)
