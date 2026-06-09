@@ -97,7 +97,8 @@ function AdminConsole() {
           </h1>
         </header>
 
-        <MigrationSetupCard />
+   <MigrationSetupCard />
+<div style={{background:"red",color:"white",padding:"20px",fontSize:"18px"}}>CARD DEBUG — if you see this the page is rendering</div>
 
         <Tabs defaultValue="users" className="w-full">
           <TabsList className="grid w-full grid-cols-3 h-auto">
