@@ -4,7 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
-  validateSearch: (s: Record<string, unknown>) => ({ redirect: (s.redirect as string) || "/home" }),
+  validateSearch: (s: Record<string, unknown>): { redirect?: string } => {
+    const r = typeof s.redirect === "string" && s.redirect ? s.redirect : undefined;
+    return r ? { redirect: r } : {};
+  },
   component: LoginPage,
 });
 
@@ -35,7 +38,7 @@ function LoginPage() {
     }
     const status = (data?.status ?? "pending") as "pending" | "approved" | "rejected";
     if (status === "approved") {
-      const target = redirectTarget && redirectTarget.startsWith("/") ? redirectTarget : "/home";
+      const target = redirectTarget?.startsWith("/") ? redirectTarget : "/home";
       navigate({ to: target });
       return;
     }

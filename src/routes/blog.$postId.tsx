@@ -1,21 +1,15 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { BlogPostContent } from "@/components/blog/blog-post-content";
-import { resolveBlogPostRequest } from "@/lib/blog-post-meta.functions";
+import { getBlogPostMeta } from "@/lib/blog-post-meta.functions";
 
 export const Route = createFileRoute("/blog/$postId")({
+  // Bot requests are intercepted in server.ts before reaching here.
+  // This loader only runs for real browsers — it fetches post meta so
+  // head() can emit OG/Twitter tags into the SSR HTML.
   loader: async ({ params }) => {
-    const result = await resolveBlogPostRequest({ data: { postId: params.postId } });
-    if (result.kind === "bot") {
-      throw new Response(result.html, {
-        status: 200,
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "public, max-age=300",
-        },
-      });
-    }
-    return { meta: result.meta };
+    const meta = await getBlogPostMeta({ data: { postId: params.postId } });
+    return { meta };
   },
   head: ({ loaderData, params }) => {
     const meta = loaderData?.meta;
