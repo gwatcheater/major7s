@@ -2,6 +2,10 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { isBotUserAgent } from "./lib/bot-user-agents";
+import { renderOgHtml } from "./lib/og-html";
+import { supabaseAdmin } from "./integrations/supabase/client.server";
+import blogDefault from "./assets/blog-default.png.asset.json";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -66,8 +70,100 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
+// ---------------------------------------------------------------------------
+// Bot OG shim — intercepts /blog/<uuid> requests from link-unfurl scrapers
+// and returns a minimal HTML page with populated Open Graph tags.
+// This runs BEFORE TanStack Start processes the request, avoiding the SSR
+// pipeline entirely (throwing a Response from a route loader does not work
+// in TanStack Start on Cloudflare Workers).
+// ---------------------------------------------------------------------------
+
+const BLOG_POST_RE =
+  /^\/blog\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+function stripMarkdown(raw: string): string {
+  return raw
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#>*_~\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function makeDescription(body: string | null | undefined): string {
+  const clean = stripMarkdown(body ?? "");
+  if (!clean) return "Read the latest from Major7s.";
+  if (clean.length <= 150) return clean;
+  const slice = clean.slice(0, 150);
+  const lastSpace = slice.lastIndexOf(" ");
+  const trimmed = lastSpace > 100 ? slice.slice(0, lastSpace) : slice;
+  return `${trimmed.replace(/[.,;:!?-]+$/, "")}…`;
+}
+
+function absoluteImageUrl(
+  origin: string,
+  imageUrl: string | null | undefined,
+): string {
+  if (!imageUrl) return `${origin}${blogDefault.url}`;
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  return `${origin}${imageUrl.startsWith("/") ? "" : "/"}${imageUrl}`;
+}
+
+async function serveBotOgPage(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const m = BLOG_POST_RE.exec(url.pathname);
+  if (!m) return null;
+
+  const ua = request.headers.get("user-agent");
+  if (!isBotUserAgent(ua)) return null;
+
+  const postId = m[1];
+  const origin = url.origin;
+
+  let title = "Major7s";
+  let description = "Pick smart. Tweak obsessively. Suffer beautifully.";
+  let imageUrl = `${origin}/apple-touch-icon.png`;
+
+  try {
+    const { data } = await supabaseAdmin
+      .from("blog_posts")
+      .select("id, title, body, image_url")
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (data) {
+      title = data.title ?? title;
+      description = makeDescription(data.body);
+      imageUrl = absoluteImageUrl(origin, data.image_url);
+    }
+  } catch (err) {
+    console.error("[bot-og] Supabase error, using fallback meta", err);
+  }
+
+  return new Response(
+    renderOgHtml({
+      title,
+      description,
+      imageUrl,
+      absoluteUrl: `${origin}/blog/${postId}`,
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "public, max-age=300",
+      },
+    },
+  );
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const botResponse = await serveBotOgPage(request);
+    if (botResponse) return botResponse;
+
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

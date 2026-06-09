@@ -6,8 +6,6 @@ import {
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import blogDefault from "@/assets/blog-default.png.asset.json";
-import { isBotUserAgent } from "@/lib/bot-user-agents";
-import { renderOgHtml } from "@/lib/og-html";
 
 export interface BlogPostMeta {
   title: string;
@@ -76,45 +74,12 @@ const InputSchema = z.object({ postId: z.string().uuid() });
  * Public meta fetch used by the route loader. Returns OG-friendly fields
  * only — never the full post body. Safe to expose to anonymous SSR because
  * the response payload is the same data we already feed to link-unfurl bots.
+ *
+ * Bot detection is handled upstream in server.ts (before TanStack Start
+ * processes the request), so this only runs for real browsers during SSR.
  */
 export const getBlogPostMeta = createServerFn({ method: "GET" })
   .inputValidator((input) => InputSchema.parse(input))
   .handler(async ({ data }): Promise<BlogPostMeta | null> => {
     return await fetchMeta(data.postId);
-  });
-
-export type ResolveResult =
-  | { kind: "bot"; html: string }
-  | { kind: "human"; meta: BlogPostMeta | null };
-
-/**
- * Loader helper. Inspects the request User-Agent on the server.
- * - For unfurl scrapers, returns `{ kind: "bot", html }` so the route
- *   loader can throw it as a Response (short-circuiting render).
- * - For real browsers, returns `{ kind: "human", meta }` for <head> use.
- *
- * Called from a route loader; on the client the call is RPC'd to the
- * server, which will of course see the real browser UA and return "human".
- */
-export const resolveBlogPostRequest = createServerFn({ method: "GET" })
-  .inputValidator((input) => InputSchema.parse(input))
-  .handler(async ({ data }): Promise<ResolveResult> => {
-    const ua = getRequestHeader("user-agent") ?? getRequestHeader("User-Agent");
-    const meta = await fetchMeta(data.postId);
-
-    if (isBotUserAgent(ua)) {
-      const origin = getOrigin();
-      const absoluteUrl = `${origin}/blog/${data.postId}`;
-      const html = renderOgHtml({
-        title: meta?.title ?? "Major7s",
-        description:
-          meta?.description ??
-          "Pick smart. Tweak obsessively. Suffer beautifully.",
-        imageUrl: meta?.imageUrl ?? `${origin}${blogDefault.url}`,
-        absoluteUrl,
-      });
-      return { kind: "bot", html };
-    }
-
-    return { kind: "human", meta };
   });
