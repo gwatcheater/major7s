@@ -83,6 +83,7 @@ function ResetPasswordPage() {
   );
   const attemptedRef = useRef(false);
   const readyRef = useRef(false);
+  const needsResendRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,7 +188,10 @@ function ResetPasswordPage() {
             } catch {
               /* ignore */
             }
-            if (!cancelled) setNeedsResend(true);
+            if (!cancelled) {
+              needsResendRef.current = true;
+              setNeedsResend(true);
+            }
             return;
           }
           if (!cancelled && !readyRef.current) setErrorMsg(error.message);
@@ -254,7 +258,7 @@ function ResetPasswordPage() {
     }, 250);
 
     const pollTimer = window.setInterval(() => {
-      if (readyRef.current || cancelled) {
+      if (readyRef.current || cancelled || needsResendRef.current) {
         window.clearInterval(pollTimer);
         return;
       }
@@ -263,7 +267,7 @@ function ResetPasswordPage() {
 
     // Hard ceiling — surface an actionable error rather than hanging forever
     const hardTimer = window.setTimeout(() => {
-      if (!cancelled && !readyRef.current) {
+      if (!cancelled && !readyRef.current && !needsResendRef.current) {
         setErrorMsg(
           (prev) => prev ?? "Recovery link could not be verified. Please request a new reset link.",
         );
