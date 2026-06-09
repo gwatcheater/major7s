@@ -204,6 +204,7 @@ export type Database = {
           id: string
           last_name: string | null
           nickname: string
+          onboarded_at: string | null
           phone: string | null
           referral_name: string | null
           status: Database["public"]["Enums"]["profile_status"]
@@ -217,6 +218,7 @@ export type Database = {
           id: string
           last_name?: string | null
           nickname: string
+          onboarded_at?: string | null
           phone?: string | null
           referral_name?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
@@ -230,6 +232,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           nickname?: string
+          onboarded_at?: string | null
           phone?: string | null
           referral_name?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
