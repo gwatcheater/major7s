@@ -1,115 +1,44 @@
 ## Goal
 
-WhatsApp, Facebook, Twitter, LinkedIn, Slack and other link-unfurlers must receive populated Open Graph tags for `/blog/$postId` without going through Supabase auth. Real users keep the existing authenticated experience.
+Add a one-time "Run migration setup" button in the admin panel that:
+1. Appends `https://major7s.com/welcome` to Supabase Auth's redirect URL allowlist (preserving existing entries).
+2. Sets the password recovery email template (subject + branded Major7s HTML body).
 
-## Approach: "Secret Trapdoor" on the existing URL
+Both changes use `PATCH /auth/v1/admin/config` with the service role key.
 
-Move `/blog/$postId` out from under `_authenticated`, replace it with a single public route that branches on the request's `User-Agent`:
+## Files
 
-```text
-GET /blog/{id}
-  │
-  ├─ User-Agent matches scraper regex ──► return raw HTML with <meta og:*> only (200)
-  │
-  └─ Real browser (SSR pass)
-        │
-        └─ Render shell with OG tags in <head> + loading placeholder
-              │
-              └─ On client hydrate:
-                    ├─ signed in  ──► fetch + render full post (existing UI)
-                    └─ signed out ──► redirect("/login", { redirect: "/blog/{id}" })
-```
+**New: `src/lib/auth-config-migration.functions.ts`**
+- `runAuthConfigMigration` server function (`createServerFn`, POST, `requireSupabaseAuth` middleware).
+- Asserts caller has `admin` role (same pattern as `admin-users.functions.ts`).
+- Reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from `process.env` inside the handler.
+- `GET {SUPABASE_URL}/auth/v1/admin/config` to read current `uri_allow_list` (comma-separated string per GoTrue).
+- Merges in `https://major7s.com/welcome` if missing; leaves the rest untouched.
+- `PATCH` the same endpoint with:
+  - `uri_allow_list`: merged value
+  - `mailer_subjects_recovery`: `You're in — set up your Major7s account`
+  - `mailer_templates_recovery_content`: the exact HTML body from the request
+- Headers: `apikey: <service_role>`, `Authorization: Bearer <service_role>`, `Content-Type: application/json`.
+- Writes a row to `admin_audit` (`action: 'auth.config_migration'`, detail: which fields were updated, before/after allowlist).
+- Returns `{ ok: true, allowListAdded: boolean, templateUpdated: true }` or throws on non-2xx (including provider message).
 
-URLs already shared on WhatsApp keep working — no migration needed.
+**Edit: `src/routes/_authenticated/admin.index.tsx`**
+- Add a small "Migration setup" card (collapsible or plain Card) in the admin console with:
+  - Title + one-line description ("One-time: configure welcome redirect + reset password email template").
+  - Button labelled **Run migration setup**.
+  - Uses `useServerFn(runAuthConfigMigration)` + local `isRunning` state.
+  - On success: `toast.success("Migration setup complete")`.
+  - On failure: `toast.error(error.message)`.
+- Placement: top of the existing admin index (near other admin tools), gated by the existing `isAdmin` check that already wraps the page.
 
-## What to build
+## Technical notes
 
-### 1. Public meta server fn — `src/lib/blog-post-meta.functions.ts`
-- `createServerFn({ method: "GET" })` with Zod `inputValidator({ postId: z.string().uuid() })`.
-- Uses `supabaseAdmin` from `@/integrations/supabase/client.server` (bypasses RLS — safe because it returns ONLY `id`, `title`, `body` truncated, `image_url`, `created_at`).
-- Returns `{ title, description, imageUrl, createdAt } | null`.
-- `description` = first 150 chars of post body with markdown stripped, trimmed at word boundary, "…" appended.
-- `imageUrl` falls back to the absolute URL of `src/assets/blog-default.png` (imported so Vite gives us its hashed URL) when `image_url` is empty.
-- All URLs are made absolute against `getRequestHost()` + `x-forwarded-proto` (works for preview, prod, custom domain — no hardcoded host).
+- Endpoint shape (GoTrue admin config): fields used here are `uri_allow_list` (CSV string), `mailer_subjects_recovery` (string), `mailer_templates_recovery_content` (HTML string). Template variables `{{ .ConfirmationURL }}` and `{{ .Data.first_name }}` are passed through verbatim — GoTrue renders them.
+- No DB migration required.
+- No new secrets — `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` already exist.
+- Idempotent: re-running won't duplicate the welcome URL (set-merge) and will simply overwrite the template with the same content.
 
-### 2. New public page route — `src/routes/blog.$postId.tsx`
-- `createFileRoute("/blog/$postId")` — top-level, NOT inside `_authenticated`.
-- `ssr: true` (default).
-- `loader({ params })`:
-  1. Call a `createServerOnlyFn` helper `handleBlogPostRequest(postId)` that:
-     - reads `getRequestHeader("user-agent")`,
-     - if it matches the bot regex (see §4), fetches meta via admin client and **throws** `new Response(renderOgHtml(meta), { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } })` — TanStack short-circuits the render.
-     - otherwise returns `{ meta }` for the human render path.
-  2. Returns `{ meta, postId }`.
-- `head({ loaderData, params })`: emits `<title>`, `description`, `og:title`, `og:description`, `og:image`, `og:url`, `og:type=article`, `twitter:card=summary_large_image`, `twitter:title/description/image`, and a `<link rel="canonical">` to `https://www.major7s.com/blog/{postId}`. Falls back to generic site copy if `meta` is null (deleted post).
-- `component: PublicBlogPostRoute`:
-  - Uses `useAuth()`. While `loading` → render a skeleton with the same `<h1>` title from `meta` (so OG isn't the only paint).
-  - Not signed in → `<Navigate to="/login" search={{ redirect: \`/blog/${postId}\` }} replace />`.
-  - Signed in → render the existing post UI (lift JSX out of the old authenticated file into a `<BlogPostContent postId={postId} />` component that runs the same `useQuery` against `blog_posts` with the user's session — RLS still applies, so this is unchanged behavior).
-- `errorComponent` / `notFoundComponent` reuse the root patterns.
+## Out of scope
 
-### 3. Delete the old gated route
-- Remove `src/routes/_authenticated/blog.$postId.index.tsx`. Its sole consumer is the new public route, which renders the same content for signed-in users.
-- The tournament variant `_authenticated/tournament.$id.blog.$postId.index.tsx` is **out of scope** for this task (different URL, different sharing pattern) and stays put. Flag for a follow-up if WhatsApp previews are wanted there too.
-
-### 4. Bot-detection regex
-Single case-insensitive regex covering the unfurlers that matter (kept in `src/lib/bot-user-agents.ts` so it's reusable and testable):
-
-```text
-facebookexternalhit | Facebot | Twitterbot | LinkedInBot | Slackbot | Slack-ImgProxy |
-WhatsApp | Discordbot | TelegramBot | Pinterest | redditbot | Applebot |
-SkypeUriPreview | vkShare | W3C_Validator | Googlebot | bingbot | DuckDuckBot |
-embedly | quora link preview | Iframely | Mastodon | nuzzel
-```
-
-### 5. OG-only HTML template
-A tiny string template (no React renderToString needed — keeps the response under 2 KB and avoids dragging React into the shim path):
-
-```html
-<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<title>{{title}}</title>
-<meta name="description" content="{{description}}">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Major7s">
-<meta property="og:title" content="{{title}}">
-<meta property="og:description" content="{{description}}">
-<meta property="og:image" content="{{imageUrl}}">
-<meta property="og:url" content="{{absoluteUrl}}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="{{title}}">
-<meta name="twitter:description" content="{{description}}">
-<meta name="twitter:image" content="{{imageUrl}}">
-<link rel="canonical" href="{{absoluteUrl}}">
-</head><body><p>{{title}}</p></body></html>
-```
-
-All `{{…}}` values are HTML-escaped before interpolation.
-
-## Files touched
-
-| File | Action |
-| --- | --- |
-| `src/lib/blog-post-meta.functions.ts` | **new** — admin-side meta fetch + absolute-URL helper |
-| `src/lib/bot-user-agents.ts` | **new** — regex + `isBotUserAgent(ua)` |
-| `src/lib/og-html.ts` | **new** — `renderOgHtml(meta, absoluteUrl)` template + escaper |
-| `src/routes/blog.$postId.tsx` | **new** — public route with loader, head(), component |
-| `src/components/blog/blog-post-content.tsx` | **new** — extracted authed render of post body (same UI as today) |
-| `src/routes/_authenticated/blog.$postId.index.tsx` | **delete** |
-| `src/routes/_authenticated/blog.$postId.edit.tsx` | keep — the `/blog/$postId/edit` URL stays gated |
-| `src/routeTree.gen.ts` | auto-regenerated by the Vite plugin |
-
-## Security notes
-
-- `supabaseAdmin` is only used to read the four meta fields needed for unfurls — never the full body — and only on the server. There's no path that returns body content to an anonymous human; the client component still calls the RLS-protected `blog_posts` query with the user's session.
-- The bot branch returns a 200 with `Cache-Control: public, max-age=300` so scrapers don't hammer the database.
-- The `redirect` param appended on the signed-out path is a same-origin relative URL (`/blog/{postId}`), matching how login already handles `search.redirect`.
-
-## Verification
-
-1. `curl -A "WhatsApp/2.23 (iPhone)" https://www.major7s.com/blog/<real-id>` → response is the OG-only HTML, `og:title`/`og:image` populated.
-2. `curl -A "facebookexternalhit/1.1" …` → same.
-3. Open the same URL in a logged-out browser → lands on `/login?redirect=/blog/<id>`. After signing in → redirected straight to the post.
-4. Open the same URL in a logged-in browser → full post renders, no flash of login page.
-5. Paste the prod URL into WhatsApp → preview card shows the post title, summary, and image.
+- No UI for editing the template later.
+- No automatic scheduling — manual button only, as requested.
