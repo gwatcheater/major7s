@@ -130,6 +130,44 @@ function AdminConsole() {
   );
 }
 
+function MigrationSetupCard() {
+  const runMigration = useServerFn(runAuthConfigMigration);
+  const [running, setRunning] = useState(false);
+
+  async function handleRun() {
+    setRunning(true);
+    try {
+      const res = await runMigration();
+      toast.success(
+        res.allowListAdded
+          ? "Migration complete — welcome URL added and email template updated"
+          : "Migration complete — email template updated (welcome URL already present)",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Migration failed");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="text-sm uppercase tracking-wide">One-time migration setup</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Adds <code>https://major7s.com/welcome</code> to the auth redirect allowlist and installs the
+          Major7s password recovery email template. Safe to re-run.
+        </p>
+        <Button onClick={handleRun} disabled={running}>
+          {running ? "Running…" : "Run migration setup"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ============================================================
    USERS — stacked: Approvals (top) · Directory (middle) · Bulk Import (bottom)
    ============================================================ */
