@@ -174,7 +174,7 @@ export function UsersDirectoryTab() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-directory"],
-    queryFn: async () => (await listFn({ data: {} })) as DirectoryRow[],
+    queryFn: async () => (await listFn()) as DirectoryRow[],
   });
 
   const selected = useMemo(
