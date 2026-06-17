@@ -97,6 +97,36 @@ function AdminConsole() {
           </h1>
         </header>
 
+        <Tabs defaultValue="users" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger value="users" className="text-xs gap-1.5">
+              <Users className="size-3.5" />
+              Users
+            </TabsTrigger>
+            <TabsTrigger value="tournament" className="text-xs gap-1.5">
+              <Trophy className="size-3.5" />
+              Tournament
+            </TabsTrigger>
+            <TabsTrigger value="picks" className="text-xs gap-1.5">
+              <ClipboardList className="size-3.5" />
+              Submissions
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="users" className="mt-6">
+            <UsersTab />
+          </TabsContent>
+          <TabsContent value="tournament" className="mt-6">
+            <TournamentTab />
+          </TabsContent>
+          <TabsContent value="picks" className="mt-6">
+            <SubmissionsTab />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </TooltipProvider>
+  );
+}
 
 
 /* ============================================================
