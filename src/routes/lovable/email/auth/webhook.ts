@@ -132,6 +132,9 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
         }
 
         // Build template props from payload.data (HookData structure)
+        const userMeta = (payload.data.user?.user_metadata ?? {}) as Record<string, unknown>
+        const firstName =
+          typeof userMeta.first_name === 'string' ? (userMeta.first_name as string) : undefined
         const templateProps = {
           siteName: SITE_NAME,
           siteUrl: `https://${ROOT_DOMAIN}`,
@@ -141,12 +144,13 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           email: payload.data.email,
           oldEmail: payload.data.old_email,
           newEmail: payload.data.new_email,
+          firstName,
         }
 
         // Render React Email to HTML and plain text
         const element = React.createElement(EmailTemplate, templateProps)
-        const html = await renderAsync(element)
-        const text = await renderAsync(element, { plainText: true })
+        const html = await render(element)
+        const text = toPlainText(html)
 
         // Enqueue email for async processing by the dispatcher (process-email-queue).
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
