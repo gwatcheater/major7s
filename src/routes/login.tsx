@@ -74,6 +74,12 @@ function LoginPage() {
           },
         });
         if (error) throw error;
+        // Fire-and-forget admin notification (recipient is fixed in the template).
+        void fetch("/api/public/hooks/new-user-signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        }).catch((err) => console.warn("admin-new-user notification failed", err));
         // Sign out — they must wait for admin approval
         await supabase.auth.signOut();
         setPendingMsg("Account created. Your account is awaiting administrator approval — you'll be able to sign in once approved.");
