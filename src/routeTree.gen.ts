@@ -26,6 +26,7 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedBlogNewRouteImport } from './routes/_authenticated/blog.new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
+import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as AuthenticatedTournamentIdStatsRouteImport } from './routes/_authenticated/tournament.$id.stats'
 import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_authenticated/tournament.$id.lineup'
 import { Route as AuthenticatedTournamentIdLeaderboardRouteImport } from './routes/_authenticated/tournament.$id.leaderboard'
@@ -120,6 +121,12 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const LovableEmailQueueProcessRoute =
+  LovableEmailQueueProcessRouteImport.update({
+    id: '/lovable/email/queue/process',
+    path: '/lovable/email/queue/process',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedTournamentIdStatsRoute =
   AuthenticatedTournamentIdStatsRouteImport.update({
     id: '/stats',
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -215,6 +223,7 @@ export interface FileRoutesByTo {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -243,6 +252,7 @@ export interface FileRoutesById {
   '/_authenticated/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/_authenticated/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/_authenticated/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/_authenticated/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -271,6 +281,7 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
+    | '/lovable/email/queue/process'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
+    | '/lovable/email/queue/process'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -323,6 +335,7 @@ export interface FileRouteTypes {
     | '/_authenticated/tournament/$id/leaderboard'
     | '/_authenticated/tournament/$id/lineup'
     | '/_authenticated/tournament/$id/stats'
+    | '/lovable/email/queue/process'
     | '/_authenticated/admin/tournament/$id/field'
     | '/_authenticated/tournament/$id/blog/new'
     | '/_authenticated/tournament/$id/blog/$postId/edit'
@@ -336,6 +349,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   WelcomeRoute: typeof WelcomeRoute
   BlogPostIdRoute: typeof BlogPostIdRoute
+  LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -458,6 +472,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/users'
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/lovable/email/queue/process': {
+      id: '/lovable/email/queue/process'
+      path: '/lovable/email/queue/process'
+      fullPath: '/lovable/email/queue/process'
+      preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/tournament/$id/stats': {
       id: '/_authenticated/tournament/$id/stats'
@@ -599,6 +620,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   WelcomeRoute: WelcomeRoute,
   BlogPostIdRoute: BlogPostIdRoute,
+  LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
