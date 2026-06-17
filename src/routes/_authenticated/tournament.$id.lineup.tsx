@@ -8,6 +8,7 @@ import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
 import { toast } from "sonner";
+import { sendPicksConfirmation } from "@/lib/email/picks-confirmation.functions";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/lineup")({
   component: LineupPicker,
@@ -1655,6 +1656,17 @@ function LineupPicker() {
       toast.success("Lineup saved on user's behalf (logged)");
     } else {
       toast.success("Lineup saved");
+      // Fire-and-forget picks-confirmation email (skip when admin is impersonating).
+      void sendPicksConfirmation({
+        data: {
+          tournamentId: id,
+          teamId: activeTeam!.id,
+          isUpdate: hadExisting,
+          tweakCount: newTweaks,
+        },
+      }).catch((err) => {
+        console.warn("picks-confirmation email failed", err);
+      });
     }
 
     qc.invalidateQueries({ queryKey: ["picks"] });
