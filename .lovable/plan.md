@@ -1,61 +1,44 @@
+## Why
 
-## Goal
-
-Debug why the custom recovery email template isn't visibly applied even though the PATCH returns success.
-
-## Findings from exploration
-
-- **Trigger is correct.** The mail icon in `users-directory-tab.tsx` calls `sendWelcomeEmails` (`src/lib/admin-users.functions.ts:302`), which uses `supabaseAdmin.auth.resetPasswordForEmail(...)`. That maps to the **recovery** template slot — same one being patched. So template/method match is not the bug. This will be confirmed via the new Verify button in step 4, and the answer will be surfaced in the UI.
-- The current PATCH in `src/lib/auth-config-migration.functions.ts` already sends `mailer_subjects_recovery` and `mailer_templates_recovery_content`, but nothing is logged, so we can't see what GoTrue actually accepted/stored.
+`/auth/v1/admin/config` is not exposed on Lovable Cloud (404), so the "Run migration setup" button never patched the recovery template. The right way to customize the password-reset email on this stack is the Lovable auth email template system, not the GoTrue admin API.
 
 ## Changes
 
-### 1. `src/lib/auth-config-migration.functions.ts` — add request/response logging + return diagnostics
+### 1. Strip the dead migration code
 
-In `runAuthConfigMigration`:
-- Before the PATCH: `console.log("[auth-migration] PATCH body:", JSON.stringify(patchBody))` and log key sizes (`recovery_html_length`, `recovery_subject`, `uri_allow_list`).
-- After PATCH: read response with `patchRes.text()` (so we can log even on 2xx), log `status`, `headers` (content-type), and full body text.
-- Parse body back to JSON if possible and extract the post-patch `mailer_subjects_recovery` + first 100 chars of `mailer_templates_recovery_content`.
-- Return those echoed values in the function result so the admin UI can show them after running migration:
-  ```
-  { ok, allowListAdded, allowListAfter, templateUpdated,
-    patchStatus, echoedSubject, echoedTemplatePreview, echoedTemplateLength }
-  ```
+- `src/routes/_authenticated/admin.index.tsx`
+  - Remove the red `CARD DEBUG` div (line 101).
+  - Remove the `MigrationSetupCard` component entirely and its render at line 100.
+  - Remove the `runAuthConfigMigration` / `verifyAuthConfig` import (line 49).
+- `src/lib/auth-config-migration.functions.ts` — delete the file.
 
-### 2. New server function `verifyAuthConfig` (same file)
+(The redirect-allowlist concern is separate; if `https://major7s.com/welcome` still needs allowlisting, that's a Cloud → Auth settings task, not something we can do via Admin API on this stack. Out of scope for this plan unless you ask.)
 
-`createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(...)`:
-- Same admin-role gate.
-- `GET ${SUPABASE_URL}/auth/v1/admin/config` with service-role headers.
-- Log full response status + body.
-- Return:
-  ```
-  {
-    status,
-    recoverySubject: cfg.mailer_subjects_recovery ?? null,
-    recoveryTemplatePreview: (cfg.mailer_templates_recovery_content ?? "").slice(0, 100),
-    recoveryTemplateLength: (cfg.mailer_templates_recovery_content ?? "").length,
-    uriAllowList: cfg.uri_allow_list ?? "",
-    welcomeUrlPresent: (cfg.uri_allow_list ?? "").split(",").map(s=>s.trim()).includes("https://major7s.com/welcome"),
-    sendMethod: "resetPasswordForEmail → recovery template (confirmed in code)",
-  }
-  ```
+### 2. Scaffold + customize the recovery email template
 
-### 3. `src/routes/_authenticated/admin.index.tsx` — UI updates to `MigrationSetupCard`
+This stack doesn't yet have any auth email templates. Setup:
 
-- After "Run migration setup" succeeds, show the echoed subject + template preview + length under the button (small muted block).
-- Add a second button **"Verify config"** next to it that calls `verifyAuthConfig` via `useServerFn`, stores result in local state, and renders:
-  - `Subject:` value
-  - `Template length:` chars
-  - `Template preview:` first 100 chars in `<code>` block
-  - `Welcome URL in allowlist:` ✓/✗
-  - `Send method:` string (so user can confirm trigger uses recovery slot)
-- Both buttons share an `isRunning` lock; toasts on success/failure unchanged.
+1. Run `email_domain--check_email_domain_status` to confirm an email domain exists (it should, since you've been sending recovery emails). If none is configured, surface the email-setup dialog first.
+2. Run `email_domain--scaffold_auth_email_templates`. This creates the six auth templates (signup, magiclink, **recovery**, invite, email-change, reauthentication) and the auth webhook route that enqueues sends through Lovable Emails. On this TanStack stack the templates land under `src/lib/email-templates/` (React Email `.tsx`), not `supabase/functions/_shared/email-templates/` — the legacy Deno path doesn't apply here. The deliverable is the same: a recovery template you can fully brand.
+3. Edit the **recovery** template:
+   - Subject: `You're in — set up your Major7s account`
+   - Outer `Body` background: `#ffffff` (required even for dark themes).
+   - Header bar: forest green `#103D2E`, white text "Major7s.com Is Live. Tweaked, Upgraded."
+   - Greeting: `Hi {firstName},` when `firstName` prop is present, else `Hi there,` (recovery template variables include `{{ .Data.first_name }}` from user metadata; passed into the React component as a prop by the webhook).
+   - Body copy, in this order:
+     - "Major7s has moved to a brand-new home."
+     - "Your account is already set up. We've pre-loaded your details and your full picks history, so everything from previous years is waiting for you — nothing to re-enter."
+     - "There's one thing left to do: set a password and you're ready to play."
+   - CTA button: gold `#C9A227` background, dark (`#103D2E`) text, label **Set your password**, href = the existing recovery confirmation URL prop (the value the scaffold wires from `{{ .ConfirmationURL }}`).
+   - Plain-text fallback line below the button showing the same URL.
+   - Footer: "You're receiving this because you have previously played Major7s. If you weren't expecting it, you can safely ignore this email — no account changes will be made until you set a password."
+   - Keep all auth variables (`ConfirmationURL`, token, etc.) intact — only restyle and rewrite copy.
 
-## What we'll learn
+### 3. Redeploy
 
-- Console logs show exactly what was sent and what GoTrue echoed back.
-- Verify button confirms whether the template actually persisted (the most likely cause: GoTrue silently ignoring `mailer_templates_recovery_content` if `mailer_autoconfirm` / template-related flags aren't set, or storing a different field name on this GoTrue version).
-- If `echoedTemplatePreview` after PATCH ≠ what we sent, we know GoTrue rejected/ignored the field and we can switch field name (some versions use `mailer_templates.recovery.content` nested) on a follow-up.
+Modern TanStack server routes deploy with the app on publish — there's no separate `deploy_edge_functions` step. After saving the template, the next build/publish ships it. I'll note this clearly so you know no manual deploy is required.
 
-No DB migration, no schema changes, no new secrets.
+## Out of scope
+
+- Re-adding `https://major7s.com/welcome` to the auth redirect allowlist (no public API for it on Lovable Cloud — needs Cloud UI or a separate request).
+- Touching the other five auth templates (signup, magiclink, invite, email-change, reauthentication) — leaving them as the scaffolded defaults unless you want them branded too.
