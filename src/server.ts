@@ -71,15 +71,19 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 }
 
 // ---------------------------------------------------------------------------
-// Bot OG shim — intercepts /blog/<uuid> requests from link-unfurl scrapers
+// Bot OG shim — intercepts blog post requests from link-unfurl scrapers
 // and returns a minimal HTML page with populated Open Graph tags.
+// Matches both /blog/<uuid> and /tournament/<uuid>/blog/<uuid>.
 // This runs BEFORE TanStack Start processes the request, avoiding the SSR
 // pipeline entirely (throwing a Response from a route loader does not work
 // in TanStack Start on Cloudflare Workers).
 // ---------------------------------------------------------------------------
 
-const BLOG_POST_RE =
-  /^\/blog\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const BLOG_POST_RE = new RegExp(
+  `^(?:\\/tournament\\/${UUID})?\\/blog\\/(${UUID})$`,
+  "i",
+);
 
 function stripMarkdown(raw: string): string {
   return raw
@@ -147,7 +151,7 @@ async function serveBotOgPage(request: Request): Promise<Response | null> {
       title,
       description,
       imageUrl,
-      absoluteUrl: `${origin}/blog/${postId}`,
+      absoluteUrl: `${origin}${url.pathname}`,
     }),
     {
       status: 200,
