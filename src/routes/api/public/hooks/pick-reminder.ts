@@ -56,7 +56,7 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
         const { data: profiles, error: pErr } = await supabaseAdmin
           .from('profiles')
           .select('id, email, first_name, nickname, status')
-          .eq('status', 'active')
+          .eq('status', 'approved')
         if (pErr) {
           console.error('pick-reminder: profiles query failed', pErr)
           return Response.json({ error: 'profiles query failed' }, { status: 500 })

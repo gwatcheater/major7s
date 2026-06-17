@@ -34,6 +34,8 @@ import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/l
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
+import { Route as ApiPublicHooksPickReminderRouteImport } from './routes/api/public/hooks/pick-reminder'
+import { Route as ApiPublicHooksNewUserSignupRouteImport } from './routes/api/public/hooks/new-user-signup'
 import { Route as AuthenticatedTournamentIdStatsRouteImport } from './routes/_authenticated/tournament.$id.stats'
 import { Route as AuthenticatedTournamentIdLineupRouteImport } from './routes/_authenticated/tournament.$id.lineup'
 import { Route as AuthenticatedTournamentIdLeaderboardRouteImport } from './routes/_authenticated/tournament.$id.leaderboard'
@@ -171,6 +173,18 @@ const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
   path: '/lovable/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksPickReminderRoute =
+  ApiPublicHooksPickReminderRouteImport.update({
+    id: '/api/public/hooks/pick-reminder',
+    path: '/api/public/hooks/pick-reminder',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksNewUserSignupRoute =
+  ApiPublicHooksNewUserSignupRouteImport.update({
+    id: '/api/public/hooks/new-user-signup',
+    path: '/api/public/hooks/new-user-signup',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedTournamentIdStatsRoute =
   AuthenticatedTournamentIdStatsRouteImport.update({
     id: '/stats',
@@ -244,6 +258,8 @@ export interface FileRoutesByFullPath {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/api/public/hooks/new-user-signup': typeof ApiPublicHooksNewUserSignupRoute
+  '/api/public/hooks/pick-reminder': typeof ApiPublicHooksPickReminderRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -277,6 +293,8 @@ export interface FileRoutesByTo {
   '/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/api/public/hooks/new-user-signup': typeof ApiPublicHooksNewUserSignupRoute
+  '/api/public/hooks/pick-reminder': typeof ApiPublicHooksPickReminderRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -313,6 +331,8 @@ export interface FileRoutesById {
   '/_authenticated/tournament/$id/leaderboard': typeof AuthenticatedTournamentIdLeaderboardRoute
   '/_authenticated/tournament/$id/lineup': typeof AuthenticatedTournamentIdLineupRoute
   '/_authenticated/tournament/$id/stats': typeof AuthenticatedTournamentIdStatsRoute
+  '/api/public/hooks/new-user-signup': typeof ApiPublicHooksNewUserSignupRoute
+  '/api/public/hooks/pick-reminder': typeof ApiPublicHooksPickReminderRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -349,6 +369,8 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
+    | '/api/public/hooks/new-user-signup'
+    | '/api/public/hooks/pick-reminder'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -382,6 +404,8 @@ export interface FileRouteTypes {
     | '/tournament/$id/leaderboard'
     | '/tournament/$id/lineup'
     | '/tournament/$id/stats'
+    | '/api/public/hooks/new-user-signup'
+    | '/api/public/hooks/pick-reminder'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -417,6 +441,8 @@ export interface FileRouteTypes {
     | '/_authenticated/tournament/$id/leaderboard'
     | '/_authenticated/tournament/$id/lineup'
     | '/_authenticated/tournament/$id/stats'
+    | '/api/public/hooks/new-user-signup'
+    | '/api/public/hooks/pick-reminder'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -438,6 +464,8 @@ export interface RootRouteChildren {
   BlogPostIdRoute: typeof BlogPostIdRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
+  ApiPublicHooksNewUserSignupRoute: typeof ApiPublicHooksNewUserSignupRoute
+  ApiPublicHooksPickReminderRoute: typeof ApiPublicHooksPickReminderRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
@@ -622,6 +650,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/pick-reminder': {
+      id: '/api/public/hooks/pick-reminder'
+      path: '/api/public/hooks/pick-reminder'
+      fullPath: '/api/public/hooks/pick-reminder'
+      preLoaderRoute: typeof ApiPublicHooksPickReminderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/new-user-signup': {
+      id: '/api/public/hooks/new-user-signup'
+      path: '/api/public/hooks/new-user-signup'
+      fullPath: '/api/public/hooks/new-user-signup'
+      preLoaderRoute: typeof ApiPublicHooksNewUserSignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/tournament/$id/stats': {
       id: '/_authenticated/tournament/$id/stats'
       path: '/stats'
@@ -765,6 +807,8 @@ const rootRouteChildren: RootRouteChildren = {
   BlogPostIdRoute: BlogPostIdRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
+  ApiPublicHooksNewUserSignupRoute: ApiPublicHooksNewUserSignupRoute,
+  ApiPublicHooksPickReminderRoute: ApiPublicHooksPickReminderRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
