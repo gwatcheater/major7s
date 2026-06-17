@@ -72,6 +72,10 @@ function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [needsResend, setNeedsResend] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const initialUrlRef = useRef<UrlSnapshot | null>(
     typeof window === "undefined"
       ? null
@@ -79,6 +83,7 @@ function ResetPasswordPage() {
   );
   const attemptedRef = useRef(false);
   const readyRef = useRef(false);
+  const needsResendRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,6 +181,19 @@ function ResetPasswordPage() {
             }
             return;
           }
+          // Cross-device / cleared-storage: code_verifier missing from localStorage
+          if (error.message.toLowerCase().includes("code verifier")) {
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {
+              /* ignore */
+            }
+            if (!cancelled) {
+              needsResendRef.current = true;
+              setNeedsResend(true);
+            }
+            return;
+          }
           if (!cancelled && !readyRef.current) setErrorMsg(error.message);
           return;
         }
@@ -240,7 +258,7 @@ function ResetPasswordPage() {
     }, 250);
 
     const pollTimer = window.setInterval(() => {
-      if (readyRef.current || cancelled) {
+      if (readyRef.current || cancelled || needsResendRef.current) {
         window.clearInterval(pollTimer);
         return;
       }
@@ -249,7 +267,7 @@ function ResetPasswordPage() {
 
     // Hard ceiling — surface an actionable error rather than hanging forever
     const hardTimer = window.setTimeout(() => {
-      if (!cancelled && !readyRef.current) {
+      if (!cancelled && !readyRef.current && !needsResendRef.current) {
         setErrorMsg(
           (prev) => prev ?? "Recovery link could not be verified. Please request a new reset link.",
         );
@@ -266,6 +284,24 @@ function ResetPasswordPage() {
       window.clearTimeout(hardTimer);
     };
   }, []);
+
+  async function handleResend(e: FormEvent) {
+    e.preventDefault();
+    if (!resendEmail) {
+      toast.error("Enter your email first");
+      return;
+    }
+    setResendLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resendEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResendLoading(false);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setResendSuccess(true);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -326,6 +362,57 @@ function ResetPasswordPage() {
               onClick={() => navigate({ to: "/login" })}
               className="w-full py-3 font-display text-xs uppercase tracking-widest text-white rounded-sm"
               style={{ backgroundColor: "var(--forest-deep)" }}
+            >
+              Back to login
+            </button>
+          </div>
+        ) : needsResend ? (
+          <div className="space-y-4">
+            <div
+              className="p-3 border text-xs"
+              style={{
+                borderColor: "var(--gold)",
+                backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)",
+              }}
+            >
+              This reset link was opened on a different device or browser. Enter your email below to
+              send a new link you can use on this device.
+            </div>
+            {resendSuccess ? (
+              <div
+                className="p-4 border text-sm"
+                style={{
+                  borderColor: "var(--gold)",
+                  backgroundColor: "color-mix(in oklab, var(--gold) 12%, transparent)",
+                }}
+              >
+                Check your inbox for a new reset link!
+              </div>
+            ) : (
+              <form onSubmit={handleResend} className="space-y-3">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest font-bold">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                    className="mt-1 w-full px-3 py-2.5 border border-input bg-white rounded-sm text-sm focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={resendLoading}
+                  className="w-full py-3 mt-2 font-display text-xs uppercase tracking-widest text-white rounded-sm disabled:opacity-50"
+                  style={{ backgroundColor: "var(--forest-deep)" }}
+                >
+                  {resendLoading ? "..." : "Send new reset link"}
+                </button>
+              </form>
+            )}
+            <button
+              onClick={() => navigate({ to: "/login" })}
+              className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground underline"
             >
               Back to login
             </button>
