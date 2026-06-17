@@ -14,6 +14,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as BlogPostIdRouteImport } from './routes/blog.$postId'
 import { Route as AuthenticatedStatsRouteImport } from './routes/_authenticated/stats'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
@@ -23,9 +24,12 @@ import { Route as AuthenticatedArchiveRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedBlogIndexRouteImport } from './routes/_authenticated/blog.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
+import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedBlogNewRouteImport } from './routes/_authenticated/blog.new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
+import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
+import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
@@ -60,6 +64,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
+  id: '/email/unsubscribe',
+  path: '/email/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogPostIdRoute = BlogPostIdRouteImport.update({
@@ -107,6 +116,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
+  id: '/lovable/email/suppression',
+  path: '/lovable/email/suppression',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedTournamentIdRoute =
   AuthenticatedTournamentIdRouteImport.update({
     id: '/tournament/$id',
@@ -123,6 +137,18 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const LovableEmailTransactionalSendRoute =
+  LovableEmailTransactionalSendRouteImport.update({
+    id: '/lovable/email/transactional/send',
+    path: '/lovable/email/transactional/send',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LovableEmailTransactionalPreviewRoute =
+  LovableEmailTransactionalPreviewRouteImport.update({
+    id: '/lovable/email/transactional/preview',
+    path: '/lovable/email/transactional/preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LovableEmailQueueProcessRoute =
   LovableEmailQueueProcessRouteImport.update({
     id: '/lovable/email/queue/process',
@@ -200,9 +226,11 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/blog/': typeof AuthenticatedBlogIndexRoute
   '/blog/$postId/edit': typeof AuthenticatedBlogPostIdEditRoute
@@ -212,6 +240,8 @@ export interface FileRoutesByFullPath {
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -228,9 +258,11 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/blog': typeof AuthenticatedBlogIndexRoute
   '/blog/$postId/edit': typeof AuthenticatedBlogPostIdEditRoute
@@ -240,6 +272,8 @@ export interface FileRoutesByTo {
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -259,9 +293,11 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/blog/new': typeof AuthenticatedBlogNewRoute
   '/_authenticated/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/blog/': typeof AuthenticatedBlogIndexRoute
   '/_authenticated/blog/$postId/edit': typeof AuthenticatedBlogPostIdEditRoute
@@ -271,6 +307,8 @@ export interface FileRoutesById {
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/_authenticated/admin/tournament/$id/field': typeof AuthenticatedAdminTournamentIdFieldRoute
   '/_authenticated/tournament/$id/blog/new': typeof AuthenticatedTournamentIdBlogNewRoute
   '/_authenticated/tournament/$id/blog/$postId/edit': typeof AuthenticatedTournamentIdBlogPostIdEditRoute
@@ -290,9 +328,11 @@ export interface FileRouteTypes {
     | '/profile'
     | '/stats'
     | '/blog/$postId'
+    | '/email/unsubscribe'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
+    | '/lovable/email/suppression'
     | '/admin/'
     | '/blog/'
     | '/blog/$postId/edit'
@@ -302,6 +342,8 @@ export interface FileRouteTypes {
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -318,9 +360,11 @@ export interface FileRouteTypes {
     | '/profile'
     | '/stats'
     | '/blog/$postId'
+    | '/email/unsubscribe'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
+    | '/lovable/email/suppression'
     | '/admin'
     | '/blog'
     | '/blog/$postId/edit'
@@ -330,6 +374,8 @@ export interface FileRouteTypes {
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
     | '/admin/tournament/$id/field'
     | '/tournament/$id/blog/new'
     | '/tournament/$id/blog/$postId/edit'
@@ -348,9 +394,11 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/stats'
     | '/blog/$postId'
+    | '/email/unsubscribe'
     | '/_authenticated/admin/users'
     | '/_authenticated/blog/new'
     | '/_authenticated/tournament/$id'
+    | '/lovable/email/suppression'
     | '/_authenticated/admin/'
     | '/_authenticated/blog/'
     | '/_authenticated/blog/$postId/edit'
@@ -360,6 +408,8 @@ export interface FileRouteTypes {
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
     | '/_authenticated/admin/tournament/$id/field'
     | '/_authenticated/tournament/$id/blog/new'
     | '/_authenticated/tournament/$id/blog/$postId/edit'
@@ -373,9 +423,13 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   WelcomeRoute: typeof WelcomeRoute
   BlogPostIdRoute: typeof BlogPostIdRoute
+  EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
+  LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
+  LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
+  LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -413,6 +467,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/unsubscribe': {
+      id: '/email/unsubscribe'
+      path: '/email/unsubscribe'
+      fullPath: '/email/unsubscribe'
+      preLoaderRoute: typeof EmailUnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog/$postId': {
@@ -478,6 +539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/lovable/email/suppression': {
+      id: '/lovable/email/suppression'
+      path: '/lovable/email/suppression'
+      fullPath: '/lovable/email/suppression'
+      preLoaderRoute: typeof LovableEmailSuppressionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/tournament/$id': {
       id: '/_authenticated/tournament/$id'
       path: '/tournament/$id'
@@ -498,6 +566,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/users'
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/lovable/email/transactional/send': {
+      id: '/lovable/email/transactional/send'
+      path: '/lovable/email/transactional/send'
+      fullPath: '/lovable/email/transactional/send'
+      preLoaderRoute: typeof LovableEmailTransactionalSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/transactional/preview': {
+      id: '/lovable/email/transactional/preview'
+      path: '/lovable/email/transactional/preview'
+      fullPath: '/lovable/email/transactional/preview'
+      preLoaderRoute: typeof LovableEmailTransactionalPreviewRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/lovable/email/queue/process': {
       id: '/lovable/email/queue/process'
@@ -660,20 +742,14 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   WelcomeRoute: WelcomeRoute,
   BlogPostIdRoute: BlogPostIdRoute,
+  EmailUnsubscribeRoute: EmailUnsubscribeRoute,
+  LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
+  LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
+  LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
