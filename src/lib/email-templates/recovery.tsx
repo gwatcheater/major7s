@@ -47,13 +47,6 @@ export const RecoveryEmail = ({
               </Button>
             </Section>
 
-            <Text style={fallbackLabel}>Or paste this link into your browser:</Text>
-            <Text style={fallbackLink}>
-              <Link href={confirmationUrl} style={fallbackLinkAnchor}>
-                {confirmationUrl}
-              </Link>
-            </Text>
-
             <Text style={footer}>
               If you didn't request a password reset, you can safely ignore this email —
               your password won't be changed.
