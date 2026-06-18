@@ -481,7 +481,7 @@ function TournamentTab() {
           // can show the saved ID + load the event-name confirmation preview.
           // Without it, initialEspnEventId arrives as undefined and the panel
           // looks empty even when the DB has the value.
-          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes, espn_event_id",
+          "id, name, location, status, start_date, end_date, submission_deadline, logo_url, bucket_sizes, espn_event_id, external_url",
         )
         .order("start_date", { ascending: false });
       if (error) throw error;
@@ -566,6 +566,7 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
     name: "",
     location: "",
     logo_url: "",
+    external_url: "",
     start_date: "",
     end_date: "",
     submission_deadline: "",
@@ -593,6 +594,7 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
         name: form.name,
         location: form.location,
         logo_url: form.logo_url || null,
+        external_url: form.external_url || null,
         start_date: form.start_date,
         end_date: form.end_date,
         submission_deadline: new Date(form.submission_deadline).toISOString(),
@@ -610,6 +612,7 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
       name: "",
       location: "",
       logo_url: "",
+      external_url: "",
       start_date: "",
       end_date: "",
       submission_deadline: "",
@@ -679,6 +682,14 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
               value={form.logo_url}
               onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
               placeholder="https://…"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Label>External Link URL</Label>
+            <Input
+              value={form.external_url}
+              onChange={(e) => setForm({ ...form, external_url: e.target.value })}
+              placeholder="https://… (official tournament website)"
             />
           </div>
           <div>
@@ -874,6 +885,7 @@ function EditTournamentDetailsForm({
     name: string;
     location: string;
     logo_url: string | null;
+    external_url?: string | null;
     start_date: string;
     end_date: string;
     submission_deadline: string;
@@ -884,6 +896,7 @@ function EditTournamentDetailsForm({
     name: tournament.name,
     location: tournament.location,
     logo_url: tournament.logo_url ?? "",
+    external_url: tournament.external_url ?? "",
     start_date: tournament.start_date,
     end_date: tournament.end_date,
     submission_deadline: toDatetimeLocal(tournament.submission_deadline),
@@ -909,6 +922,7 @@ function EditTournamentDetailsForm({
         name: form.name,
         location: form.location,
         logo_url: form.logo_url || null,
+        external_url: form.external_url || null,
         start_date: form.start_date,
         end_date: form.end_date,
         submission_deadline: new Date(form.submission_deadline).toISOString(),
@@ -961,6 +975,14 @@ function EditTournamentDetailsForm({
                 onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
               />
             </div>
+          </div>
+          <div className="md:col-span-2">
+            <Label>External Link URL</Label>
+            <Input
+              placeholder="https://… (official tournament website)"
+              value={form.external_url}
+              onChange={(e) => setForm({ ...form, external_url: e.target.value })}
+            />
           </div>
           <div>
             <Label>Start Date</Label>
