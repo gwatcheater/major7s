@@ -625,6 +625,7 @@ export type Database = {
           created_at: string
           end_date: string
           espn_event_id: string | null
+          external_url: string | null
           id: string
           location: string
           logo_url: string | null
@@ -640,6 +641,7 @@ export type Database = {
           created_at?: string
           end_date: string
           espn_event_id?: string | null
+          external_url?: string | null
           id?: string
           location: string
           logo_url?: string | null
@@ -655,6 +657,7 @@ export type Database = {
           created_at?: string
           end_date?: string
           espn_event_id?: string | null
+          external_url?: string | null
           id?: string
           location?: string
           logo_url?: string | null
