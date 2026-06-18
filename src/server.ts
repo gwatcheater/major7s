@@ -206,13 +206,9 @@ async function serveBotTournamentOgPage(
         ? new Date(data.start_date).getFullYear()
         : null;
       const subpage = m[2] ? SUBPAGE_LABELS[m[2].toLowerCase()] : null;
-      title = subpage ? `${baseName} ${year ?? ""} - ${subpage}`.trim() : baseName;
-      const parts: string[] = [];
-      if (data.location) parts.push(data.location);
-      if (year) parts.push(String(year));
-      description = parts.length
-        ? `${baseName} — ${parts.join(", ")}. Major7s fantasy golf picks game.`
-        : `${baseName} — Major7s fantasy golf picks game.`;
+      const nameWithYear = year ? `${baseName} ${year}` : baseName;
+      title = subpage ? `${nameWithYear} - ${subpage}` : nameWithYear;
+      description = "";
       if (data.logo_url) {
         imageUrl = /^https?:\/\//i.test(data.logo_url)
           ? data.logo_url
