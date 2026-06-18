@@ -27,28 +27,23 @@ export const RecoveryEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>You're in — set up your Major7s account</Preview>
+      <Preview>Reset your Major7s password</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
-            <Heading style={headerHeading}>Major7s.com Is Live. Tweaked, Upgraded.</Heading>
+            <Heading style={headerHeading}>Reset Your Password</Heading>
           </Section>
 
           <Section style={contentSection}>
             <Text style={text}>{greeting}</Text>
-            <Text style={text}>Major7s has moved to a brand-new home.</Text>
             <Text style={text}>
-              Your account is already set up. We've pre-loaded your details and your full
-              picks history, so everything from previous years is waiting for you — nothing
-              to re-enter.
-            </Text>
-            <Text style={text}>
-              There's one thing left to do: set a password and you're ready to play.
+              We received a request to reset the password for your Major7s account.
+              Click the button below to choose a new password.
             </Text>
 
             <Section style={buttonWrap}>
               <Button style={button} href={confirmationUrl}>
-                Set your password
+                Reset your password
               </Button>
             </Section>
 
@@ -60,9 +55,8 @@ export const RecoveryEmail = ({
             </Text>
 
             <Text style={footer}>
-              You're receiving this because you have previously played Major7s. If you
-              weren't expecting it, you can safely ignore this email — no account changes
-              will be made until you set a password.
+              If you didn't request a password reset, you can safely ignore this email —
+              your password won't be changed.
             </Text>
           </Section>
         </Container>
