@@ -1,44 +1,30 @@
-## Why
+## Problem
 
-`/auth/v1/admin/config` is not exposed on Lovable Cloud (404), so the "Run migration setup" button never patched the recovery template. The right way to customize the password-reset email on this stack is the Lovable auth email template system, not the GoTrue admin API.
+The password reset email link drops users on `https://www.major7s.com/` instead of `/reset-password`.
 
-## Changes
+The recovery email itself is fine — `confirmationUrl` is the Supabase `/auth/v1/verify?...&redirect_to=...` URL, and `login.tsx` correctly passes `redirectTo: ${origin}/reset-password` when calling `resetPasswordForEmail`.
 
-### 1. Strip the dead migration code
+The standard cause of this exact symptom is Supabase's **Redirect URL allowlist**. When the `redirect_to` value isn't on the allowlist, Supabase silently falls back to the project's **Site URL** (the index) after verifying the token. Since the custom domain `https://www.major7s.com` was added later, its `/reset-password` URL likely isn't allowed.
 
-- `src/routes/_authenticated/admin.index.tsx`
-  - Remove the red `CARD DEBUG` div (line 101).
-  - Remove the `MigrationSetupCard` component entirely and its render at line 100.
-  - Remove the `runAuthConfigMigration` / `verifyAuthConfig` import (line 49).
-- `src/lib/auth-config-migration.functions.ts` — delete the file.
+## Fix
 
-(The redirect-allowlist concern is separate; if `https://major7s.com/welcome` still needs allowlisting, that's a Cloud → Auth settings task, not something we can do via Admin API on this stack. Out of scope for this plan unless you ask.)
+Add the missing redirect URLs to the backend auth config so Supabase honors the `redirect_to` from the email:
 
-### 2. Scaffold + customize the recovery email template
+- `https://www.major7s.com/reset-password`
+- `https://www.major7s.com/**` (covers welcome resend, future auth flows)
+- `https://major7s.lovable.app/reset-password`
+- `https://major7s.lovable.app/**`
 
-This stack doesn't yet have any auth email templates. Setup:
+Also verify the **Site URL** is set to `https://www.major7s.com` so any future allowlist miss at least lands on the canonical domain.
 
-1. Run `email_domain--check_email_domain_status` to confirm an email domain exists (it should, since you've been sending recovery emails). If none is configured, surface the email-setup dialog first.
-2. Run `email_domain--scaffold_auth_email_templates`. This creates the six auth templates (signup, magiclink, **recovery**, invite, email-change, reauthentication) and the auth webhook route that enqueues sends through Lovable Emails. On this TanStack stack the templates land under `src/lib/email-templates/` (React Email `.tsx`), not `supabase/functions/_shared/email-templates/` — the legacy Deno path doesn't apply here. The deliverable is the same: a recovery template you can fully brand.
-3. Edit the **recovery** template:
-   - Subject: `You're in — set up your Major7s account`
-   - Outer `Body` background: `#ffffff` (required even for dark themes).
-   - Header bar: forest green `#103D2E`, white text "Major7s.com Is Live. Tweaked, Upgraded."
-   - Greeting: `Hi {firstName},` when `firstName` prop is present, else `Hi there,` (recovery template variables include `{{ .Data.first_name }}` from user metadata; passed into the React component as a prop by the webhook).
-   - Body copy, in this order:
-     - "Major7s has moved to a brand-new home."
-     - "Your account is already set up. We've pre-loaded your details and your full picks history, so everything from previous years is waiting for you — nothing to re-enter."
-     - "There's one thing left to do: set a password and you're ready to play."
-   - CTA button: gold `#C9A227` background, dark (`#103D2E`) text, label **Set your password**, href = the existing recovery confirmation URL prop (the value the scaffold wires from `{{ .ConfirmationURL }}`).
-   - Plain-text fallback line below the button showing the same URL.
-   - Footer: "You're receiving this because you have previously played Major7s. If you weren't expecting it, you can safely ignore this email — no account changes will be made until you set a password."
-   - Keep all auth variables (`ConfirmationURL`, token, etc.) intact — only restyle and rewrite copy.
+These settings live in Lovable Cloud's auth settings (Cloud → Users → Auth Settings → URL Configuration). I'll guide you to the exact toggle — the redirect allowlist isn't editable from code on Lovable Cloud.
 
-### 3. Redeploy
+## Verification
 
-Modern TanStack server routes deploy with the app on publish — there's no separate `deploy_edge_functions` step. After saving the template, the next build/publish ships it. I'll note this clearly so you know no manual deploy is required.
+After updating the allowlist:
+1. Request a password reset from the login page on `www.major7s.com`.
+2. Click the email link — should land on `/reset-password` with the recovery token in the URL hash, showing the "Set new password" form.
 
 ## Out of scope
 
-- Re-adding `https://major7s.com/welcome` to the auth redirect allowlist (no public API for it on Lovable Cloud — needs Cloud UI or a separate request).
-- Touching the other five auth templates (signup, magiclink, invite, email-change, reauthentication) — leaving them as the scaffolded defaults unless you want them branded too.
+No code changes are needed; the email template and client code already pass the correct `redirectTo`. If after updating the allowlist the link still lands on `/`, I'll then inspect the auth webhook payload to confirm the `redirect_to` Supabase is actually receiving.
