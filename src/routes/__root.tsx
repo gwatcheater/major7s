@@ -89,6 +89,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head><HeadContent /></head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => { try { const u = new URL(window.location.href); if (u.pathname !== '/') return; const h = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash; const hp = new URLSearchParams(h.includes('?') ? h.slice(h.indexOf('?') + 1) : h); if (u.searchParams.get('type') === 'recovery' || hp.get('type') === 'recovery') window.location.replace('/reset-password' + u.search + u.hash); } catch (_) {} })();`,
+          }}
+        />
         {children}
         <Scripts />
       </body>
