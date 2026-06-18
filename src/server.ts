@@ -98,6 +98,13 @@ const SUBPAGE_LABELS: Record<string, string> = {
   stats: "Stats",
 };
 
+const STATIC_PAGE_OG: Record<string, string> = {
+  "/stats": "Major7s Stats",
+  "/hall-of-fame": "Major7s Hall Of Fame",
+  "/archive": "Major7s Historical Tournaments",
+  "/home": "Major7s Live & Upcoming",
+};
+
 function absoluteImageUrl(
   origin: string,
   imageUrl: string | null | undefined,
@@ -215,11 +222,38 @@ async function serveBotTournamentOgPage(
   );
 }
 
+function serveBotStaticPageOg(request: Request): Response | null {
+  const url = new URL(request.url);
+  const title = STATIC_PAGE_OG[url.pathname];
+  if (!title) return null;
+
+  const ua = request.headers.get("user-agent");
+  if (!isBotUserAgent(ua)) return null;
+
+  const origin = url.origin;
+  return new Response(
+    renderOgHtml({
+      title,
+      description: "",
+      imageUrl: `${origin}/og-logo.png`,
+      absoluteUrl: `${origin}${url.pathname}`,
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "public, max-age=300",
+      },
+    },
+  );
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     const botResponse =
       (await serveBotOgPage(request)) ||
-      (await serveBotTournamentOgPage(request));
+      (await serveBotTournamentOgPage(request)) ||
+      serveBotStaticPageOg(request);
     if (botResponse) return botResponse;
 
     try {
