@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Plus,
   Pencil,
+  ExternalLink,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
@@ -317,6 +318,26 @@ function TournamentHub() {
 
       {/* ── NAV ROWS ── */}
       <div className="mt-6 flex flex-col gap-3">
+        <a
+          href="https://www.major7s.co.uk/#/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <Trophy className="h-5 w-5 text-green-600" />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <div className="font-display text-sm uppercase">Live Leaderboard</div>
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">Opens in new tab</div>
+          </div>
+          <ExternalLink className="h-4 w-4 text-muted-foreground" />
+        </a>
+
         <Link
           to="/tournament/$id/leaderboard"
           params={{ id }}
@@ -325,7 +346,7 @@ function TournamentHub() {
           <Trophy className="h-5 w-5 text-primary" />
           <div className="flex-1">
             <div className="font-display text-sm uppercase">Leaderboard</div>
-            <div className="text-xs text-muted-foreground">Final standings</div>
+            <div className="text-xs text-muted-foreground">End of round leaderboards</div>
           </div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
