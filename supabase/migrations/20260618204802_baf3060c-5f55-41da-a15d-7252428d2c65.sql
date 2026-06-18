@@ -1,0 +1,1 @@
+ALTER TABLE public.tournaments ADD COLUMN external_url text;

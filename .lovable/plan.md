@@ -1,30 +1,31 @@
-## Problem
+## Add external web link to tournament cards
 
-The password reset email link drops users on `https://www.major7s.com/` instead of `/reset-password`.
+Per-tournament external URL (e.g. the official tournament website) that admins can set, displayed as an "Official Site" link on the tournament hub and on the home/archive list cards.
 
-The recovery email itself is fine — `confirmationUrl` is the Supabase `/auth/v1/verify?...&redirect_to=...` URL, and `login.tsx` correctly passes `redirectTo: ${origin}/reset-password` when calling `resetPasswordForEmail`.
+### 1. Database
 
-The standard cause of this exact symptom is Supabase's **Redirect URL allowlist**. When the `redirect_to` value isn't on the allowlist, Supabase silently falls back to the project's **Site URL** (the index) after verifying the token. Since the custom domain `https://www.major7s.com` was added later, its `/reset-password` URL likely isn't allowed.
+Migration adds a nullable `external_url` text column to `public.tournaments`. No new RLS policies needed (existing ones cover the column).
 
-## Fix
+```sql
+ALTER TABLE public.tournaments ADD COLUMN external_url text;
+```
 
-Add the missing redirect URLs to the backend auth config so Supabase honors the `redirect_to` from the email:
+### 2. Admin UI (`src/routes/_authenticated/admin.index.tsx`)
 
-- `https://www.major7s.com/reset-password`
-- `https://www.major7s.com/**` (covers welcome resend, future auth flows)
-- `https://major7s.lovable.app/reset-password`
-- `https://major7s.lovable.app/**`
+- Add `external_url` to the `Create Tournament` form and `Edit Tournament Details` form (text input, optional, `https://…` placeholder).
+- Include it in the insert/update payloads and in the admin tournaments `select(...)` list (line ~484).
 
-Also verify the **Site URL** is set to `https://www.major7s.com` so any future allowlist miss at least lands on the canonical domain.
+### 3. Tournament hub (`src/routes/_authenticated/tournament.$id.tsx`)
 
-These settings live in Lovable Cloud's auth settings (Cloud → Users → Auth Settings → URL Configuration). I'll guide you to the exact toggle — the redirect allowlist isn't editable from code on Lovable Cloud.
+When `t.external_url` is set, render an "Official Site" row above the Leaderboard nav row using the same nav-row styling, with an `ExternalLink` icon. It opens in a new tab (`target="_blank" rel="noopener noreferrer"`).
 
-## Verification
+### 4. List cards (`home.tsx` and `archive.tsx`)
 
-After updating the allowlist:
-1. Request a password reset from the login page on `www.major7s.com`.
-2. Click the email link — should land on `/reset-password` with the recovery token in the URL hash, showing the "Set new password" form.
+Add a small "Official Site ↗" pill inside the card body when `external_url` is set. The pill stops click propagation and opens in a new tab so it doesn't trigger the full-card link to the hub. Extend the `Tournament` interface in both files with `external_url?: string | null`.
 
-## Out of scope
+### Technical details
 
-No code changes are needed; the email template and client code already pass the correct `redirectTo`. If after updating the allowlist the link still lands on `/`, I'll then inspect the auth webhook payload to confirm the `redirect_to` Supabase is actually receiving.
+- Link target opens in a new tab with `rel="noopener noreferrer"`.
+- The list-card external link uses `z-20 pointer-events-auto` + `onClick={(e) => e.stopPropagation()}` to sit above the full-card overlay link (same pattern already used for the "Picks" button on home).
+- No changes to `src/lib/tournament-link.ts` — that helper stays focused on internal hub routing.
+- The Supabase TypeScript types regenerate automatically after the migration; no manual edit to `src/integrations/supabase/types.ts`.
