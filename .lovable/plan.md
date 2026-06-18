@@ -1,31 +1,36 @@
-## Add external web link to tournament cards
+# Restore "Live Leaderboard" link and clarify email templates
 
-Per-tournament external URL (e.g. the official tournament website) that admins can set, displayed as an "Official Site" link on the tournament hub and on the home/archive list cards.
+## 1. External URL link on tournaments
 
-### 1. Database
+Your read is correct. After commit `c9114e4`, the tournament hub renders the "Live Leaderboard" / official-site link only when `tournaments.external_url` is set. I verified the DB: `external_url` is `NULL` on every tournament row (Masters, PGA, U.S. Open, The Open — past and current), so the link is hidden everywhere.
 
-Migration adds a nullable `external_url` text column to `public.tournaments`. No new RLS policies needed (existing ones cover the column).
+Fix (data, not code): populate `external_url` on the rows that should show the link. Proposed values:
 
-```sql
-ALTER TABLE public.tournaments ADD COLUMN external_url text;
-```
+- All 4 active majors for 2026 (Masters, PGA, U.S. Open, The Open) → `https://www.major7s.co.uk/#/`
+- Historical/past tournaments → leave `NULL` (link stays hidden), unless you want them populated too
 
-### 2. Admin UI (`src/routes/_authenticated/admin.index.tsx`)
+I'll do this with a single `UPDATE` on `public.tournaments`. No code changes — the admin "External Link URL" field already lets you edit per-tournament going forward.
 
-- Add `external_url` to the `Create Tournament` form and `Edit Tournament Details` form (text input, optional, `https://…` placeholder).
-- Include it in the insert/update payloads and in the admin tournaments `select(...)` list (line ~484).
+Open questions:
+- Set the same URL on **all tournaments** (past + future), or just the **4 current/upcoming 2026 majors**?
+- Use exactly `https://www.major7s.co.uk/#/`, or a different URL?
 
-### 3. Tournament hub (`src/routes/_authenticated/tournament.$id.tsx`)
+## 2. Custom email templates "missing"
 
-When `t.external_url` is set, render an "Official Site" row above the Leaderboard nav row using the same nav-row styling, with an `ExternalLink` icon. It opens in a new tab (`target="_blank" rel="noopener noreferrer"`).
+The templates are still in the repo and registered — nothing was deleted:
 
-### 4. List cards (`home.tsx` and `archive.tsx`)
+- App emails (`src/lib/email-templates/registry.ts`): `welcome`, `picks-confirmation`, `pick-reminder`, `admin-new-user`
+- Auth emails (wired in `src/routes/lovable/email/auth/webhook.ts`): `signup`, `invite`, `magiclink`, `recovery`, `email_change`, `reauthentication`
 
-Add a small "Official Site ↗" pill inside the card body when `external_url` is set. The pill stops click propagation and opens in a new tab so it doesn't trigger the full-card link to the hub. Extend the `Tournament` interface in both files with `external_url?: string | null`.
+If the Cloud → Emails dashboard is showing them as missing/blank, that's a dashboard view issue, not a code issue — typically resolved by republishing so the latest server routes/templates are live, or by hard-refreshing the dashboard. Before doing anything here I'd like to confirm what you're actually seeing.
 
-### Technical details
+Open question:
+- In Cloud → Emails, are the template **entries gone from the list**, or are they listed but **previews are blank / show default content**? A screenshot or the exact wording helps.
 
-- Link target opens in a new tab with `rel="noopener noreferrer"`.
-- The list-card external link uses `z-20 pointer-events-auto` + `onClick={(e) => e.stopPropagation()}` to sit above the full-card overlay link (same pattern already used for the "Picks" button on home).
-- No changes to `src/lib/tournament-link.ts` — that helper stays focused on internal hub routing.
-- The Supabase TypeScript types regenerate automatically after the migration; no manual edit to `src/integrations/supabase/types.ts`.
+## Plan once you confirm
+
+1. Run a single data update setting `external_url` on the agreed tournament rows.
+2. Verify the link reappears on the tournament hub.
+3. For emails: based on your answer, either republish to refresh the dashboard, or investigate the specific template that looks wrong.
+
+No code edits planned in step 1 — the feature is already implemented correctly; it just needs data.
