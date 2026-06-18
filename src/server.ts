@@ -71,9 +71,12 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 }
 
 // ---------------------------------------------------------------------------
-// Bot OG shim — intercepts blog post requests from link-unfurl scrapers
+// Bot OG shim — intercepts shareable page requests from link-unfurl scrapers
 // and returns a minimal HTML page with populated Open Graph tags.
-// Matches both /blog/<uuid> and /tournament/<uuid>/blog/<uuid>.
+// Matches:
+//   - /blog/<uuid>
+//   - /tournament/<uuid>/blog/<uuid>
+//   - /tournament/<uuid>
 // This runs BEFORE TanStack Start processes the request, avoiding the SSR
 // pipeline entirely (throwing a Response from a route loader does not work
 // in TanStack Start on Cloudflare Workers).
@@ -82,6 +85,10 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const BLOG_POST_RE = new RegExp(
   `^(?:\\/tournament\\/${UUID})?\\/blog\\/(${UUID})$`,
+  "i",
+);
+const TOURNAMENT_RE = new RegExp(
+  `^\\/tournament\\/(${UUID})$`,
   "i",
 );
 
@@ -163,9 +170,73 @@ async function serveBotOgPage(request: Request): Promise<Response | null> {
   );
 }
 
+async function serveBotTournamentOgPage(
+  request: Request,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  const m = TOURNAMENT_RE.exec(url.pathname);
+  if (!m) return null;
+
+  const ua = request.headers.get("user-agent");
+  if (!isBotUserAgent(ua)) return null;
+
+  const tournamentId = m[1];
+  const origin = url.origin;
+
+  let title = "Major7s";
+  let description = "Pick smart. Tweak obsessively. Suffer beautifully.";
+  let imageUrl = `${origin}/apple-touch-icon.png`;
+
+  try {
+    const { data } = await supabaseAdmin
+      .from("tournaments")
+      .select("id, name, location, start_date, logo_url")
+      .eq("id", tournamentId)
+      .maybeSingle();
+
+    if (data) {
+      title = data.name ?? title;
+      const year = data.start_date
+        ? new Date(data.start_date).getFullYear()
+        : null;
+      const parts: string[] = [];
+      if (data.location) parts.push(data.location);
+      if (year) parts.push(String(year));
+      description = parts.length
+        ? `${title} — ${parts.join(", ")}. Major7s fantasy golf picks game.`
+        : `${title} — Major7s fantasy golf picks game.`;
+      if (data.logo_url) {
+        imageUrl = /^https?:\/\//i.test(data.logo_url)
+          ? data.logo_url
+          : `${origin}${data.logo_url.startsWith("/") ? "" : "/"}${data.logo_url}`;
+      }
+    }
+  } catch (err) {
+    console.error("[bot-og] Supabase error, using fallback meta", err);
+  }
+
+  return new Response(
+    renderOgHtml({
+      title,
+      description,
+      imageUrl,
+      absoluteUrl: `${origin}${url.pathname}`,
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "public, max-age=300",
+      },
+    },
+  );
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    const botResponse = await serveBotOgPage(request);
+    const botResponse =
+      (await serveBotOgPage(request)) ||
+      (await serveBotTournamentOgPage(request));
     if (botResponse) return botResponse;
 
     try {
