@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { tournamentDateRange } from "@/lib/format";
 import { tournamentCardLink } from "@/lib/tournament-link";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/archive")({
   component: ArchivePage,
@@ -61,6 +61,7 @@ interface Tournament {
   submission_deadline: string;
   status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
   logo_url?: string;
+  external_url?: string | null;
 }
 
 interface ArchiveScoreRow {

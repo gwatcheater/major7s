@@ -5,7 +5,7 @@ import { Countdown } from "@/components/countdown";
 import { useTeams } from "@/hooks/use-teams";
 import { tournamentDateRange } from "@/lib/format";
 import { tournamentCardLink } from "@/lib/tournament-link";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/home")({
   component: HomePage,
@@ -20,6 +20,7 @@ interface Tournament {
   submission_deadline: string;
   status: "upcoming" | "open_for_picks" | "picks_closed" | "live" | "completed";
   logo_url?: string;
+  external_url?: string | null;
 }
 
 function StatusBadge({ status }: { status: Tournament["status"] }) {
