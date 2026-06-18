@@ -89,6 +89,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head><HeadContent /></head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => { try { const u = new URL(window.location.href); if (u.pathname !== '/') return; const h = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash; const hp = new URLSearchParams(h.includes('?') ? h.slice(h.indexOf('?') + 1) : h); if (u.searchParams.get('type') === 'recovery' || hp.get('type') === 'recovery') window.location.replace('/reset-password' + u.search + u.hash); } catch (_) {} })();`,
+          }}
+        />
         {children}
         <Scripts />
       </body>
@@ -100,7 +105,22 @@ function AuthBridge() {
   const router = useRouter();
   const queryClient = useQueryClient();
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    const sendRecoveryToReset = () => {
+      const url = new URL(window.location.href);
+      const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+      const hashParams = new URLSearchParams(hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : hash);
+      const isRecovery = url.searchParams.get("type") === "recovery" || hashParams.get("type") === "recovery";
+      if (isRecovery && url.pathname !== "/reset-password") {
+        window.location.replace(`/reset-password${url.search}${url.hash}`);
+        return true;
+      }
+      return false;
+    };
+
+    if (sendRecoveryToReset()) return undefined;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && sendRecoveryToReset()) return;
       router.invalidate();
       queryClient.invalidateQueries();
     });
