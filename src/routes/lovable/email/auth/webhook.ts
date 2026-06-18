@@ -160,9 +160,18 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           )
         }
 
-        const rawData = (payload.data ?? {}) as Record<string, unknown>
-        const emailData = isRecord(rawData.email_data) ? rawData.email_data : rawData
-        const user = isRecord(rawData.user) ? rawData.user : {}
+        const payloadRecord = payload as Record<string, unknown>
+        const rawData = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord
+        const emailData = isRecord(rawData.email_data)
+          ? rawData.email_data
+          : isRecord(payloadRecord.email_data)
+            ? payloadRecord.email_data
+            : rawData
+        const user = isRecord(rawData.user)
+          ? rawData.user
+          : isRecord(payloadRecord.user)
+            ? payloadRecord.user
+            : {}
 
         // The email action type is in payload.data.action_type (e.g., "signup", "recovery")
         // payload.type is the hook event type ("auth")
