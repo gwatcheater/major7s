@@ -88,9 +88,15 @@ const BLOG_POST_RE = new RegExp(
   "i",
 );
 const TOURNAMENT_RE = new RegExp(
-  `^\\/tournament\\/(${UUID})$`,
+  `^\\/tournament\\/(${UUID})(?:\\/(leaderboard|lineup|stats))?$`,
   "i",
 );
+
+const SUBPAGE_LABELS: Record<string, string> = {
+  leaderboard: "Leaderboard",
+  lineup: "Lineup",
+  stats: "Stats",
+};
 
 function stripMarkdown(raw: string): string {
   return raw
@@ -195,16 +201,18 @@ async function serveBotTournamentOgPage(
       .maybeSingle();
 
     if (data) {
-      title = data.name ?? title;
+      const baseName = data.name ?? title;
       const year = data.start_date
         ? new Date(data.start_date).getFullYear()
         : null;
+      const subpage = m[2] ? SUBPAGE_LABELS[m[2].toLowerCase()] : null;
+      title = subpage ? `${baseName} ${year ?? ""} - ${subpage}`.trim() : baseName;
       const parts: string[] = [];
       if (data.location) parts.push(data.location);
       if (year) parts.push(String(year));
       description = parts.length
-        ? `${title} — ${parts.join(", ")}. Major7s fantasy golf picks game.`
-        : `${title} — Major7s fantasy golf picks game.`;
+        ? `${baseName} — ${parts.join(", ")}. Major7s fantasy golf picks game.`
+        : `${baseName} — Major7s fantasy golf picks game.`;
       if (data.logo_url) {
         imageUrl = /^https?:\/\//i.test(data.logo_url)
           ? data.logo_url
