@@ -43,6 +43,53 @@ function redactEmail(email: string | null | undefined): string {
   return `${localPart[0]}***@${domain}`
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function pickString(source: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+function appendAuthParams(baseUrl: string, tokenHash: string, emailType: string) {
+  try {
+    const url = new URL(baseUrl)
+    url.searchParams.set('token_hash', tokenHash)
+    url.searchParams.set('type', emailType)
+    return url.toString()
+  } catch {
+    const separator = baseUrl.includes('?') ? '&' : '?'
+    return `${baseUrl}${separator}token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(emailType)}`
+  }
+}
+
+function buildConfirmationUrl({
+  rawData,
+  emailData,
+  emailType,
+}: {
+  rawData: Record<string, unknown>
+  emailData: Record<string, unknown>
+  emailType: string
+}) {
+  const suppliedUrl = pickString(rawData, 'url', 'confirmation_url', 'confirmationUrl')
+  if (emailType !== 'recovery') return suppliedUrl ?? `https://${ROOT_DOMAIN}`
+
+  const redirectTo =
+    pickString(emailData, 'redirect_to', 'redirectTo') ??
+    pickString(rawData, 'redirect_to', 'redirectTo') ??
+    `https://${ROOT_DOMAIN}/reset-password`
+  const tokenHash = pickString(emailData, 'token_hash') ?? pickString(rawData, 'token_hash')
+  const actionType =
+    pickString(emailData, 'email_action_type') ?? pickString(rawData, 'email_action_type', 'action_type') ?? 'recovery'
+
+  return tokenHash ? appendAuthParams(redirectTo, tokenHash, actionType) : suppliedUrl ?? redirectTo
+}
+
 export const Route = createFileRoute("/lovable/email/auth/webhook")({
   server: {
     handlers: {
@@ -113,12 +160,26 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           )
         }
 
+        const rawData = (payload.data ?? {}) as Record<string, unknown>
+        const emailData = isRecord(rawData.email_data) ? rawData.email_data : rawData
+        const user = isRecord(rawData.user) ? rawData.user : {}
+
         // The email action type is in payload.data.action_type (e.g., "signup", "recovery")
         // payload.type is the hook event type ("auth")
-        const emailType = payload.data.action_type
+        const emailType =
+          pickString(rawData, 'action_type', 'email_action_type') ??
+          pickString(emailData, 'email_action_type')
+        const recipientEmail = pickString(rawData, 'email') ?? pickString(user, 'email')
+        if (!emailType || !recipientEmail) {
+          console.error('Webhook payload missing email type or recipient', { run_id })
+          return Response.json(
+            { error: 'Invalid webhook payload' },
+            { status: 400 }
+          )
+        }
         console.log('Received auth event', {
           emailType,
-          email_redacted: redactEmail(payload.data.email),
+          email_redacted: redactEmail(recipientEmail),
           run_id,
         })
 
@@ -132,18 +193,18 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
         }
 
         // Build template props from payload.data (HookData structure)
-        const userMeta = (payload.data.user?.user_metadata ?? {}) as Record<string, unknown>
+        const userMeta = (isRecord(user.user_metadata) ? user.user_metadata : {}) as Record<string, unknown>
         const firstName =
           typeof userMeta.first_name === 'string' ? (userMeta.first_name as string) : undefined
         const templateProps = {
           siteName: SITE_NAME,
           siteUrl: `https://${ROOT_DOMAIN}`,
-          recipient: payload.data.email,
-          confirmationUrl: payload.data.url,
-          token: payload.data.token,
-          email: payload.data.email,
-          oldEmail: payload.data.old_email,
-          newEmail: payload.data.new_email,
+          recipient: recipientEmail,
+          confirmationUrl: buildConfirmationUrl({ rawData, emailData, emailType }),
+          token: pickString(emailData, 'token') ?? pickString(rawData, 'token'),
+          email: recipientEmail,
+          oldEmail: pickString(emailData, 'old_email') ?? pickString(rawData, 'old_email'),
+          newEmail: pickString(emailData, 'new_email') ?? pickString(rawData, 'new_email'),
           firstName,
         }
 
@@ -171,7 +232,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
         await supabase.from('email_send_log').insert({
           message_id: messageId,
           template_name: emailType,
-          recipient_email: payload.data.email,
+          recipient_email: recipientEmail,
           status: 'pending',
         })
 
@@ -180,7 +241,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           payload: {
             run_id,
             message_id: messageId,
-            to: payload.data.email,
+            to: recipientEmail,
             from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
             sender_domain: SENDER_DOMAIN,
             subject: EMAIL_SUBJECTS[emailType] || 'Notification',
@@ -197,7 +258,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           await supabase.from('email_send_log').insert({
             message_id: messageId,
             template_name: emailType,
-            recipient_email: payload.data.email,
+            recipient_email: recipientEmail,
             status: 'failed',
             error_message: 'Failed to enqueue email',
           })
@@ -209,7 +270,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
 
         console.log('Auth email enqueued', {
           emailType,
-          email_redacted: redactEmail(payload.data.email),
+          email_redacted: redactEmail(recipientEmail),
           run_id,
         })
 
