@@ -324,6 +324,7 @@ function ResetPasswordPage() {
       if (error) throw error;
 
       toast.success("Password updated. Please sign in.");
+      window.localStorage.removeItem("major7s:pending-password-reset");
       await withTimeout(
         supabase.auth.signOut(),
         2500,
