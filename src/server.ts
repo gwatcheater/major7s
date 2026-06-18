@@ -98,27 +98,6 @@ const SUBPAGE_LABELS: Record<string, string> = {
   stats: "Stats",
 };
 
-function stripMarkdown(raw: string): string {
-  return raw
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`[^`]*`/g, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[#>*_~\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function makeDescription(body: string | null | undefined): string {
-  const clean = stripMarkdown(body ?? "");
-  if (!clean) return "Read the latest from Major7s.";
-  if (clean.length <= 150) return clean;
-  const slice = clean.slice(0, 150);
-  const lastSpace = slice.lastIndexOf(" ");
-  const trimmed = lastSpace > 100 ? slice.slice(0, lastSpace) : slice;
-  return `${trimmed.replace(/[.,;:!?-]+$/, "")}…`;
-}
-
 function absoluteImageUrl(
   origin: string,
   imageUrl: string | null | undefined,
@@ -146,13 +125,13 @@ async function serveBotOgPage(request: Request): Promise<Response | null> {
   try {
     const { data } = await supabaseAdmin
       .from("blog_posts")
-      .select("id, title, body, image_url")
+      .select("id, title, image_url")
       .eq("id", postId)
       .maybeSingle();
 
     if (data) {
       title = data.title ?? title;
-      description = makeDescription(data.body);
+      description = "";
       imageUrl = absoluteImageUrl(origin, data.image_url);
     }
   } catch (err) {
