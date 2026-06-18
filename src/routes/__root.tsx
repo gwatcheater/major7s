@@ -105,12 +105,15 @@ function AuthBridge() {
   const router = useRouter();
   const queryClient = useQueryClient();
   useEffect(() => {
+    const resetFlag = "major7s:pending-password-reset";
     const sendRecoveryToReset = () => {
       const url = new URL(window.location.href);
       const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
       const hashParams = new URLSearchParams(hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : hash);
       const isRecovery = url.searchParams.get("type") === "recovery" || hashParams.get("type") === "recovery";
-      if (isRecovery && url.pathname !== "/reset-password") {
+      const hasAuthTokens = !!(hashParams.get("access_token") && hashParams.get("refresh_token"));
+      const hasPendingReset = window.localStorage.getItem(resetFlag) === "1";
+      if ((isRecovery || (hasAuthTokens && hasPendingReset)) && url.pathname !== "/reset-password") {
         window.location.replace(`/reset-password${url.search}${url.hash}`);
         return true;
       }
@@ -120,7 +123,15 @@ function AuthBridge() {
     if (sendRecoveryToReset()) return undefined;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" && sendRecoveryToReset()) return;
+      if (event === "PASSWORD_RECOVERY") {
+        window.localStorage.setItem(resetFlag, "1");
+        if (window.location.pathname !== "/reset-password") {
+          window.location.replace("/reset-password");
+          return;
+        }
+      }
+      if (sendRecoveryToReset()) return;
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       router.invalidate();
       queryClient.invalidateQueries();
     });
