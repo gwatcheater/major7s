@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.5 — Round toggle gated to completed rounds only
+// VERSION MARKER: leaderboard v4.6 — Mid-round fallback: carry forward prior round positions
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -640,12 +640,23 @@ function computeRoundScores(
     const pickScores: RoundPickScore[] = teamPicks.map((pick) => {
       const lb = lbByGolfer.get(pick.golfer_id);
       const posVal = lb ? (lb[posKey] as number | null) : null;
+
+      // Mid-round fallback: if this round's position is null and the golfer
+      // isn't CUT/WD (i.e. they just haven't teed off yet), carry forward
+      // their previous round's position. Once the admin re-imports ESPN data
+      // with the current round complete, real positions replace the fallback.
+      let effectivePos: number | null = posVal;
+      if (effectivePos === null && round !== "r1" && lb && !isCutOrWithdrawn(lb.status_type)) {
+        const prevKey = round === "r2" ? "position_r1" as const : "position_r2" as const;
+        effectivePos = lb[prevKey] as number | null;
+      }
+
       return {
         golfer_id: pick.golfer_id,
         golfer_name: lb?.espn_display_name || "Unknown",
         bucket: pick.bucket,
-        position_in_round: posVal,
-        points: posVal ?? NON_FINISHER_POINTS,
+        position_in_round: effectivePos,
+        points: effectivePos ?? NON_FINISHER_POINTS,
         counted: false,
       };
     });
