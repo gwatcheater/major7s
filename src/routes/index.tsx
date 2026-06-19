@@ -1,4 +1,5 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 
 function getRecoveryRedirect(href: string) {
@@ -12,12 +13,30 @@ function getRecoveryRedirect(href: string) {
 }
 
 export const Route = createFileRoute("/")({
-  beforeLoad: async ({ location }) => {
+  // Resolve this route on the client only. The session check below depends on
+  // localStorage, which is unavailable during SSR; without `ssr: false` the
+  // hydrated match keeps the blank shell and no redirect ever fires (fresh /
+  // incognito visitors saw a blank page).
+  ssr: false,
+  beforeLoad: ({ location }) => {
     if (typeof window === "undefined") return;
     const recoveryRedirect = getRecoveryRedirect(location.href);
     if (recoveryRedirect) throw redirect({ href: recoveryRedirect });
-    const { data } = await supabase.auth.getSession();
-    if (data.session) throw redirect({ to: "/home" });
-    throw redirect({ to: "/login" });
   },
+  component: IndexRedirect,
 });
+
+function IndexRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      navigate({ to: data.session ? "/home" : "/login", replace: true });
+    }).catch(() => {
+      if (!cancelled) navigate({ to: "/login", replace: true });
+    });
+    return () => { cancelled = true; };
+  }, [navigate]);
+  return null;
+}
