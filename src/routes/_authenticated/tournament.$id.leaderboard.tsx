@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
 
-// VERSION MARKER: leaderboard v4.6 — Mid-round fallback: carry forward prior round positions
+// VERSION MARKER: leaderboard v4.7 — Pick breakdown: prev/current round columns + italic carry-forwards
 // If you see this comment in the deployed bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
@@ -603,6 +603,8 @@ interface RoundPickScore {
   golfer_name: string;
   bucket: number;
   position_in_round: number | null;
+  prev_position: number | null;   // previous round's position (null on R1)
+  is_carryforward: boolean;       // true when position_in_round is a fallback from prior round
   points: number;
   counted: boolean;
 }
@@ -641,14 +643,19 @@ function computeRoundScores(
       const lb = lbByGolfer.get(pick.golfer_id);
       const posVal = lb ? (lb[posKey] as number | null) : null;
 
+      // Previous round position (for display in breakdown)
+      const prevKey = round === "r2" ? "position_r1" as const : round === "r3" ? "position_r2" as const : null;
+      const prevPos = prevKey && lb ? (lb[prevKey] as number | null) : null;
+
       // Mid-round fallback: if this round's position is null and the golfer
       // isn't CUT/WD (i.e. they just haven't teed off yet), carry forward
       // their previous round's position. Once the admin re-imports ESPN data
       // with the current round complete, real positions replace the fallback.
       let effectivePos: number | null = posVal;
+      let isCarryforward = false;
       if (effectivePos === null && round !== "r1" && lb && !isCutOrWithdrawn(lb.status_type)) {
-        const prevKey = round === "r2" ? "position_r1" as const : "position_r2" as const;
-        effectivePos = lb[prevKey] as number | null;
+        effectivePos = prevPos;
+        isCarryforward = effectivePos !== null;
       }
 
       return {
@@ -656,6 +663,8 @@ function computeRoundScores(
         golfer_name: lb?.espn_display_name || "Unknown",
         bucket: pick.bucket,
         position_in_round: effectivePos,
+        prev_position: prevPos,
+        is_carryforward: isCarryforward,
         points: effectivePos ?? NON_FINISHER_POINTS,
         counted: false,
       };
@@ -794,11 +803,12 @@ function useMajor7sRoundScores(
 }
 
 // -- Round-view pick breakdown (expandable) --
-function RoundPickBreakdown({ picks, showDelta }: { picks: RoundPickScore[]; showDelta: boolean }) {
+function RoundPickBreakdown({ picks, showDelta, round }: { picks: RoundPickScore[]; showDelta: boolean; round: Exclude<Round, "final"> }) {
   const sorted = [...picks].sort((a, b) => {
     if (a.counted !== b.counted) return a.counted ? -1 : 1;
     return a.points - b.points;
   });
+  const hasPrev = round !== "r1"; // R2/R3 show previous round column
   return (
     <div className="bg-muted/20 border-t border-border">
       <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
@@ -824,9 +834,19 @@ function RoundPickBreakdown({ picks, showDelta }: { picks: RoundPickScore[]; sho
                 <td />
                 {showDelta && <td />}
                 <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
-                <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
-                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
-                  {isNonFinisher ? "—" : p.position_in_round}
+                {/* Column 4: R1 = points; R2+ = previous round position */}
+                <td className={`px-3 py-0.5 text-right ${hasPrev ? "font-mono text-muted-foreground" : ptsCls}`}>
+                  {hasPrev
+                    ? (p.prev_position ?? "—")
+                    : p.points}
+                </td>
+                {/* Column 5: R1 = empty; R2+ = current round position (italic if carry-forward) */}
+                <td className={`px-2 py-0.5 text-center font-mono text-[10px] ${isNonFinisher ? "text-red-600" : p.is_carryforward ? "text-muted-foreground" : ""}`}>
+                  {hasPrev
+                    ? (isNonFinisher
+                        ? "—"
+                        : <span className={p.is_carryforward ? "italic" : ""}>{p.position_in_round}</span>)
+                    : ""}
                 </td>
                 <td />
               </tr>
@@ -840,12 +860,13 @@ function RoundPickBreakdown({ picks, showDelta }: { picks: RoundPickScore[]; sho
 
 // -- Round-view expandable team row --
 function RoundExpandableTeamRow({
-  team, mine, medal, showDelta,
+  team, mine, medal, showDelta, round,
 }: {
   team: RoundTeamScore;
   mine: boolean;
   medal: "gold" | "silver" | "bronze" | null;
   showDelta: boolean;
+  round: Exclude<Round, "final">;
 }) {
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
@@ -883,7 +904,7 @@ function RoundExpandableTeamRow({
               open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
-            {open && <RoundPickBreakdown picks={team.picks} showDelta={showDelta} />}
+            {open && <RoundPickBreakdown picks={team.picks} showDelta={showDelta} round={round} />}
           </div>
         </td>
       </tr>
@@ -893,8 +914,8 @@ function RoundExpandableTeamRow({
 
 // -- Round-view "Your Team" panel --
 function RoundActiveTeamPanel({
-  team, medal, showDelta,
-}: { team: RoundTeamScore; medal: "gold" | "silver" | "bronze" | null; showDelta: boolean }) {
+  team, medal, showDelta, round,
+}: { team: RoundTeamScore; medal: "gold" | "silver" | "bronze" | null; showDelta: boolean; round: Exclude<Round, "final"> }) {
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const cols = showDelta ? 6 : 5;
@@ -947,45 +968,8 @@ function RoundActiveTeamPanel({
                 }`}
               >
                 {open && (
-                  <div className="bg-amber-50/50 border-t border-border">
-                    <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
-                      <MajorCols showDelta={showDelta} />
-                      <tbody>
-                        {[...team.picks]
-                          .sort((a, b) => {
-                            if (a.counted !== b.counted) return a.counted ? -1 : 1;
-                            return a.points - b.points;
-                          })
-                          .map((p) => {
-                            const isNonFinisher = p.position_in_round === null;
-                            const isDropped = !p.counted;
-                            let nameCls = "";
-                            let ptsCls = "font-mono font-semibold";
-                            let opacity = "";
-                            if (isNonFinisher) {
-                              nameCls = "text-red-600";
-                              ptsCls = "font-mono font-semibold text-red-600";
-                              if (isDropped) opacity = "opacity-30";
-                            } else if (isDropped) {
-                              nameCls = "text-muted-foreground";
-                              ptsCls = "font-mono font-semibold text-muted-foreground";
-                              opacity = "opacity-60";
-                            }
-                            return (
-                              <tr key={p.golfer_id} className={opacity}>
-                                <td />
-                                {showDelta && <td />}
-                                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
-                                <td className={`px-3 py-0.5 text-right ${ptsCls}`}>{p.points}</td>
-                                <td className="px-2 py-0.5 text-center font-mono text-muted-foreground text-[10px]">
-                                  {isNonFinisher ? "—" : p.position_in_round}
-                                </td>
-                                <td />
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
+                  <div className="bg-amber-50/50">
+                    <RoundPickBreakdown picks={team.picks} showDelta={showDelta} round={round} />
                   </div>
                 )}
               </div>
@@ -1122,7 +1106,7 @@ function MajorSevensTable({
         )}
 
         {myTeam && (
-          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} showDelta={showDelta} />
+          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} showDelta={showDelta} round={round as Exclude<Round, "final">} />
         )}
         {myTeamDisqualifiedFromBotr && (
           <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1158,6 +1142,7 @@ function MajorSevensTable({
                     mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
                     medal={medalFor(t.position)}
                     showDelta={showDelta}
+                    round={round as Exclude<Round, "final">}
                   />
                 ))
               )}
