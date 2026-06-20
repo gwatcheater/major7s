@@ -153,14 +153,24 @@ function LeaderboardView() {
   // appear in the round toggle. Only shows a round once that round's import
   // has populated position_r{n}. Also gates BOTR (R3/Final only) naturally —
   // R3 tab won't appear until the cut has happened.
+  // Determine how many rounds have ESPN position data. Controls which tabs
+  // appear in the round toggle. Also detects the post-R2 cut state: if R2
+  // position data exists and the field has been cut (>5 players with CUT/WD
+  // status), the R3 tab and BOTR toggle should be available even before any
+  // R3 position data exists. CUT players score 100 and non-CUT players carry
+  // forward their R2 positions in the R3 view.
   const maxRound = useMemo(() => {
     let max = 0;
+    let cutCount = 0;
     for (const r of rows) {
       if (r.position_r1 !== null && max < 1) max = 1;
       if (r.position_r2 !== null && max < 2) max = 2;
       if (r.position_r3 !== null && max < 3) max = 3;
       if (r.position_r4 !== null) { max = 4; break; }
+      if (isCutOrWithdrawn(r.status_type)) cutCount++;
     }
+    // Post-cut: R2 data exists + field has been cut → surface R3 view
+    if (max === 2 && cutCount > 5) max = 3;
     return max;
   }, [rows]);
   const hasRoundData = maxRound >= 1;
