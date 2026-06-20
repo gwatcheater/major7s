@@ -1106,7 +1106,7 @@ function MajorSevensTable({
         )}
 
         {myTeam && (
-          <RoundActiveTeamPanel team={myTeam} medal={medalFor(myTeam.position)} showDelta={showDelta} round={round as Exclude<Round, "final">} />
+          <RoundActiveTeamPanel team={myTeam} medal={null} showDelta={showDelta} round={round as Exclude<Round, "final">} />
         )}
         {myTeamDisqualifiedFromBotr && (
           <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1140,7 +1140,7 @@ function MajorSevensTable({
                     key={t.team_id}
                     team={t}
                     mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
-                    medal={medalFor(t.position)}
+                    medal={null}
                     showDelta={showDelta}
                     round={round as Exclude<Round, "final">}
                   />
