@@ -620,10 +620,11 @@ interface RoundPickScore {
   golfer_name: string;
   bucket: number;
   position_in_round: number | null;
-  prev_position: number | null;   // previous round's position (null on R1)
-  is_carryforward: boolean;       // true when position_in_round is a fallback from prior round
+  prev_position: number | null;
+  is_carryforward: boolean;
   points: number;
   counted: boolean;
+  status_label: string | null; // "(CUT)" or "(WD)" appended to name in breakdown
 }
 
 // -- Round-view scoring computation --
@@ -713,6 +714,7 @@ function computeRoundScores(
           is_carryforward: false,
           points: NON_FINISHER_POINTS,
           counted: false,
+          status_label: "(WD)",
         };
       }
 
@@ -727,6 +729,7 @@ function computeRoundScores(
           is_carryforward: false,
           points: NON_FINISHER_POINTS,
           counted: false,
+          status_label: "(CUT)",
         };
       }
 
@@ -752,6 +755,7 @@ function computeRoundScores(
         is_carryforward: isCarryforward,
         points: effectivePos ?? NON_FINISHER_POINTS,
         counted: false,
+        status_label: null,
       };
     });
 
@@ -918,7 +922,7 @@ function RoundPickBreakdown({ picks, showDelta, round }: { picks: RoundPickScore
               <tr key={p.golfer_id} className={opacity}>
                 <td />
                 {showDelta && <td />}
-                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}{p.status_label && <span className="ml-1 text-[10px] opacity-70">{p.status_label}</span>}</td>
                 {/* Column 4: R1 = points; R2+ = previous round position */}
                 <td className={`px-3 py-0.5 text-right ${hasPrev ? "font-mono text-muted-foreground" : ptsCls}`}>
                   {hasPrev
@@ -1539,7 +1543,7 @@ function PickBreakdown({
               <tr key={p.bucket} className={opacity}>
                 <td />
                 {showDelta && <td />}
-                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}</td>
+                <td className={`px-3 py-0.5 truncate ${nameCls}`}>{p.golfer_name}{cutLike && <span className="ml-1 text-[10px] opacity-70">{p.status_type === "STATUS_WITHDRAWN" ? "(WD)" : "(CUT)"}</span>}</td>
                 <td className={`px-3 py-0.5 text-right ${pointsCls}`}>{p.points}</td>
                 <td />
                 <td />
