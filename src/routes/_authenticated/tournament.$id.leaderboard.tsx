@@ -620,19 +620,56 @@ interface RoundPickScore {
 }
 
 // -- Round-view scoring computation --
-function positionKeyForRound(round: Round): "position_r1" | "position_r2" | "position_r3" | "position_numeric" {
-  const map: Record<Round, "position_r1" | "position_r2" | "position_r3" | "position_numeric"> = {
-    r1: "position_r1",
-    r2: "position_r2",
-    r3: "position_r3",
-    final: "position_numeric",
-  };
-  return map[round];
+
+/**
+ * Build correct golfer positions for a round from actual round scores.
+ * ESPN's linescores.currentPosition is a live snapshot (position when that
+ * golfer finished, not recalculated after all finish). This recomputes
+ * using cumulative score through the round + Standard Competition Ranking,
+ * matching how real golf leaderboards work.
+ *
+ * Excludes partial rounds (< 58 strokes, e.g. WD mid-round) — those golfers
+ * score NON_FINISHER_POINTS via the fallback path.
+ */
+function buildRoundPositionMap(
+  lbRows: LbRow[],
+  round: Exclude<Round, "final">,
+): Map<string, number> {
+  const MIN_COMPLETE = 58; // no completed major round has ever been below 61
+  const entries: { golfer_id: string; cumulative: number }[] = [];
+
+  for (const row of lbRows) {
+    if (!row.golfer_id) continue;
+    const r1 = row.round_1;
+    const r2 = row.round_2;
+    const r3 = row.round_3;
+
+    let cum: number | null = null;
+    if (round === "r1" && r1 != null && r1 >= MIN_COMPLETE) {
+      cum = r1;
+    } else if (round === "r2" && r1 != null && r2 != null && r1 >= MIN_COMPLETE && r2 >= MIN_COMPLETE) {
+      cum = r1 + r2;
+    } else if (round === "r3" && r1 != null && r2 != null && r3 != null
+               && r1 >= MIN_COMPLETE && r2 >= MIN_COMPLETE && r3 >= MIN_COMPLETE) {
+      cum = r1 + r2 + r3;
+    }
+    if (cum != null) entries.push({ golfer_id: row.golfer_id, cumulative: cum });
+  }
+
+  entries.sort((a, b) => a.cumulative - b.cumulative);
+
+  const posMap = new Map<string, number>();
+  let rank = 1;
+  for (let i = 0; i < entries.length; i++) {
+    if (i > 0 && entries[i].cumulative !== entries[i - 1].cumulative) rank = i + 1;
+    posMap.set(entries[i].golfer_id, rank);
+  }
+  return posMap;
 }
 
 /**
  * Compute Major7s team scores on the fly for a non-final round.
- * Each pick scores its position_r{n} value (lower = better). Null = 100.
+ * Positions are recomputed from round scores (not ESPN snapshots).
  * Best 5 of 7 count. Standard Competition Ranking for ties.
  */
 function computeRoundScores(
@@ -641,7 +678,12 @@ function computeRoundScores(
   lbRows: LbRow[],
   round: Exclude<Round, "final">,
 ): RoundTeamScore[] {
-  const posKey = positionKeyForRound(round);
+  // Build position maps from actual round scores (correct SCR)
+  const posMap = buildRoundPositionMap(lbRows, round);
+  const prevRound: Exclude<Round, "final"> | null =
+    round === "r1" ? null : round === "r2" ? "r1" : "r2";
+  const prevPosMap = prevRound ? buildRoundPositionMap(lbRows, prevRound) : null;
+
   const lbByGolfer = new Map<string, LbRow>();
   for (const row of lbRows) {
     if (row.golfer_id) lbByGolfer.set(row.golfer_id, row);
@@ -651,16 +693,14 @@ function computeRoundScores(
     const teamPicks = picks.filter((p) => p.team_id === team.id);
     const pickScores: RoundPickScore[] = teamPicks.map((pick) => {
       const lb = lbByGolfer.get(pick.golfer_id);
-      const posVal = lb ? (lb[posKey] as number | null) : null;
+      const posVal = posMap.get(pick.golfer_id) ?? null;
 
-      // Previous round position (for display in breakdown)
-      const prevKey = round === "r2" ? "position_r1" as const : round === "r3" ? "position_r2" as const : null;
-      const prevPos = prevKey && lb ? (lb[prevKey] as number | null) : null;
+      // Previous round position (for display in breakdown + carry-forward)
+      const prevPos = prevPosMap?.get(pick.golfer_id) ?? null;
 
       // Mid-round fallback: if this round's position is null and the golfer
       // isn't CUT/WD (i.e. they just haven't teed off yet), carry forward
-      // their previous round's position. Once the admin re-imports ESPN data
-      // with the current round complete, real positions replace the fallback.
+      // their previous round's computed position.
       let effectivePos: number | null = posVal;
       let isCarryforward = false;
       if (effectivePos === null && round !== "r1" && lb && !isCutOrWithdrawn(lb.status_type)) {
