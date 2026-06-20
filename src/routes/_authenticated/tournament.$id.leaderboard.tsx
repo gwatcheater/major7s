@@ -68,6 +68,13 @@ function isCutOrWithdrawn(status: string | null) {
   return status === "STATUS_CUT" || status === "STATUS_WITHDRAWN";
 }
 
+/** WD specifically — ESPN maps both CUT and WD under STATUS_CUT, distinguished by shortDetail. */
+function isWithdrawn(row: { status_type: string | null; status_short_detail: string | null }): boolean {
+  if (row.status_type === "STATUS_WITHDRAWN") return true;
+  if (isCutOrWithdrawn(row.status_type) && row.status_short_detail?.toUpperCase().includes("WD")) return true;
+  return false;
+}
+
 function fmtToPar(v: number | null): { text: string; cls: string } {
   if (v === null || v === undefined) return { text: "—", cls: "text-muted-foreground" };
   if (v === 0) return { text: "E", cls: "text-foreground" };
@@ -693,10 +700,38 @@ function computeRoundScores(
     const teamPicks = picks.filter((p) => p.team_id === team.id);
     const pickScores: RoundPickScore[] = teamPicks.map((pick) => {
       const lb = lbByGolfer.get(pick.golfer_id);
-      const posVal = posMap.get(pick.golfer_id) ?? null;
-
-      // Previous round position (for display in breakdown + carry-forward)
       const prevPos = prevPosMap?.get(pick.golfer_id) ?? null;
+
+      // --- WD: always 100, every round ---
+      if (lb && isWithdrawn(lb)) {
+        return {
+          golfer_id: pick.golfer_id,
+          golfer_name: lb.espn_display_name || "Unknown",
+          bucket: pick.bucket,
+          position_in_round: null,
+          prev_position: prevPos,
+          is_carryforward: false,
+          points: NON_FINISHER_POINTS,
+          counted: false,
+        };
+      }
+
+      // --- CUT: actual position in R1, 100 from R2 onwards ---
+      if (lb && isCutOrWithdrawn(lb.status_type) && round !== "r1") {
+        return {
+          golfer_id: pick.golfer_id,
+          golfer_name: lb.espn_display_name || "Unknown",
+          bucket: pick.bucket,
+          position_in_round: null,
+          prev_position: prevPos,
+          is_carryforward: false,
+          points: NON_FINISHER_POINTS,
+          counted: false,
+        };
+      }
+
+      // --- Normal scoring ---
+      const posVal = posMap.get(pick.golfer_id) ?? null;
 
       // Mid-round fallback: if this round's position is null and the golfer
       // isn't CUT/WD (i.e. they just haven't teed off yet), carry forward
