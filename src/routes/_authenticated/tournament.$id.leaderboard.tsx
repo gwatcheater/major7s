@@ -1171,6 +1171,20 @@ function MajorSevensTable({
   // Thru Cut column header: show on R3 and R4 (post-cut rounds)
   const showThruCut = round === "r3" || round === "r4";
 
+  // Medal overlay: podium positions in R4 only when the round is complete
+  const r4Complete =
+    round === "r4" &&
+    getInProgressRound(lbRows) === null &&
+    lbRows.some((r) => r.round_4 != null);
+
+  const medalForPosition = (pos: number): "gold" | "silver" | "bronze" | null => {
+    if (!r4Complete) return null;
+    if (pos === 1) return "gold";
+    if (pos === 2) return "silver";
+    if (pos === 3) return "bronze";
+    return null;
+  };
+
   return (
     <div className="space-y-3">
       {/* ALL / BOTR toggle — R3 and R4 */}
@@ -1213,7 +1227,7 @@ function MajorSevensTable({
       )}
 
       {myTeam && (
-        <RoundActiveTeamPanel team={myTeam} medal={null} showDelta={showDelta} round={round} />
+        <RoundActiveTeamPanel team={myTeam} medal={medalForPosition(myTeam.position)} showDelta={showDelta} round={round} />
       )}
       {myTeamDisqualifiedFromBotr && (
         <div className="border border-dashed border-border bg-card/50 rounded-md px-3 py-2 text-xs text-muted-foreground italic">
@@ -1247,7 +1261,7 @@ function MajorSevensTable({
                   key={t.team_id}
                   team={t}
                   mine={!!myTeamId && (t.team_id === myTeamId || t.owner_user_id === myTeamId)}
-                  medal={null}
+                  medal={medalForPosition(t.position)}
                   showDelta={showDelta}
                   round={round}
                 />
