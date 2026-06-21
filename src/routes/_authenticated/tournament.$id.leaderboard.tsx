@@ -927,7 +927,7 @@ function RoundPickBreakdown({ picks, showDelta, round }: { picks: RoundPickScore
                         : "";
                   return (
                     <td key={i} className={`px-1 py-0.5 text-center font-mono text-[10px] ${cellCls}`}>
-                      {posNull ? "—" : <span className={isCarry ? "italic" : ""}>{pos}</span>}
+                      {posNull ? (p.status_label ? NON_FINISHER_POINTS : "—") : <span className={isCarry ? "italic" : ""}>{pos}</span>}
                     </td>
                   );
                 })}
