@@ -598,20 +598,60 @@ interface RoundPickScore {
 
 // -- Round-view scoring computation --
 
+/** Return the ESPN-stored position for a specific round. */
+function espnPositionForRound(row: LbRow, round: Round): number | null {
+  switch (round) {
+    case "r1": return row.position_r1;
+    case "r2": return row.position_r2;
+    case "r3": return row.position_r3;
+    case "r4": return row.position_r4;
+  }
+}
+
 /**
- * Build correct golfer positions for a round from actual round scores.
- * ESPN's linescores.currentPosition is a live snapshot (position when that
- * golfer finished, not recalculated after all finish). This recomputes
- * using cumulative score through the round + Standard Competition Ranking,
- * matching how real golf leaderboards work.
+ * Detect which round (if any) is currently in progress.
+ * A round is in-progress when at least one golfer has STATUS_IN_PROGRESS
+ * and that round is the latest one they have stroke data for.
+ */
+function getInProgressRound(lbRows: LbRow[]): Round | null {
+  const ipRows = lbRows.filter((r) => r.status_type === "STATUS_IN_PROGRESS");
+  if (ipRows.length === 0) return null;
+  if (ipRows.some((r) => r.round_4 != null)) return "r4";
+  if (ipRows.some((r) => r.round_3 != null)) return "r3";
+  if (ipRows.some((r) => r.round_2 != null)) return "r2";
+  if (ipRows.some((r) => r.round_1 != null)) return "r1";
+  return null;
+}
+
+/**
+ * Build correct golfer positions for a round.
  *
- * Excludes partial rounds (< 58 strokes, e.g. WD mid-round) — those golfers
- * score NON_FINISHER_POINTS via the fallback path.
+ * For COMPLETED rounds: recompute from cumulative stroke totals using
+ * Standard Competition Ranking. ESPN's linescores.currentPosition is a
+ * snapshot taken when each golfer finishes and is not recalculated after
+ * all golfers complete, so we recompute for accuracy.
+ *
+ * For IN-PROGRESS rounds: use ESPN's live position_rX directly. In-progress
+ * golfers have partial stroke totals (e.g. 66 through 17 holes) that pass
+ * the MIN_COMPLETE filter and corrupt cumulative-based rankings.
  */
 function buildRoundPositionMap(
   lbRows: LbRow[],
   round: Round,
+  inProgressRound: Round | null,
 ): Map<string, number> {
+  // In-progress round: use ESPN's live positions instead of computing
+  if (round === inProgressRound) {
+    const posMap = new Map<string, number>();
+    for (const row of lbRows) {
+      if (!row.golfer_id) continue;
+      const pos = espnPositionForRound(row, round);
+      if (pos != null) posMap.set(row.golfer_id, pos);
+    }
+    return posMap;
+  }
+
+  // Completed round: recompute from cumulative strokes
   const MIN_COMPLETE = 58; // no completed major round has ever been below 61
   const entries: { golfer_id: string; cumulative: number }[] = [];
 
@@ -662,7 +702,8 @@ function computeRoundScores(
   // Build position maps for all rounds up to the current one
   const roundIndex = round === "r1" ? 0 : round === "r2" ? 1 : round === "r3" ? 2 : 3;
   const allRounds: Round[] = (["r1", "r2", "r3", "r4"] as Round[]).slice(0, roundIndex + 1);
-  const posMaps = allRounds.map((r) => buildRoundPositionMap(lbRows, r));
+  const inProgressRound = getInProgressRound(lbRows);
+  const posMaps = allRounds.map((r) => buildRoundPositionMap(lbRows, r, inProgressRound));
 
   const lbByGolfer = new Map<string, LbRow>();
   for (const row of lbRows) {
