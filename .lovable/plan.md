@@ -1,57 +1,31 @@
-## Answer to your question
+# Plan — fix `missing_unsubscribe` in two more send paths, then verify
 
-**Migration-welcome WILL hit the same 400.** Same code shape as the old admin-new-user hook: `purpose: 'transactional'` enqueued via `enqueue_email` with no `unsubscribe_token`.
+## 1. `src/lib/admin-users.functions.ts` — `sendWelcomeEmails`
+This was outlined last turn but not landed. Insert the mint-or-reuse block right before the `email_send_log` pending insert, and add `unsubscribe_token: unsubscribeToken,` to the `enqueue_email` payload. Logic mirrors `/lovable/email/transactional/send`:
 
-**Why your test "delivered" but admin-new-user 400'd:** it didn't. `email_send_log` has zero rows for `template_name='migration-welcome'` — the only template ever logged is `admin-new-user` (84 rows). Either the test never actually invoked `sendWelcomeEmails` end-to-end, or it ran before this code path existed. There is no successful send to point at.
+- Lower-case `email`.
+- `select token, used_at from email_unsubscribe_tokens where email = ? maybeSingle()`.
+- If row exists and `used_at` is null → reuse.
+- Else generate 32 random bytes (`crypto.getRandomValues`) → hex → upsert `{ token, email }` with `onConflict: "email", ignoreDuplicates: true`, then re-select to get the canonical token (handles race where another concurrent insert won).
+- Add `unsubscribe_token` to the enqueue payload.
 
-**Enforcement scope:** global, keyed on `purpose`. The 400 body — `{"type":"missing_unsubscribe","message":"Transactional emails must include an unsubscribe_token"}` — is emitted by the Lovable email API for any payload with `purpose: 'transactional'` and no `unsubscribe_token`, regardless of template or recipient. Not per-template, not per-message-class beyond `purpose`. So every direct-enqueue path in this codebase that sets `purpose: 'transactional'` and skips the token is broken; only `/lovable/email/transactional/send` mints it correctly. That covers: admin-new-user (now fixed), migration-welcome (NOT fixed), pick-reminder (also direct enqueue — needs same fix, flagged in the handover doc).
+No other behavior changes (recovery link generation, render, suppression check, message_id, idempotency_key all unchanged).
 
-## Plan — fix before publish
+## 2. `src/routes/api/public/hooks/pick-reminder.ts`
+Same defect — `purpose: 'transactional'` enqueued with no token. Apply the same mint-or-reuse block inside the per-recipient loop (just before the `email_send_log` pending insert), and add `unsubscribe_token: unsubscribeToken,` to the payload. Per-recipient placement is correct because the token must match the specific recipient.
 
-### Scope
-Apply the same mint-or-reuse logic to `src/lib/admin-users.functions.ts` `sendWelcomeEmails` so migration-welcome can never 400 on publish.
+## 3. Verify both fixes build, then publish
+Both routes ship at publish-time. The published build is still the old code, so re-sending against the live host will keep 400'ing until publish completes. Plan:
 
-### Edit: `src/lib/admin-users.functions.ts` (sendWelcomeEmails, around line 384)
+1. Apply the two file edits.
+2. Ask the user to publish (the 400s will persist until the new code is live).
+3. After publish, re-run the backfill against the live host:
+   - 7 admin-new-user signups: `mary.thorp`, `pridaym`, `footbolt@gmail.com`, `bpurkiss`, `michael_miraglia`, `lholmes1481`, `finlaysaunders` → POST each to `/api/public/hooks/new-user-signup`.
+   - 1 migration-welcome: trigger `sendWelcomeEmails` for `freddie@rjparker.co.uk`.
+4. Query `email_send_log` (deduped by `message_id`) for these 8 recipients and confirm `status = 'sent'`, not `failed/missing_unsubscribe`. Show the rows.
 
-Insert between the suppression check and the `email_send_log` pending insert:
+## 4. Report
+Paste the final `sendWelcomeEmails` function source and the verification table.
 
-```ts
-// Resolve unsubscribe token for the recipient — required by the email API
-// for purpose:'transactional'. Mirror /lovable/email/transactional/send.
-const normalizedEmail = email.toLowerCase();
-let unsubscribeToken: string;
-const { data: existingToken } = await supabaseAdmin
-  .from("email_unsubscribe_tokens")
-  .select("token, used_at")
-  .eq("email", normalizedEmail)
-  .maybeSingle();
-if (existingToken && !existingToken.used_at) {
-  unsubscribeToken = existingToken.token;
-} else {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const newToken = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  await supabaseAdmin
-    .from("email_unsubscribe_tokens")
-    .upsert(
-      { token: newToken, email: normalizedEmail },
-      { onConflict: "email", ignoreDuplicates: true },
-    );
-  const { data: stored } = await supabaseAdmin
-    .from("email_unsubscribe_tokens")
-    .select("token")
-    .eq("email", normalizedEmail)
-    .maybeSingle();
-  unsubscribeToken = stored?.token ?? newToken;
-}
-```
-
-Then add `unsubscribe_token: unsubscribeToken,` to the `payload` object in the existing `enqueue_email` call (around line 405).
-
-### Out of scope for this turn (flag only)
-`pick-reminder` (`src/routes/api/public/hooks/pick-reminder.ts`) has the same shape. Not in your "before I publish" question, but it will 400 the next time it fires. Recommend fixing it the same way in a follow-up.
-
-### Verify
-After publish, trigger one migration-welcome send to a real recipient and confirm the resulting `email_send_log` row reaches `status='sent'`, not `status='failed'` with `missing_unsubscribe`.
+## Out of scope
+No template changes, no schema changes, no changes to the DB trigger or the new-user-signup hook (already fixed).
