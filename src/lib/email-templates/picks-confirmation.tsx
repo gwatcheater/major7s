@@ -23,12 +23,12 @@ interface PickRow {
 
 interface Props {
   firstName?: string
-  tournamentName?: string
+  shortName?: string
   year?: string | number
   location?: string
-  startDate?: string
-  endDate?: string
+  dateRange?: string
   deadline?: string
+  lastUpdated?: string
   teamNickname?: string
   picks?: PickRow[]
   tournamentUrl?: string
@@ -40,19 +40,19 @@ const GOLD = '#C9A227'
 
 const PicksConfirmationEmail = ({
   firstName,
-  tournamentName,
+  shortName,
   year,
   location,
-  startDate,
-  endDate,
+  dateRange,
   deadline,
+  lastUpdated,
   teamNickname,
   picks,
   tournamentUrl,
   tweakCount,
 }: Props) => {
   const greeting = firstName && firstName.trim() ? `Hi ${firstName.trim()},` : 'Hi there,'
-  const name = (tournamentName && tournamentName.trim()) || 'the tournament'
+  const name = (shortName && shortName.trim()) || 'Major7s'
   const yr = year ? String(year) : ''
   const url = (tournamentUrl && tournamentUrl.trim()) || 'https://www.major7s.com'
   const team = (teamNickname && teamNickname.trim()) || 'Your team'
@@ -68,23 +68,16 @@ const PicksConfirmationEmail = ({
         <Container style={container}>
           <Section style={header}>
             <Heading style={headerHeading}>Picks Confirmed</Heading>
+            <Text style={headerTournament}>{`${name}${yr ? ` ${yr}` : ''}`}</Text>
+            {location ? <Text style={headerMeta}>{location}</Text> : null}
+            {dateRange ? <Text style={headerMeta}>{dateRange}</Text> : null}
           </Section>
 
           <Section style={contentSection}>
             <Text style={text}>{greeting}</Text>
-
-            <Text style={infoTitle}>
-              <strong>{`${name}${yr ? ` ${yr}` : ''}`}</strong>
-            </Text>
-            {location ? <Text style={infoLine}>{location}</Text> : null}
-            {startDate || endDate ? (
-              <Text style={infoLine}>{`${startDate ?? ''} - ${endDate ?? ''}`}</Text>
-            ) : null}
-            <Text style={spacer}>&nbsp;</Text>
             <Text style={lockedIn}>
               <strong>Picks submitted. You're locked in!</strong>
             </Text>
-            <Text style={spacer}>&nbsp;</Text>
 
             <Section style={pickTable}>
               <Row style={teamHeaderRow}>
@@ -100,9 +93,10 @@ const PicksConfirmationEmail = ({
               ))}
             </Section>
 
-            {deadline ? (
-              <Text style={text}>{`Unlimited edits allowed until ${deadline}.`}</Text>
+            {lastUpdated ? (
+              <Text style={meta}>{`Last updated: ${lastUpdated}`}</Text>
             ) : null}
+            <Text style={meta}>{`Tweak count: ${tweaks}`}</Text>
 
             <Section style={buttonWrap}>
               <Button style={button} href={url}>
@@ -110,8 +104,11 @@ const PicksConfirmationEmail = ({
               </Button>
             </Section>
 
+            {deadline ? (
+              <Text style={text}>{`Unlimited edits allowed until ${deadline}.`}</Text>
+            ) : null}
+
             <Text style={text}>Good luck.</Text>
-            <Text style={meta}>{`Tweak count: ${tweaks}`}</Text>
 
             <Hr style={hr} />
             <Text style={footer}>
@@ -129,19 +126,19 @@ const PicksConfirmationEmail = ({
 export const template = {
   component: PicksConfirmationEmail,
   subject: (d: Record<string, any>) => {
-    const name = (d?.tournamentName as string) || 'Major7s'
+    const name = (d?.shortName as string) || 'Major7s'
     const yr = d?.year ? ` ${d.year}` : ''
     return `Picks confirmed - ${name}${yr}`
   },
   displayName: 'Picks confirmation',
   previewData: {
     firstName: 'Rob',
-    tournamentName: 'The Masters',
+    shortName: 'PGA',
     year: '2026',
-    location: 'Augusta National Golf Club, Augusta, GA',
-    startDate: '09/04/2026',
-    endDate: '12/04/2026',
-    deadline: '09/04/2026, 13:00',
+    location: 'Aronimink Golf Club',
+    dateRange: '14 - 17 May',
+    deadline: '13 May @ 22:00 BST',
+    lastUpdated: '15 Jul 2026 @ 14:32 BST',
     teamNickname: 'Birdie Bandits',
     tournamentUrl: 'https://www.major7s.com',
     tweakCount: 2,
@@ -182,17 +179,27 @@ const headerHeading = {
   fontSize: '20px',
   lineHeight: '1.3',
   fontWeight: 'bold' as const,
-  margin: 0,
+  margin: '0 0 12px',
   textTransform: 'uppercase' as const,
   letterSpacing: '0.5px',
 }
+const headerTournament = {
+  color: GOLD,
+  fontSize: '18px',
+  lineHeight: '1.3',
+  fontWeight: 'bold' as const,
+  margin: '0 0 4px',
+}
+const headerMeta = {
+  color: 'rgba(255,255,255,0.75)',
+  fontSize: '14px',
+  lineHeight: '1.4',
+  margin: '0 0 2px',
+}
 const contentSection = { padding: '28px' }
 const text = { fontSize: '15px', color: '#1f2937', lineHeight: '1.6', margin: '0 0 16px' }
-const infoTitle = { fontSize: '16px', color: '#1f2937', lineHeight: '1.5', margin: '0 0 4px' }
-const infoLine = { fontSize: '14px', color: '#1f2937', lineHeight: '1.5', margin: '0 0 4px' }
-const lockedIn = { fontSize: '15px', color: FOREST, lineHeight: '1.6', margin: '0 0 4px' }
-const spacer = { fontSize: '8px', lineHeight: '8px', margin: '8px 0' }
-const meta = { fontSize: '13px', color: '#6b7280', margin: '4px 0 16px' }
+const lockedIn = { fontSize: '15px', color: FOREST, lineHeight: '1.6', margin: '0 0 16px' }
+const meta = { fontSize: '13px', color: '#6b7280', margin: '4px 0' }
 const pickTable = {
   border: '1px solid #e5e7eb',
   borderRadius: '6px',
