@@ -206,7 +206,7 @@ export const sendPicksConfirmation = createServerFn({ method: 'POST' })
       teamId: data.teamId,
       firstNameUserId: userId,
     })
-    if (!('ok' in built)) return { ok: false, reason: built.error }
+    if (!built.ok) return { ok: false as const, reason: built.reason }
     if (!built.ownerEmail) return { ok: false, reason: 'no_email' as const }
 
     const sent = await postSend({
