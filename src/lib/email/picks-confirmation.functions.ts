@@ -1,131 +1,302 @@
 import { createServerFn } from '@tanstack/react-start'
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware'
 
-interface Input {
+interface SendInput {
   tournamentId: string
   teamId: string
-  isUpdate?: boolean
-  tweakCount?: number
+}
+
+interface TestInput {
+  tournamentId: string
+  teamId?: string
+  teamNickname?: string
+  recipientEmail: string
+}
+
+function pad2(n: number) {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+// Format an ISO date-only string (YYYY-MM-DD) as DD/MM/YYYY without TZ drift.
+function fmtDateOnly(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const m = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return ''
+  return `${m[3]}/${m[2]}/${m[1]}`
+}
+
+// Format a TZ timestamp as "DD/MM/YYYY, HH:mm" in Europe/London.
+function fmtDeadlineUK(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('day')}/${get('month')}/${get('year')}, ${get('hour')}:${get('minute')}`
+}
+
+type SupaClient = Awaited<ReturnType<typeof getCtx>>['supabase']
+
+// Builds the templateData payload + idempotency key + recipient.
+async function buildPicksConfirmationPayload(
+  supabase: SupaClient,
+  args: { tournamentId: string; teamId: string; firstNameUserId?: string | null },
+) {
+  const [tournamentRes, picksRes, teamRes, profileRes] = await Promise.all([
+    supabase
+      .from('tournaments')
+      .select('id, name, location, start_date, end_date, submission_deadline')
+      .eq('id', args.tournamentId)
+      .maybeSingle(),
+    supabase
+      .from('picks')
+      .select('bucket, golfer_id, last_edited_at, tweak_count')
+      .eq('tournament_id', args.tournamentId)
+      .eq('team_id', args.teamId)
+      .order('bucket'),
+    supabase.from('teams').select('id, nickname, owner_user_id').eq('id', args.teamId).maybeSingle(),
+    args.firstNameUserId
+      ? supabase
+          .from('profiles')
+          .select('id, first_name, email')
+          .eq('id', args.firstNameUserId)
+          .maybeSingle()
+      : Promise.resolve({ data: null as any }),
+  ])
+
+  const tournament = tournamentRes.data as any
+  const picks = (picksRes.data ?? []) as any[]
+  const team = teamRes.data as any
+
+  if (!tournament) return { error: 'no_tournament' as const }
+  if (!team) return { error: 'no_team' as const }
+  if (!picks.length) return { error: 'no_picks' as const }
+
+  const golferIds = Array.from(new Set(picks.map((p) => p.golfer_id).filter(Boolean))) as string[]
+  const golferNames = new Map<string, string>()
+  if (golferIds.length) {
+    const { data: golfers } = await supabase
+      .from('golfers')
+      .select('id, golfer_name')
+      .in('id', golferIds)
+    for (const g of (golfers ?? []) as any[]) golferNames.set(g.id, g.golfer_name)
+  }
+
+  const pickRows = picks
+    .map((p) => ({ bucket: p.bucket as number, golfer: golferNames.get(p.golfer_id) ?? 'Unknown' }))
+    .sort((a, b) => a.bucket - b.bucket)
+
+  const tweakCount = picks.reduce((m, p) => Math.max(m, p.tweak_count ?? 0), 0)
+  const maxEdited = picks.reduce((m, p) => {
+    const t = p.last_edited_at ? new Date(p.last_edited_at).getTime() : 0
+    return t > m ? t : m
+  }, 0)
+  const maxEditedIso = maxEdited ? new Date(maxEdited).toISOString() : 'unknown'
+
+  const year = String(tournament.start_date ?? '').slice(0, 4)
+
+  // Resolve owner email + first name if caller didn't pre-fetch.
+  let ownerEmail: string | null = null
+  let firstName: string | null = profileRes.data?.first_name ?? null
+  if (profileRes.data?.email) {
+    ownerEmail = profileRes.data.email
+  } else if (team?.owner_user_id) {
+    const { data: ownerProfile } = await supabase
+      .from('profiles')
+      .select('first_name, email')
+      .eq('id', team.owner_user_id)
+      .maybeSingle()
+    ownerEmail = (ownerProfile as any)?.email ?? null
+    if (!firstName) firstName = (ownerProfile as any)?.first_name ?? null
+  }
+
+  const origin = await resolveOrigin()
+  const tournamentUrl = `${origin}/tournament/${tournament.id}`
+
+  const templateData = {
+    firstName: firstName ?? undefined,
+    tournamentName: tournament.name as string,
+    year,
+    location: tournament.location as string,
+    startDate: fmtDateOnly(tournament.start_date),
+    endDate: fmtDateOnly(tournament.end_date),
+    deadline: fmtDeadlineUK(tournament.submission_deadline),
+    teamNickname: team.nickname as string,
+    picks: pickRows,
+    tournamentUrl,
+    tweakCount,
+  }
+
+  const idempotencyKey = `picks-confirmation-${args.teamId}-${args.tournamentId}-${maxEditedIso}`
+
+  return { ok: true as const, templateData, idempotencyKey, ownerEmail, origin }
+}
+
+async function resolveOrigin(): Promise<string> {
+  try {
+    const { getRequestHost } = await import('@tanstack/react-start/server')
+    const host = getRequestHost()
+    if (host) return `https://${host}`
+  } catch {
+    // ignore
+  }
+  return 'https://www.major7s.com'
+}
+
+async function postSend(args: {
+  origin: string
+  recipientEmail: string
+  idempotencyKey: string
+  templateData: Record<string, any>
+}) {
+  const { getRequestHeader } = await import('@tanstack/react-start/server')
+  const auth = getRequestHeader('authorization') ?? ''
+  const res = await fetch(`${args.origin}/lovable/email/transactional/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: auth },
+    body: JSON.stringify({
+      templateName: 'picks-confirmation',
+      recipientEmail: args.recipientEmail,
+      idempotencyKey: args.idempotencyKey,
+      templateData: args.templateData,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error('picks-confirmation send failed', { status: res.status, body })
+    return { ok: false as const, status: res.status, body }
+  }
+  return { ok: true as const }
+}
+
+// Helper to get context shape for typing in builder.
+function getCtx() {
+  return null as unknown as { supabase: any; userId: string }
 }
 
 /**
  * Server fn called from the lineup save flow.
- * Fetches user email, tournament, golfer names, then enqueues the picks-confirmation
- * email. Fire-and-forget on the client; errors are logged but never surface to the user.
+ * Pulls tournament + picks + team + profile, sends picks-confirmation through
+ * the shared transactional send route (unsubscribe token is minted there).
+ * Idempotency key is stable per (team, tournament, latest edit time).
  */
 export const sendPicksConfirmation = createServerFn({ method: 'POST' })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: Input) => {
+  .inputValidator((input: SendInput) => {
     if (!input?.tournamentId || typeof input.tournamentId !== 'string') {
       throw new Error('tournamentId required')
     }
     if (!input?.teamId || typeof input.teamId !== 'string') {
       throw new Error('teamId required')
     }
+    return { tournamentId: input.tournamentId, teamId: input.teamId }
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any
+    const built = await buildPicksConfirmationPayload(supabase, {
+      tournamentId: data.tournamentId,
+      teamId: data.teamId,
+      firstNameUserId: userId,
+    })
+    if (!('ok' in built)) return { ok: false, reason: built.error }
+    if (!built.ownerEmail) return { ok: false, reason: 'no_email' as const }
+
+    const sent = await postSend({
+      origin: built.origin,
+      recipientEmail: built.ownerEmail,
+      idempotencyKey: built.idempotencyKey,
+      templateData: built.templateData,
+    })
+    return sent.ok ? { ok: true as const } : { ok: false as const, reason: 'send_failed' as const }
+  })
+
+/**
+ * Admin-only diagnostic: render + send a real picks-confirmation using
+ * existing tournament/team data to an arbitrary recipient email.
+ *
+ * Call from an authenticated admin context:
+ *   const send = useServerFn(sendPicksConfirmationTest)
+ *   await send({ data: { tournamentId, teamNickname, recipientEmail } })
+ *
+ * Returns the built templateData + idempotencyKey so you can verify every
+ * variable is sourced correctly.
+ */
+export const sendPicksConfirmationTest = createServerFn({ method: 'POST' })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: TestInput) => {
+    if (!input?.tournamentId || typeof input.tournamentId !== 'string') {
+      throw new Error('tournamentId required')
+    }
+    if (!input?.recipientEmail || typeof input.recipientEmail !== 'string') {
+      throw new Error('recipientEmail required')
+    }
+    if (!input.teamId && !input.teamNickname) {
+      throw new Error('teamId or teamNickname required')
+    }
     return {
       tournamentId: input.tournamentId,
-      teamId: input.teamId,
-      isUpdate: !!input.isUpdate,
-      tweakCount: typeof input.tweakCount === 'number' ? input.tweakCount : 0,
+      teamId: input.teamId?.trim() || undefined,
+      teamNickname: input.teamNickname?.trim() || undefined,
+      recipientEmail: input.recipientEmail.trim(),
     }
   })
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context
+    const { supabase, userId } = context as any
 
-    const [profileRes, tournamentRes, picksRes] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('email, first_name, nickname')
-        .eq('id', userId)
-        .maybeSingle(),
-      supabase
-        .from('tournaments')
-        .select('id, name, submission_deadline')
-        .eq('id', data.tournamentId)
-        .maybeSingle(),
-      supabase
-        .from('picks')
-        .select('bucket, golfer_id')
-        .eq('tournament_id', data.tournamentId)
-        .eq('team_id', data.teamId)
-        .order('bucket'),
-    ])
+    const { data: isAdmin, error: roleErr } = await supabase.rpc('has_role', {
+      _user_id: userId,
+      _role: 'admin',
+    })
+    if (roleErr) throw new Error(`role check failed: ${roleErr.message}`)
+    if (!isAdmin) throw new Error('Forbidden: admin only')
 
-    const profile = profileRes.data
-    const tournament = tournamentRes.data
-    const picks = picksRes.data ?? []
-
-    if (!profile?.email) return { ok: false, reason: 'no_email' as const }
-    if (!tournament) return { ok: false, reason: 'no_tournament' as const }
-    if (!picks.length) return { ok: false, reason: 'no_picks' as const }
-
-    const golferIds = Array.from(
-      new Set(picks.map((p: any) => p.golfer_id).filter(Boolean)),
-    ) as string[]
-    let golferNames = new Map<string, string>()
-    if (golferIds.length) {
-      const { data: golfers } = await supabase
-        .from('golfers')
-        .select('id, name')
-        .in('id', golferIds)
-      for (const g of golfers ?? []) golferNames.set((g as any).id, (g as any).name)
+    let teamId = data.teamId
+    if (!teamId) {
+      const { data: teams, error } = await supabase
+        .from('teams')
+        .select('id, nickname')
+        .ilike('nickname', data.teamNickname!)
+      if (error) throw new Error(`team lookup failed: ${error.message}`)
+      if (!teams?.length) throw new Error(`no team found with nickname "${data.teamNickname}"`)
+      if (teams.length > 1) {
+        throw new Error(
+          `ambiguous team nickname "${data.teamNickname}" - matches ${teams.length} teams; pass teamId instead`,
+        )
+      }
+      teamId = (teams[0] as any).id as string
     }
 
-    const pickRows = picks.map((p: any) => ({
-      bucket: p.bucket,
-      golfer: golferNames.get(p.golfer_id) ?? 'Unknown',
-    }))
-
-    const deadline = tournament.submission_deadline
-      ? new Date(tournament.submission_deadline).toLocaleString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          timeZoneName: 'short',
-        })
-      : undefined
-
-    // Build absolute URL for the tournament page using the request origin.
-    const { getRequestHost } = await import('@tanstack/react-start/server')
-    let origin = 'https://www.major7s.com'
-    try {
-      const host = getRequestHost()
-      if (host) origin = `https://${host}`
-    } catch {
-      // ignore — fall back to default
+    const built = await buildPicksConfirmationPayload(supabase, {
+      tournamentId: data.tournamentId,
+      teamId: teamId!,
+      firstNameUserId: null,
+    })
+    if (!('ok' in built)) {
+      return { ok: false as const, reason: built.error, teamId }
     }
-    const tournamentUrl = `${origin}/tournament/${tournament.id}`
 
-    // Call the shared transactional send route internally, forwarding the user's
-    // bearer token so it passes auth.
-    const { getRequestHeader } = await import('@tanstack/react-start/server')
-    const auth = getRequestHeader('authorization') ?? ''
-
-    const res = await fetch(`${origin}/lovable/email/transactional/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: auth },
-      body: JSON.stringify({
-        templateName: 'picks-confirmation',
-        recipientEmail: profile.email,
-        idempotencyKey: `picks-confirm-${data.tournamentId}-${data.teamId}-${Date.now()}`,
-        templateData: {
-          firstName: profile.first_name || profile.nickname,
-          tournamentName: tournament.name,
-          isUpdate: data.isUpdate,
-          tweakCount: data.tweakCount,
-          deadline,
-          tournamentUrl,
-          picks: pickRows,
-        },
-      }),
+    const sent = await postSend({
+      origin: built.origin,
+      recipientEmail: data.recipientEmail,
+      idempotencyKey: `${built.idempotencyKey}-test-${Date.now()}`,
+      templateData: built.templateData,
     })
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      console.error('picks-confirmation send failed', { status: res.status, body })
-      return { ok: false, reason: 'send_failed' as const }
+    return {
+      ok: sent.ok,
+      recipientEmail: data.recipientEmail,
+      teamId,
+      idempotencyKey: built.idempotencyKey,
+      templateData: built.templateData,
+      sendStatus: sent.ok ? 200 : sent.status,
+      sendBody: sent.ok ? null : sent.body,
     }
-    return { ok: true as const }
   })
