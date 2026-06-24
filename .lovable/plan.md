@@ -1,31 +1,43 @@
-## Problem
 
-`www.major7s.com` renders a blank page for fresh / incognito visitors. The HTML and JS bundle return 200, but nothing mounts and no redirect occurs. Confirmed in a clean headless browser.
+## Goal
 
-## Cause
+Add a NEW app email "Migration welcome" for pre-provisioned users. Rewire the existing admin "Send welcome" action to mint a recovery link via `generateLink` and send the new app email (instead of calling `resetPasswordForEmail`, which sends a Supabase auth email). Revert the recovery auth email to default wording. Don't touch the `/welcome` page or any other auth template.
 
-`src/routes/index.tsx` defines only a `beforeLoad` (no `component`). It guards with `if (typeof window === "undefined") return;` and then reads the Supabase session to redirect to `/login` or `/home`.
+## Changes
 
-During SSR the guard short-circuits, so the `/` match is sent to the client with no component. On hydration, TanStack Router reuses the SSR-resolved match and does not re-run `beforeLoad`, so the client never redirects — the user sees the blank shell. Browsers with an existing session only avoid this by navigating in from another route.
+### 1. Revert recovery auth email to default
+- `src/lib/email-templates/recovery.tsx` — already uses default "Reset Your Password" wording. No body change needed; verify it stays default.
+- `src/routes/lovable/email/auth/webhook.ts` — change `EMAIL_SUBJECTS.recovery` from `"You're in — set up your Major7s account"` back to default `"Reset your password"`. Default `redirect_to` for recovery stays `https://${ROOT_DOMAIN}/reset-password` (already correct).
 
-## Fix
+### 2. New app email template
+- Create `src/lib/email-templates/migration-welcome.tsx`:
+  - Props: `firstName?: string`, `setPasswordUrl: string`.
+  - Layout/styles match `welcome.tsx`/`recovery.tsx`: white outer body, forest `#103D2E` header bar, gold `#C9A227` button with `#103D2E` dark text.
+  - Greeting `Hi {firstName},` else `Hi there,`.
+  - Header heading: `Major7s.com Is Live. Tweaked, Upgraded.`
+  - Three body paragraphs, button "Set your password" → `setPasswordUrl`, plain-text fallback link below button, footer copy — exactly as specified.
+  - Export `template` satisfying `TemplateEntry` with `subject: "You're in — set up your Major7s account"`, `displayName: "Migration welcome"`, `previewData: { firstName: 'Rob', setPasswordUrl: 'https://www.major7s.com/welcome' }`.
+- Register in `src/lib/email-templates/registry.ts` under key `"migration-welcome"`.
 
-Make the `/` route resolve the redirect on every client load.
+### 3. Rewire `sendWelcomeEmails` in `src/lib/admin-users.functions.ts`
+- Keep signature `{ userIds, redirectTo }` so call sites in `users-directory-tab.tsx` (per-user mail icon + bulk button) work unchanged.
+- For each user:
+  1. Resolve `email` and `first_name` from `profiles`.
+  2. `supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })` to MINT the link without sending. Use `data.properties.action_link` as `setPasswordUrl`.
+  3. Render `migration-welcome` template via React Email → html + plaintext.
+  4. Enqueue into pgmq queue `transactional_emails` via `supabase.rpc('enqueue_email', …)` with the same payload shape used by `transactional/send.ts` (message_id, from, sender_domain, subject, html, text, purpose, label, idempotency_key=`migration-welcome:${userId}`, queued_at). Insert pending row into `email_send_log` before enqueue, failed row on enqueue error (matches existing pattern).
+  5. Check `suppressed_emails` first; skip + log `suppressed` if hit.
+- Keep the 150ms throttle and the `admin_audit` insert with `action: "user.welcome_sent"`.
+- Return the same `{ sent, failed, results }` shape.
 
-Edit `src/routes/index.tsx`:
+### 4. Redirect URL
+- `/welcome` is the redirect target passed in by the admin UI (already wired). Surface a one-line note that `https://www.major7s.com/welcome` (and `https://major7s.lovable.app/welcome`) must be in the Supabase Auth → URL Configuration → Redirect URLs list — required for `generateLink` to honour the redirectTo. No code change for this; the comment block already mentions it.
 
-1. Keep the recovery-link handling in `beforeLoad` (it's a pure URL check, safe on SSR and client).
-2. Remove the session check from `beforeLoad`.
-3. Add `ssr: false` to the route so the match is always resolved on the client (no stale SSR match), OR add a `component` that performs the session check + `navigate({ to: "/login" | "/home", replace: true })` inside a `useEffect`, rendering a minimal loading state in the meantime.
+### 5. Verification
+- Build passes (typecheck via Vite plugin).
+- Recovery template/subject restored to default.
+- `migration-welcome` shows up in registry.
+- `sendWelcomeEmails` uses `generateLink` + transactional enqueue, no `resetPasswordForEmail` call remaining.
+- Call sites in `users-directory-tab.tsx` unchanged.
 
-Preferred: `ssr: false` + move the session/redirect logic into a small `component`. This keeps the redirect logic in one place and guarantees it runs on every fresh visit (including incognito).
-
-## Verification
-
-- Headless: `curl` + Playwright fresh context against `https://www.major7s.com` should redirect to `/login` and render the login page (body length > 1 KB, visible form).
-- Manual: open `www.major7s.com` in a Chrome incognito window — expect the login screen, not a blank page.
-- Logged-in: existing session in localStorage redirects to `/home` as before.
-
-## Out of scope
-
-No changes to auth, `/login`, `/home`, recovery flow, or any other route.
+No DB migrations. No changes to `/welcome` page or other auth templates.
