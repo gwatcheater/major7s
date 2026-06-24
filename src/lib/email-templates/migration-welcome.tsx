@@ -75,7 +75,7 @@ export const template = {
   subject: "You're in — set up your Major7s account",
   displayName: 'Migration welcome',
   previewData: {
-    firstName: 'Rob',
+    firstName: 'Jamie',
     setPasswordUrl: 'https://www.major7s.com/welcome',
   },
 } satisfies TemplateEntry
