@@ -76,9 +76,9 @@ async function buildPicksConfirmationPayload(
   const picks = (picksRes.data ?? []) as any[]
   const team = teamRes.data as any
 
-  if (!tournament) return { error: 'no_tournament' as const }
-  if (!team) return { error: 'no_team' as const }
-  if (!picks.length) return { error: 'no_picks' as const }
+  if (!tournament) return { ok: false as const, reason: 'no_tournament' as const }
+  if (!team) return { ok: false as const, reason: 'no_team' as const }
+  if (!picks.length) return { ok: false as const, reason: 'no_picks' as const }
 
   const golferIds = Array.from(new Set(picks.map((p) => p.golfer_id).filter(Boolean))) as string[]
   const golferNames = new Map<string, string>()
