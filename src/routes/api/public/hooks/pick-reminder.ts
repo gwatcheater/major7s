@@ -131,6 +131,37 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
             const text = await render(element, { plainText: true })
             const messageId = crypto.randomUUID()
 
+            // Mint or reuse unsubscribe token — required by the email API
+            // for purpose:'transactional'. Mirror /lovable/email/transactional/send.
+            const normalizedEmail = recipient.toLowerCase()
+            let unsubscribeToken: string
+            const { data: existingToken } = await supabaseAdmin
+              .from('email_unsubscribe_tokens')
+              .select('token, used_at')
+              .eq('email', normalizedEmail)
+              .maybeSingle()
+            if (existingToken && !(existingToken as any).used_at) {
+              unsubscribeToken = (existingToken as any).token
+            } else {
+              const bytes = new Uint8Array(32)
+              crypto.getRandomValues(bytes)
+              const newToken = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('')
+              await supabaseAdmin
+                .from('email_unsubscribe_tokens')
+                .upsert(
+                  { token: newToken, email: normalizedEmail },
+                  { onConflict: 'email', ignoreDuplicates: true },
+                )
+              const { data: stored } = await supabaseAdmin
+                .from('email_unsubscribe_tokens')
+                .select('token')
+                .eq('email', normalizedEmail)
+                .maybeSingle()
+              unsubscribeToken = (stored as any)?.token ?? newToken
+            }
+
             await supabaseAdmin.from('email_send_log').insert({
               message_id: messageId,
               template_name: 'pick-reminder',
@@ -151,6 +182,7 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
                 purpose: 'transactional',
                 label: 'pick-reminder',
                 idempotency_key: `pick-reminder-${(t as any).id}-${(profile as any).id}`,
+                unsubscribe_token: unsubscribeToken,
                 queued_at: new Date().toISOString(),
               },
             })
