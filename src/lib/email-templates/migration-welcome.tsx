@@ -26,7 +26,7 @@ const MigrationWelcomeEmail = ({ firstName, setPasswordUrl }: MigrationWelcomePr
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>Major7s.com is live — set your password to get back in.</Preview>
+      <Preview>Major7s.com is live - set your password to get back in.</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
@@ -38,7 +38,7 @@ const MigrationWelcomeEmail = ({ firstName, setPasswordUrl }: MigrationWelcomePr
             <Text style={text}>Major7s has moved to a brand-new home.</Text>
             <Text style={text}>
               Your account is already set up. We've pre-loaded your details and your full
-              picks history, so everything from previous years is waiting for you —
+              picks history, so everything from previous years is waiting for you -
               nothing to re-enter.
             </Text>
             <Text style={text}>
@@ -60,7 +60,7 @@ const MigrationWelcomeEmail = ({ firstName, setPasswordUrl }: MigrationWelcomePr
 
             <Text style={footer}>
               You're receiving this because you have previously played Major7s. If you
-              weren't expecting it, you can safely ignore this email — no account changes
+              weren't expecting it, you can safely ignore this email - no account changes
               will be made until you set a password.
             </Text>
           </Section>
@@ -72,7 +72,7 @@ const MigrationWelcomeEmail = ({ firstName, setPasswordUrl }: MigrationWelcomePr
 
 export const template = {
   component: MigrationWelcomeEmail,
-  subject: "You're in — set up your Major7s account",
+  subject: 'Major7s.com is live - set your password',
   displayName: 'Migration welcome',
   previewData: {
     firstName: 'Jamie',
