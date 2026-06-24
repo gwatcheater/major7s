@@ -31,7 +31,7 @@ const AdminNewUserEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>{`New Major7s signup: ${nickname || fullName || email || 'unknown'}`}</Preview>
+      <Preview>{`${fullName || nickname || email || 'A new player'} just signed up${referralName ? ` (referred by ${referralName})` : ''}.`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>

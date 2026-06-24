@@ -63,7 +63,7 @@ const PicksConfirmationEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>{`Picks confirmed - ${name}${yr ? ` ${yr}` : ''}`}</Preview>
+      <Preview>{`Your ${name}${yr ? ` ${yr}` : ''} lineup is locked in${team && team !== 'Your team' ? ` - ${team}` : ''}.`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
