@@ -142,9 +142,22 @@ async function buildPicksConfirmationPayload(
 
 async function resolveOrigin(): Promise<string> {
   try {
-    const { getRequestHost } = await import('@tanstack/react-start/server')
+    const { getRequest, getRequestHost } = await import('@tanstack/react-start/server')
+    // Prefer the actual request URL so dev (http://localhost) works.
+    try {
+      const req = getRequest()
+      if (req?.url) {
+        const u = new URL(req.url)
+        return `${u.protocol}//${u.host}`
+      }
+    } catch {
+      // fall through
+    }
     const host = getRequestHost()
-    if (host) return `https://${host}`
+    if (host) {
+      const proto = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https'
+      return `${proto}://${host}`
+    }
   } catch {
     // ignore
   }
