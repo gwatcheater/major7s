@@ -319,31 +319,110 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
 
-    // Resolve emails in id chunks (avoids huge .in() lists)
-    const emailById = new Map<string, string>();
+    // Resolve email + first_name in id chunks (avoids huge .in() lists)
+    type ProfileRow = { id: string; email: string | null; first_name: string | null };
+    const profileById = new Map<string, ProfileRow>();
     const ids = [...data.userIds];
     for (let i = 0; i < ids.length; i += 200) {
       const chunk = ids.slice(i, i + 200);
       const { data: rows, error } = await supabaseAdmin
         .from("profiles")
-        .select("id, email")
+        .select("id, email, first_name")
         .in("id", chunk);
       if (error) throw new Error(error.message);
-      for (const r of rows ?? []) if (r.email) emailById.set(r.id, r.email);
+      for (const r of (rows ?? []) as ProfileRow[]) profileById.set(r.id, r);
     }
 
     const results: Array<{ id: string; email?: string; ok: boolean; error?: string }> = [];
     for (const id of data.userIds) {
-      const email = emailById.get(id);
+      const profile = profileById.get(id);
+      const email = profile?.email ?? undefined;
       if (!email) {
         results.push({ id, ok: false, error: "No email on profile" });
         continue;
       }
-      const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-        redirectTo: data.redirectTo,
-      });
-      results.push(error ? { id, email, ok: false, error: error.message } : { id, email, ok: true });
-      // Gentle throttle so a large blast doesn't hammer the SMTP provider.
+
+      try {
+        // Suppression check — fail-closed
+        const { data: suppressed, error: suppErr } = await supabaseAdmin
+          .from("suppressed_emails")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .maybeSingle();
+        if (suppErr) throw new Error(`Suppression check failed: ${suppErr.message}`);
+        if (suppressed) {
+          results.push({ id, email, ok: false, error: "Email suppressed" });
+          await new Promise((r) => setTimeout(r, 150));
+          continue;
+        }
+
+        // Mint recovery link WITHOUT sending the default Supabase auth email.
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: "recovery",
+          email,
+          options: { redirectTo: data.redirectTo },
+        });
+        if (linkErr) throw new Error(linkErr.message);
+        const setPasswordUrl = (linkData as any)?.properties?.action_link as string | undefined;
+        if (!setPasswordUrl) throw new Error("generateLink returned no action_link");
+
+        // Render the migration-welcome app email
+        const element = React.createElement(migrationWelcomeTemplate.component, {
+          firstName: profile?.first_name ?? undefined,
+          setPasswordUrl,
+        });
+        const html = await render(element);
+        const text = toPlainText(html);
+
+        const subject =
+          typeof migrationWelcomeTemplate.subject === "function"
+            ? migrationWelcomeTemplate.subject({})
+            : migrationWelcomeTemplate.subject;
+
+        const messageId = crypto.randomUUID();
+        const idempotencyKey = `migration-welcome:${id}`;
+
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: messageId,
+          template_name: "migration-welcome",
+          recipient_email: email,
+          status: "pending",
+        });
+
+        const { error: enqErr } = await supabaseAdmin.rpc("enqueue_email", {
+          queue_name: "transactional_emails",
+          payload: {
+            message_id: messageId,
+            to: email,
+            from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+            sender_domain: SENDER_DOMAIN,
+            subject,
+            html,
+            text,
+            purpose: "transactional",
+            label: "migration-welcome",
+            idempotency_key: idempotencyKey,
+            queued_at: new Date().toISOString(),
+          },
+        });
+
+        if (enqErr) {
+          await supabaseAdmin.from("email_send_log").insert({
+            message_id: messageId,
+            template_name: "migration-welcome",
+            recipient_email: email,
+            status: "failed",
+            error_message: "Failed to enqueue email",
+          });
+          throw new Error(`Enqueue failed: ${enqErr.message}`);
+        }
+
+        results.push({ id, email, ok: true });
+      } catch (e: any) {
+        results.push({ id, email, ok: false, error: e?.message ?? String(e) });
+      }
+
+      // Gentle throttle so a large blast doesn't hammer downstream services.
       await new Promise((r) => setTimeout(r, 150));
     }
 
