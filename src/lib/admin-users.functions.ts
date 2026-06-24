@@ -382,6 +382,37 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
         const messageId = crypto.randomUUID();
         const idempotencyKey = `migration-welcome:${id}`;
 
+        // Resolve unsubscribe token for the recipient — required by the email
+        // API for purpose:'transactional'. Mirror /lovable/email/transactional/send.
+        const normalizedEmail = email.toLowerCase();
+        let unsubscribeToken: string;
+        const { data: existingToken } = await supabaseAdmin
+          .from("email_unsubscribe_tokens")
+          .select("token, used_at")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (existingToken && !existingToken.used_at) {
+          unsubscribeToken = existingToken.token;
+        } else {
+          const bytes = new Uint8Array(32);
+          crypto.getRandomValues(bytes);
+          const newToken = Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .upsert(
+              { token: newToken, email: normalizedEmail },
+              { onConflict: "email", ignoreDuplicates: true },
+            );
+          const { data: stored } = await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .select("token")
+            .eq("email", normalizedEmail)
+            .maybeSingle();
+          unsubscribeToken = stored?.token ?? newToken;
+        }
+
         await supabaseAdmin.from("email_send_log").insert({
           message_id: messageId,
           template_name: "migration-welcome",
@@ -402,6 +433,7 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
             purpose: "transactional",
             label: "migration-welcome",
             idempotency_key: idempotencyKey,
+            unsubscribe_token: unsubscribeToken,
             queued_at: new Date().toISOString(),
           },
         });
