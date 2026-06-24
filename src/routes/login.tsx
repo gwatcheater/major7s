@@ -74,12 +74,9 @@ function LoginPage() {
           },
         });
         if (error) throw error;
-        // Fire-and-forget admin notification (recipient is fixed in the template).
-        void fetch("/api/public/hooks/new-user-signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        }).catch((err) => console.warn("admin-new-user notification failed", err));
+        // Admin notification is fired server-side by an AFTER INSERT trigger on
+        // public.profiles (notify_admin_on_new_profile) so it cannot be lost
+        // to tab close, navigation, or a dropped client request.
         // Sign out — they must wait for admin approval
         await supabase.auth.signOut();
         setPendingMsg("Account created. Your account is awaiting administrator approval — you'll be able to sign in once approved.");

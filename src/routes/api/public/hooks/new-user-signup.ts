@@ -106,10 +106,11 @@ export const Route = createFileRoute('/api/public/hooks/new-user-signup')({
         const messageId = crypto.randomUUID()
 
         // Suppression check
+        const normalizedRecipient = recipient.toLowerCase()
         const { data: suppressed } = await supabaseAdmin
           .from('suppressed_emails')
           .select('id')
-          .eq('email', recipient.toLowerCase())
+          .eq('email', normalizedRecipient)
           .maybeSingle()
         if (suppressed) {
           await supabaseAdmin.from('email_send_log').insert({
@@ -119,6 +120,37 @@ export const Route = createFileRoute('/api/public/hooks/new-user-signup')({
             status: 'suppressed',
           })
           return Response.json({ ok: false, reason: 'suppressed' })
+        }
+
+        // Resolve unsubscribe token for the recipient. The Lovable email API
+        // rejects purpose:'transactional' sends without this. Mirror the
+        // mint/reuse logic from /lovable/email/transactional/send.
+        let unsubscribeToken: string
+        const { data: existingToken } = await supabaseAdmin
+          .from('email_unsubscribe_tokens')
+          .select('token, used_at')
+          .eq('email', normalizedRecipient)
+          .maybeSingle()
+        if (existingToken && !existingToken.used_at) {
+          unsubscribeToken = existingToken.token
+        } else {
+          const bytes = new Uint8Array(32)
+          crypto.getRandomValues(bytes)
+          const newToken = Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+          await supabaseAdmin
+            .from('email_unsubscribe_tokens')
+            .upsert(
+              { token: newToken, email: normalizedRecipient },
+              { onConflict: 'email', ignoreDuplicates: true }
+            )
+          const { data: stored } = await supabaseAdmin
+            .from('email_unsubscribe_tokens')
+            .select('token')
+            .eq('email', normalizedRecipient)
+            .maybeSingle()
+          unsubscribeToken = stored?.token ?? newToken
         }
 
         // Tag the log row with the new user's email so dedupe lookup above works.
@@ -142,7 +174,9 @@ export const Route = createFileRoute('/api/public/hooks/new-user-signup')({
             text,
             purpose: 'transactional',
             label: 'admin-new-user',
-            idempotency_key: `admin-new-user-${email}-${Date.now()}`,
+            // Stable per-user key so retries / trigger+client races dedupe at the provider.
+            idempotency_key: `admin-new-user-${lookup.id}`,
+            unsubscribe_token: unsubscribeToken,
             queued_at: new Date().toISOString(),
           },
         })
