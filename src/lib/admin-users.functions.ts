@@ -374,10 +374,8 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
         const html = await render(element);
         const text = toPlainText(html);
 
-        const subject =
-          typeof migrationWelcomeTemplate.subject === "function"
-            ? migrationWelcomeTemplate.subject({})
-            : migrationWelcomeTemplate.subject;
+        const rawSubject = migrationWelcomeTemplate.subject as string | ((d: Record<string, any>) => string);
+        const subject = typeof rawSubject === "function" ? rawSubject({}) : rawSubject;
 
         const messageId = crypto.randomUUID();
         const idempotencyKey = `migration-welcome:${id}`;
