@@ -279,13 +279,13 @@ export const sendPicksConfirmationTest = createServerFn({ method: 'POST' })
       teamId: teamId!,
       firstNameUserId: null,
     })
-    if (!('ok' in built)) {
-      return { ok: false as const, reason: built.error, teamId }
+    if (!built.ok) {
+      return { ok: false as const, reason: built.reason, teamId }
     }
 
     const sent = await postSend({
       origin: built.origin,
-      recipientEmail: data.recipientEmail,
+      recipientEmail: data.recipientEmail!,
       idempotencyKey: `${built.idempotencyKey}-test-${Date.now()}`,
       templateData: built.templateData,
     })
