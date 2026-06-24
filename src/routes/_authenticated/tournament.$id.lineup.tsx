@@ -1661,8 +1661,6 @@ function LineupPicker() {
         data: {
           tournamentId: id,
           teamId: activeTeam!.id,
-          isUpdate: hadExisting,
-          tweakCount: newTweaks,
         },
       }).catch((err) => {
         console.warn("picks-confirmation email failed", err);
