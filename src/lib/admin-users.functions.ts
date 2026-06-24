@@ -452,3 +452,52 @@ export const completeOnboarding = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+/* ============================================================
+   DIAGNOSTIC — render migration-welcome for given userIds without
+   sending. Returns the greeting line + html snippet so we can verify
+   per-recipient first_name flows end-to-end.
+   ============================================================ */
+export const previewWelcomeEmails = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ userIds: z.array(z.string().uuid()).min(1).max(5) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    const { data: rows, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, first_name")
+      .in("id", data.userIds);
+    if (error) throw new Error(error.message);
+
+    const out: Array<{
+      id: string;
+      email: string | null;
+      first_name: string | null;
+      greetingLine: string;
+      htmlSnippet: string;
+    }> = [];
+
+    for (const r of (rows ?? []) as Array<{ id: string; email: string | null; first_name: string | null }>) {
+      const firstName = r.first_name?.trim() || undefined;
+      const element = React.createElement(migrationWelcomeTemplate.component, {
+        firstName,
+        setPasswordUrl: "https://www.major7s.com/welcome",
+      });
+      const html = await render(element);
+      const text = toPlainText(html);
+      const greetingLine =
+        text.split("\n").map((s) => s.trim()).find((s) => s.startsWith("Hi ")) ?? "";
+      out.push({
+        id: r.id,
+        email: r.email,
+        first_name: r.first_name,
+        greetingLine,
+        htmlSnippet: html.slice(0, 600),
+      });
+    }
+    return { results: out };
+  });
+
