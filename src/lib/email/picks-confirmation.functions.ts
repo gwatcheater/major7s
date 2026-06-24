@@ -177,17 +177,22 @@ async function buildPicksConfirmationPayload(
     if (!firstName) firstName = (ownerProfile as any)?.first_name ?? null
   }
 
-  const origin = await resolveOrigin()
-  const tournamentUrl = `${origin}/tournament/${tournament.id}`
+  const requestOrigin = await resolveOrigin()
+  const tournamentUrl = `${getPublicSiteOrigin()}/tournament/${tournament.id}`
+
+  const shortName = shortTournamentName(tournament.name)
+  const dateRange = fmtDateRange(tournament.start_date, tournament.end_date)
+  const deadline = fmtDeadlineLondon(tournament.submission_deadline)
+  const lastUpdated = maxEdited ? fmtLastUpdatedLondon(new Date(maxEdited).toISOString()) : ''
 
   const templateData = {
     firstName: firstName ?? undefined,
-    tournamentName: tournament.name as string,
+    shortName,
     year,
     location: tournament.location as string,
-    startDate: fmtDateOnly(tournament.start_date),
-    endDate: fmtDateOnly(tournament.end_date),
-    deadline: fmtDeadlineUK(tournament.submission_deadline),
+    dateRange,
+    deadline,
+    lastUpdated,
     teamNickname: team.nickname as string,
     picks: pickRows,
     tournamentUrl,
@@ -196,7 +201,7 @@ async function buildPicksConfirmationPayload(
 
   const idempotencyKey = `picks-confirmation-${args.teamId}-${args.tournamentId}-${maxEditedIso}`
 
-  return { ok: true as const, templateData, idempotencyKey, ownerEmail, origin }
+  return { ok: true as const, templateData, idempotencyKey, ownerEmail, origin: requestOrigin }
 }
 
 async function resolveOrigin(): Promise<string> {
