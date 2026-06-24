@@ -366,9 +366,11 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
         const setPasswordUrl = (linkData as any)?.properties?.action_link as string | undefined;
         if (!setPasswordUrl) throw new Error("generateLink returned no action_link");
 
-        // Render the migration-welcome app email
+        // Render the migration-welcome app email — per-recipient first name
+        const firstName = profile?.first_name?.trim() || undefined;
+        console.log("sendWelcomeEmails:render", { id, hasFirstName: Boolean(firstName) });
         const element = React.createElement(migrationWelcomeTemplate.component, {
-          firstName: profile?.first_name ?? undefined,
+          firstName,
           setPasswordUrl,
         });
         const html = await render(element);
