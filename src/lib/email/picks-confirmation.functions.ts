@@ -142,9 +142,22 @@ async function buildPicksConfirmationPayload(
 
 async function resolveOrigin(): Promise<string> {
   try {
-    const { getRequestHost } = await import('@tanstack/react-start/server')
+    const { getRequest, getRequestHost } = await import('@tanstack/react-start/server')
+    // Prefer the actual request URL so dev (http://localhost) works.
+    try {
+      const req = getRequest()
+      if (req?.url) {
+        const u = new URL(req.url)
+        return `${u.protocol}//${u.host}`
+      }
+    } catch {
+      // fall through
+    }
     const host = getRequestHost()
-    if (host) return `https://${host}`
+    if (host) {
+      const proto = host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https'
+      return `${proto}://${host}`
+    }
   } catch {
     // ignore
   }
@@ -159,19 +172,28 @@ async function postSend(args: {
 }) {
   const { getRequestHeader } = await import('@tanstack/react-start/server')
   const auth = getRequestHeader('authorization') ?? ''
-  const res = await fetch(`${args.origin}/lovable/email/transactional/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: auth },
-    body: JSON.stringify({
-      templateName: 'picks-confirmation',
-      recipientEmail: args.recipientEmail,
-      idempotencyKey: args.idempotencyKey,
-      templateData: args.templateData,
-    }),
-  })
+  const url = `${args.origin}/lovable/email/transactional/send`
+  console.log('[picks-confirmation] POST', url)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: auth },
+      body: JSON.stringify({
+        templateName: 'picks-confirmation',
+        recipientEmail: args.recipientEmail,
+        idempotencyKey: args.idempotencyKey,
+        templateData: args.templateData,
+      }),
+    })
+  } catch (e: any) {
+    const msg = `fetch threw: ${e?.message ?? String(e)} (url=${url})`
+    console.error('[picks-confirmation]', msg)
+    return { ok: false as const, status: 0, body: msg }
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    console.error('picks-confirmation send failed', { status: res.status, body })
+    console.error('[picks-confirmation] send failed', { status: res.status, body: body.slice(0, 500) })
     return { ok: false as const, status: res.status, body }
   }
   return { ok: true as const }
