@@ -1,43 +1,58 @@
+# Fix "Hi Rob" in migration-welcome emails
 
-## Goal
+## Where "Rob" lives today
 
-Add a NEW app email "Migration welcome" for pre-provisioned users. Rewire the existing admin "Send welcome" action to mint a recovery link via `generateLink` and send the new app email (instead of calling `resetPasswordForEmail`, which sends a Supabase auth email). Revert the recovery auth email to default wording. Don't touch the `/welcome` page or any other auth template.
+I grepped the whole repo. The literal string `Rob` only appears in template **previewData** blocks (the in-app preview tool reads these; the live send path does not):
 
-## Changes
+- `src/lib/email-templates/migration-welcome.tsx` line 78 — `previewData: { firstName: 'Rob', ... }`
+- `src/lib/email-templates/welcome.tsx`, `picks-confirmation.tsx`, `pick-reminder.tsx` — same pattern
+- `src/lib/email-templates/admin-new-user.tsx` — `referralName: 'Rob Parker'`
 
-### 1. Revert recovery auth email to default
-- `src/lib/email-templates/recovery.tsx` — already uses default "Reset Your Password" wording. No body change needed; verify it stays default.
-- `src/routes/lovable/email/auth/webhook.ts` — change `EMAIL_SUBJECTS.recovery` from `"You're in — set up your Major7s account"` back to default `"Reset your password"`. Default `redirect_to` for recovery stays `https://${ROOT_DOMAIN}/reset-password` (already correct).
+The live `sendWelcomeEmails` in `src/lib/admin-users.functions.ts` already:
+1. Selects `id, email, first_name` from `profiles` for the requested `userIds`.
+2. For each user, calls `React.createElement(migrationWelcomeTemplate.component, { firstName: profile?.first_name ?? undefined, setPasswordUrl })`.
+3. Renders to HTML/text per user and enqueues a unique payload per user.
 
-### 2. New app email template
-- Create `src/lib/email-templates/migration-welcome.tsx`:
-  - Props: `firstName?: string`, `setPasswordUrl: string`.
-  - Layout/styles match `welcome.tsx`/`recovery.tsx`: white outer body, forest `#103D2E` header bar, gold `#C9A227` button with `#103D2E` dark text.
-  - Greeting `Hi {firstName},` else `Hi there,`.
-  - Header heading: `Major7s.com Is Live. Tweaked, Upgraded.`
-  - Three body paragraphs, button "Set your password" → `setPasswordUrl`, plain-text fallback link below button, footer copy — exactly as specified.
-  - Export `template` satisfying `TemplateEntry` with `subject: "You're in — set up your Major7s account"`, `displayName: "Migration welcome"`, `previewData: { firstName: 'Rob', setPasswordUrl: 'https://www.major7s.com/welcome' }`.
-- Register in `src/lib/email-templates/registry.ts` under key `"migration-welcome"`.
+The template greeting already reads:
+```ts
+const greeting = firstName && firstName.trim() ? `Hi ${firstName.trim()},` : 'Hi there,'
+```
 
-### 3. Rewire `sendWelcomeEmails` in `src/lib/admin-users.functions.ts`
-- Keep signature `{ userIds, redirectTo }` so call sites in `users-directory-tab.tsx` (per-user mail icon + bulk button) work unchanged.
-- For each user:
-  1. Resolve `email` and `first_name` from `profiles`.
-  2. `supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })` to MINT the link without sending. Use `data.properties.action_link` as `setPasswordUrl`.
-  3. Render `migration-welcome` template via React Email → html + plaintext.
-  4. Enqueue into pgmq queue `transactional_emails` via `supabase.rpc('enqueue_email', …)` with the same payload shape used by `transactional/send.ts` (message_id, from, sender_domain, subject, html, text, purpose, label, idempotency_key=`migration-welcome:${userId}`, queued_at). Insert pending row into `email_send_log` before enqueue, failed row on enqueue error (matches existing pattern).
-  5. Check `suppressed_emails` first; skip + log `suppressed` if hit.
-- Keep the 150ms throttle and the `admin_audit` insert with `action: "user.welcome_sent"`.
-- Return the same `{ sent, failed, results }` shape.
+So on paper the per-recipient `first_name` is already wired through and `Rob` is only a preview-time default. A spot-check of the DB confirms `profiles.first_name` is populated with varied names (Will, Chris, Dan, Jamie, …), so the data is fine too.
 
-### 4. Redirect URL
-- `/welcome` is the redirect target passed in by the admin UI (already wired). Surface a one-line note that `https://www.major7s.com/welcome` (and `https://major7s.lovable.app/welcome`) must be in the Supabase Auth → URL Configuration → Redirect URLs list — required for `generateLink` to honour the redirectTo. No code change for this; the comment block already mentions it.
+That means the "every email says Hi Rob" report does not match the current code. Before changing anything, I want to confirm what is actually being rendered for real users, then harden the path so this cannot regress.
 
-### 5. Verification
-- Build passes (typecheck via Vite plugin).
-- Recovery template/subject restored to default.
-- `migration-welcome` shows up in registry.
-- `sendWelcomeEmails` uses `generateLink` + transactional enqueue, no `resetPasswordForEmail` call remaining.
-- Call sites in `users-directory-tab.tsx` unchanged.
+## Plan
 
-No DB migrations. No changes to `/welcome` page or other auth templates.
+### 1. Add a read-only diagnostic server fn (admin-only)
+New `previewWelcomeEmails` in `src/lib/admin-users.functions.ts`:
+- Input: `{ userIds: string[] }` (max ~5).
+- Loads each `profiles` row, builds the same `migrationWelcomeTemplate` element with `firstName: profile.first_name`, renders, and returns `{ id, email, first_name, greetingLine, htmlSnippet }` per user. Does not enqueue or send.
+- Lets us prove, for two specific provisioned users, that the greeting line is correct end-to-end.
+
+### 2. Harden `sendWelcomeEmails` against accidental fallbacks
+In `src/lib/admin-users.functions.ts` keep the same `{ userIds, redirectTo }` signature, but:
+- Normalize `firstName` once: `const firstName = profile?.first_name?.trim() || undefined`.
+- Log (server-side only) `{ id, hasFirstName: Boolean(firstName) }` per recipient so future regressions are visible in function logs without leaking PII.
+- Pass `firstName` (not `profile?.first_name ?? undefined`) into the template element so blank strings can never sneak through as a truthy value.
+
+### 3. Reaffirm template greeting + drop "Rob" from preview defaults
+In `src/lib/email-templates/migration-welcome.tsx`:
+- Keep the existing greeting logic (`firstName?.trim() ? 'Hi {name},' : 'Hi there,'`) — it is already correct.
+- Change `previewData.firstName` from `'Rob'` to `'Jamie'` (or drop it entirely) so the in-app preview can never be confused with "every send says Rob".
+- No other template changes; layout, colors, button, fallback link, footer all stay.
+
+### 4. Verify with two real recipients
+After deploy:
+1. Call `previewWelcomeEmails` for two provisioned users with different first names; confirm each rendered greeting matches their `profiles.first_name`.
+2. Trigger `sendWelcomeEmails` for those same two users from the admin Users tab.
+3. Check `email_send_log` for two distinct `message_id`s, two distinct recipients, both `status='sent'`.
+4. Confirm in the actual inboxes that each greeting matches the recipient.
+
+If step 1 already shows the correct per-user greeting (which the current code suggests it will), the report was likely based on a single self-test or on the preview tool — the diagnostic fn + previewData change will make that impossible to misread again. If step 1 shows "Rob" for everyone, the diagnostic output tells us exactly which layer is wrong (profile fetch, template element props, or render) and I will fix that specific layer.
+
+## Files touched
+- `src/lib/admin-users.functions.ts` — add `previewWelcomeEmails`; tighten `firstName` handling in `sendWelcomeEmails`.
+- `src/lib/email-templates/migration-welcome.tsx` — change `previewData.firstName` away from `Rob`.
+
+No DB migrations. No changes to other auth or transactional templates. No changes to the `/welcome` page or the queue processor.
