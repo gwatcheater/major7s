@@ -369,7 +369,22 @@ function TournamentTable({
   const showR2 = round === "r2" || round === "r3" || round === "r4";
   const showR3 = round === "r3" || round === "r4";
   const showR4 = round === "r4";
-  const showToPar = round === "r4";
+  const showToPar = true;
+
+  // Derive course par from the leaderboard data so we can compute per-round to-par.
+  const coursePar = useMemo(() => {
+    for (const r of active) {
+      if (r.score_to_par == null) continue;
+      const rounds = [r.round_1, r.round_2, r.round_3, r.round_4].filter(
+        (v): v is number => v != null,
+      );
+      if (rounds.length === 0) continue;
+      const sum = rounds.reduce((a, b) => a + b, 0);
+      const p = (sum - r.score_to_par) / rounds.length;
+      if (Number.isInteger(p) && p > 60 && p < 80) return p;
+    }
+    return null;
+  }, [active]);
   // Δ = movement from previous round. R1 has no prior round to compare to.
   const showDelta = round !== "r1";
 
@@ -434,6 +449,7 @@ function TournamentTable({
               tiedPositions={tiedPositions}
               showDelta={showDelta}
               showToPar={showToPar}
+              coursePar={coursePar}
               showR1={showR1}
               showR2={showR2}
               showR3={showR3}
@@ -457,6 +473,7 @@ function TournamentTable({
                   tiedPositions={tiedPositions}
                   showDelta={showDelta}
                   showToPar={showToPar}
+                  coursePar={coursePar}
                   showR1={showR1}
                   showR2={showR2}
                   showR3={showR3}
@@ -472,7 +489,7 @@ function TournamentTable({
 }
 
 function TourneyRow({
-  r, mine, dim, round, tiedPositions, showDelta, showToPar, showR1, showR2, showR3, showR4,
+  r, mine, dim, round, tiedPositions, showDelta, showToPar, coursePar, showR1, showR2, showR3, showR4,
 }: {
   r: LbRow;
   mine: boolean;
@@ -481,12 +498,21 @@ function TourneyRow({
   tiedPositions: Set<number>;
   showDelta: boolean;
   showToPar: boolean;
+  coursePar: number | null;
   showR1: boolean;
   showR2: boolean;
   showR3: boolean;
   showR4: boolean;
 }) {
-  const par = fmtToPar(r.score_to_par);
+  // Per-round to-par: strokes for the selected round minus course par.
+  const roundStrokes =
+    round === "r1" ? r.round_1
+    : round === "r2" ? r.round_2
+    : round === "r3" ? r.round_3
+    : r.round_4;
+  const roundToPar =
+    roundStrokes != null && coursePar != null ? roundStrokes - coursePar : null;
+  const par = fmtToPar(roundToPar);
 
   // Position label.
   // - Final view: use the row's own is_tie flag (set by ESPN).
