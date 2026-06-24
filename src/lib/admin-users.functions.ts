@@ -358,10 +358,13 @@ export const sendWelcomeEmails = createServerFn({ method: "POST" })
         }
 
         // Mint recovery link WITHOUT sending the default Supabase auth email.
+        // Always send to the live public site, NOT the editor/preview origin
+        // the admin happened to be on. data.redirectTo is ignored.
+        const redirectTo = `${getPublicSiteOrigin()}/welcome`;
         const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
           type: "recovery",
           email,
-          options: { redirectTo: data.redirectTo },
+          options: { redirectTo },
         });
         if (linkErr) throw new Error(linkErr.message);
         const setPasswordUrl = (linkData as any)?.properties?.action_link as string | undefined;
