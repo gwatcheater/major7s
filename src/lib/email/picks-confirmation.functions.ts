@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware'
+import { getPublicSiteOrigin } from './site-origin'
 
 interface SendInput {
   tournamentId: string
@@ -13,35 +14,93 @@ interface TestInput {
   recipientEmail: string
 }
 
-function pad2(n: number) {
-  return n < 10 ? `0${n}` : String(n)
+// ---- Tournament short-name mapping --------------------------------------
+const SHORT_NAME_MAP: Record<string, string> = {
+  'Masters Tournament': 'Masters',
+  'PGA Championship': 'PGA',
+  'U.S. Open': 'US Open',
+  'The Open Championship': 'The Open',
+}
+function shortTournamentName(name: string | null | undefined): string {
+  const n = (name ?? '').trim()
+  return SHORT_NAME_MAP[n] ?? n
 }
 
-// Format an ISO date-only string (YYYY-MM-DD) as DD/MM/YYYY without TZ drift.
-function fmtDateOnly(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const m = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return ''
-  return `${m[3]}/${m[2]}/${m[1]}`
+// ---- Date/time formatters (Europe/London for time) ----------------------
+const MONTHS_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+// Parse a YYYY-MM-DD date-only string into {y,m,d} (1-indexed month).
+function parseDateOnly(iso: string | null | undefined): { y: number; m: number; d: number } | null {
+  if (!iso) return null
+  const match = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) }
 }
 
-// Format a TZ timestamp as "DD/MM/YYYY, HH:mm" in Europe/London.
-function fmtDeadlineUK(iso: string | null | undefined): string {
-  if (!iso) return ''
+// "14 - 17 May" (same month) | "30 June - 3 July" (cross-month). No year.
+function fmtDateRange(startIso?: string | null, endIso?: string | null): string {
+  const s = parseDateOnly(startIso)
+  const e = parseDateOnly(endIso)
+  if (!s && !e) return ''
+  if (s && !e) return `${s.d} ${MONTHS_FULL[s.m - 1]}`
+  if (!s && e) return `${e!.d} ${MONTHS_FULL[e!.m - 1]}`
+  if (s!.m === e!.m && s!.y === e!.y) {
+    return `${s!.d} - ${e!.d} ${MONTHS_FULL[s!.m - 1]}`
+  }
+  return `${s!.d} ${MONTHS_FULL[s!.m - 1]} - ${e!.d} ${MONTHS_FULL[e!.m - 1]}`
+}
+
+// Render a TZ timestamp in Europe/London, returning structured parts plus
+// the auto-derived TZ short name (BST/GMT).
+function londonParts(iso: string | null | undefined) {
+  if (!iso) return null
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
+  if (Number.isNaN(d.getTime())) return null
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
-    day: '2-digit',
-    month: '2-digit',
+    day: 'numeric',
+    month: 'numeric',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    timeZoneName: 'short',
   }).formatToParts(d)
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
-  return `${get('day')}/${get('month')}/${get('year')}, ${get('hour')}:${get('minute')}`
+  let hour = get('hour')
+  if (hour === '24') hour = '00' // some ICU builds emit 24 for midnight
+  return {
+    day: Number(get('day')),
+    month: Number(get('month')),
+    year: Number(get('year')),
+    hour,
+    minute: get('minute'),
+    tz: get('timeZoneName') || 'GMT',
+  }
 }
+
+// "13 May @ 22:00 BST"
+function fmtDeadlineLondon(iso?: string | null): string {
+  const p = londonParts(iso)
+  if (!p) return ''
+  return `${p.day} ${MONTHS_SHORT[p.month - 1]} @ ${p.hour}:${p.minute} ${p.tz}`
+}
+
+// "15 Jul 2026 @ 14:32 BST"
+function fmtLastUpdatedLondon(iso?: string | null): string {
+  const p = londonParts(iso)
+  if (!p) return ''
+  return `${p.day} ${MONTHS_SHORT[p.month - 1]} ${p.year} @ ${p.hour}:${p.minute} ${p.tz}`
+}
+
+
 
 type SupaClient = Awaited<ReturnType<typeof getCtx>>['supabase']
 
@@ -118,17 +177,22 @@ async function buildPicksConfirmationPayload(
     if (!firstName) firstName = (ownerProfile as any)?.first_name ?? null
   }
 
-  const origin = await resolveOrigin()
-  const tournamentUrl = `${origin}/tournament/${tournament.id}`
+  const requestOrigin = await resolveOrigin()
+  const tournamentUrl = `${getPublicSiteOrigin()}/tournament/${tournament.id}`
+
+  const shortName = shortTournamentName(tournament.name)
+  const dateRange = fmtDateRange(tournament.start_date, tournament.end_date)
+  const deadline = fmtDeadlineLondon(tournament.submission_deadline)
+  const lastUpdated = maxEdited ? fmtLastUpdatedLondon(new Date(maxEdited).toISOString()) : ''
 
   const templateData = {
     firstName: firstName ?? undefined,
-    tournamentName: tournament.name as string,
+    shortName,
     year,
     location: tournament.location as string,
-    startDate: fmtDateOnly(tournament.start_date),
-    endDate: fmtDateOnly(tournament.end_date),
-    deadline: fmtDeadlineUK(tournament.submission_deadline),
+    dateRange,
+    deadline,
+    lastUpdated,
     teamNickname: team.nickname as string,
     picks: pickRows,
     tournamentUrl,
@@ -137,7 +201,7 @@ async function buildPicksConfirmationPayload(
 
   const idempotencyKey = `picks-confirmation-${args.teamId}-${args.tournamentId}-${maxEditedIso}`
 
-  return { ok: true as const, templateData, idempotencyKey, ownerEmail, origin }
+  return { ok: true as const, templateData, idempotencyKey, ownerEmail, origin: requestOrigin }
 }
 
 async function resolveOrigin(): Promise<string> {
