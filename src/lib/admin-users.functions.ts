@@ -1,7 +1,14 @@
+import * as React from "react";
+import { render, toPlainText } from "@react-email/components";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { template as migrationWelcomeTemplate } from "@/lib/email-templates/migration-welcome";
+
+const SITE_NAME = "major7s";
+const SENDER_DOMAIN = "notify.www.major7s.com";
+const FROM_DOMAIN = "www.major7s.com";
 
 const RowSchema = z.object({
   email: z.string().email().max(255),
