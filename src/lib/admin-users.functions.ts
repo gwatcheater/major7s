@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { template as migrationWelcomeTemplate } from "@/lib/email-templates/migration-welcome";
+import { getPublicSiteOrigin } from "@/lib/email/site-origin";
 
 const SITE_NAME = "major7s";
 const SENDER_DOMAIN = "notify.www.major7s.com";
