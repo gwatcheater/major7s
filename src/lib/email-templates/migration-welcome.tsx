@@ -38,7 +38,7 @@ const MigrationWelcomeEmail = ({ firstName, setPasswordUrl }: MigrationWelcomePr
             <Text style={text}>Major7s has moved to a brand-new home.</Text>
             <Text style={text}>
               Your account is already set up. We've pre-loaded your details and your full
-              picks history, so everything from previous years is waiting for you -
+              picks history, so everything from previous tournaments is waiting for you -
               nothing to re-enter.
             </Text>
             <Text style={text}>
