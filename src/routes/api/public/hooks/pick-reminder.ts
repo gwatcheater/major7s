@@ -9,6 +9,9 @@ import { createFileRoute } from '@tanstack/react-router'
  * pick-reminder email. The tight 30-min window guarantees we fire roughly
  * once per user per tournament (cron runs every 30 min so the window slides past).
  *
+ * NOTE: the "3 hour" lead time is encoded BOTH in the cron window below and in
+ * the template copy ("close in about 3 hours"). Change one, change the other.
+ *
  * Auth: requires Supabase anon key in the `apikey` header (standard cron auth).
  */
 export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
@@ -49,10 +52,15 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
         const tpl = TEMPLATES['pick-reminder']
         if (!tpl) return Response.json({ error: 'template missing' }, { status: 500 })
 
-        const reqUrl = new URL(request.url)
-        const origin = `${reqUrl.protocol}//${reqUrl.host}`
+        // Public site origin for user-facing links. Do NOT use the request host:
+        // pg_cron calls this endpoint from an internal host, so reqUrl.host would
+        // be wrong and the button could point at the wrong place. If you have a
+        // shared getPublicSiteOrigin() helper, use it here instead.
+        const origin = process.env.PUBLIC_SITE_URL ?? 'https://www.major7s.com'
 
         // Pre-fetch all approved profiles once.
+        // NOTE: under ~1000 approved users today; if the player base grows past
+        // 1000, paginate this with .range() like the picks query below.
         const { data: profiles, error: pErr } = await supabaseAdmin
           .from('profiles')
           .select('id, email, first_name, nickname, status')
@@ -68,15 +76,28 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
 
         for (const t of tournaments) {
           // Find teams that already have at least one pick for this tournament.
-          const { data: pickedRows, error: pickErr } = await supabaseAdmin
-            .from('picks')
-            .select('team_id')
-            .eq('tournament_id', (t as any).id)
-          if (pickErr) {
-            errors.push({ tournament: (t as any).id, error: pickErr.message })
-            continue
+          // PAGINATED: 170 teams x 7 picks = ~1190 rows, over the 1000-row cap.
+          // Without paging, ~27 teams' picks are silently missed and those users
+          // get a false "you haven't picked yet" reminder.
+          const pickedTeamIds = new Set<string>()
+          let pickFetchFailed = false
+          const PAGE = 1000
+          for (let from = 0; ; from += PAGE) {
+            const { data: pickedRows, error: pickErr } = await supabaseAdmin
+              .from('picks')
+              .select('team_id')
+              .eq('tournament_id', (t as any).id)
+              .range(from, from + PAGE - 1)
+            if (pickErr) {
+              errors.push({ tournament: (t as any).id, error: pickErr.message })
+              pickFetchFailed = true
+              break
+            }
+            if (!pickedRows?.length) break
+            for (const r of pickedRows as any[]) pickedTeamIds.add(r.team_id)
+            if (pickedRows.length < PAGE) break
           }
-          const pickedTeamIds = new Set(((pickedRows ?? []) as any[]).map((r) => r.team_id))
+          if (pickFetchFailed) continue
 
           // Map approved profiles -> their primary team.
           const { data: teams, error: teamsErr } = await supabaseAdmin
@@ -92,12 +113,9 @@ export const Route = createFileRoute('/api/public/hooks/pick-reminder')({
             ownerToTeam.set((team as any).owner_user_id, (team as any).id)
           }
 
-          const deadlineStr = (t as any).submission_deadline
-            ? new Date((t as any).submission_deadline).toLocaleString('en-US', {
-                weekday: 'short', month: 'short', day: 'numeric',
-                hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-              })
-            : undefined
+          // Pass the raw ISO deadline through; the template formats it to UK
+          // time (BST/GMT) via formatDeadlineUK. Do not pre-format here.
+          const deadlineStr = (t as any).submission_deadline ?? undefined
 
           const subject =
             typeof tpl.subject === 'function'
