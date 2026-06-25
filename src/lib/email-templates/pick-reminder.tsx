@@ -7,31 +7,58 @@ import type { TemplateEntry } from './registry'
 interface Props {
   firstName?: string
   tournamentName?: string
+  /**
+   * Raw submission_deadline (ISO timestamp). Formatted in-template to UK time,
+   * e.g. "16 Jul @ 06:00 BST". If a non-ISO string is passed it is shown as-is.
+   */
   deadline?: string
   tournamentUrl?: string
+}
+
+/**
+ * Format an ISO deadline to "{day} {mon} @ {HH:mm} {TZ}" in Europe/London,
+ * deriving the BST/GMT label automatically. Falls back to the raw string if
+ * the value isn't a parseable date.
+ */
+function formatDeadlineUK(value?: string): string | null {
+  if (!value?.trim()) return null
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return value.trim()
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).formatToParts(d)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('day')} ${get('month')} @ ${get('hour')}:${get('minute')} ${get('timeZoneName')}`
 }
 
 const PickReminderEmail = ({ firstName, tournamentName, deadline, tournamentUrl }: Props) => {
   const greeting = firstName?.trim() ? `Hi ${firstName.trim()},` : 'Hi there,'
   const name = tournamentName?.trim() || 'the next tournament'
   const url = tournamentUrl?.trim() || 'https://www.major7s.com'
+  const deadlineDisplay = formatDeadlineUK(deadline)
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>{`Picks lock soon for ${name}.`}</Preview>
+      <Preview>Deadline approaching.</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
-            <Heading style={headerHeading}>Picks Lock Soon</Heading>
+            <Heading style={headerHeading}>Picks Close Soon</Heading>
           </Section>
           <Section style={contentSection}>
             <Text style={text}>{greeting}</Text>
             <Text style={text}>
-              Heads up — picks for <strong>{name}</strong> lock in about 3 hours and we
+              Heads up - picks for <strong>{name}</strong> close in about 3 hours and we
               don't have a lineup from you yet.
             </Text>
-            {deadline?.trim() ? (
-              <Text style={meta}>Picks lock: {deadline}</Text>
+            {deadlineDisplay ? (
+              <Text style={meta}>Picks close {deadlineDisplay}</Text>
             ) : null}
             <Section style={buttonWrap}>
               <Button style={button} href={url}>
@@ -40,7 +67,7 @@ const PickReminderEmail = ({ firstName, tournamentName, deadline, tournamentUrl 
             </Section>
             <Hr style={hr} />
             <Text style={footer}>
-              Already submitted? You can ignore this — there's a slight delay between
+              Already submitted? You can ignore this - there's a slight delay between
               picks landing and reminders going out.
             </Text>
           </Section>
@@ -53,12 +80,12 @@ const PickReminderEmail = ({ firstName, tournamentName, deadline, tournamentUrl 
 export const template = {
   component: PickReminderEmail,
   subject: (d: Record<string, any>) =>
-    `Picks lock in 3 hours — ${d.tournamentName || 'Major7s'}`,
+    `Picks close soon for ${d.tournamentName || 'the next tournament'}`,
   displayName: 'Pick deadline reminder',
   previewData: {
     firstName: 'Rob',
-    tournamentName: 'The Masters',
-    deadline: 'Thu, Apr 10 · 7:00 AM ET',
+    tournamentName: 'The Open Championship',
+    deadline: '2026-07-16T05:00:00Z',
     tournamentUrl: 'https://www.major7s.com',
   },
 } satisfies TemplateEntry
