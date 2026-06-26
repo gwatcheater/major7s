@@ -40,13 +40,12 @@ function AuthenticatedLayout() {
 
   return (
     <>
-      {/* Render outside the flex wrapper so Chrome iOS (WKWebView) does not
-          include the header in its flex-column first-paint calculation.
-          The header is sticky (not fixed) so it stays in normal document flow
-          and naturally pushes content below it — no spacer div needed. */}
+      {/* Header outside the flex wrapper so it is a plain block-level
+          sibling.  It starts as position:relative (first paint) and
+          switches to sticky after one frame — see MobileTopBar. */}
       <MobileTopBar />
       <div
-        className="flex flex-col lg:flex-row min-h-screen w-full"
+        className="flex flex-col lg:flex-row lg:min-h-screen w-full"
         style={{ backgroundColor: "var(--ui-bg)" }}
       >
         <AppSidebar />
