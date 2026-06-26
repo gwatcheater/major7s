@@ -254,7 +254,7 @@ export const listUsersForAdmin = createServerFn({ method: "POST" })
       const { data, error } = await supabaseAdmin
         .from("profiles")
         .select(
-          "id, nickname, email, first_name, last_name, phone, referral_name, status, created_at, onboarded_at",
+          "id, nickname, email, first_name, last_name, phone, referral_name, status, created_at, onboarded_at, last_seen_at",
         )
         .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
