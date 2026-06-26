@@ -1349,7 +1349,7 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   const gemDisplay: Record<string, string> = {};
   for (const golfer of buckets.flatMap((b) => byBucket[b] ?? [])) {
     const d = hiddenGemData[golfer.id];
-    if (d) gemDisplay[golfer.id] = `P${d.bestPosition} ranked ${d.owgrAtTime} (+${d.delta})`;
+    if (d) gemDisplay[golfer.id] = `Finished ${d.bestPosition} ranked ${d.owgrAtTime}`;
   }
 
   // Deploy
