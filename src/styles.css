@@ -126,14 +126,6 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Structural spacer matching the fixed MobileTopBar height. A real DOM
-   element is resolved before first paint on all engines — CSS padding-top
-   on <main> was skipped by Chrome iOS (WKWebView) on the initial layout
-   pass when the fixed header was a flex sibling. */
-.mobile-header-spacer {
-  height: calc(4rem + env(safe-area-inset-top));
-}
-
 @media (min-width: 1024px) {
   .mobile-shell-main {
     min-height: 0;

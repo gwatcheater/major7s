@@ -41,8 +41,9 @@ function AuthenticatedLayout() {
   return (
     <>
       {/* Render outside the flex wrapper so Chrome iOS (WKWebView) does not
-          include the fixed header in its flex-column first-paint calculation,
-          which caused sibling content to start clipped behind the header. */}
+          include the header in its flex-column first-paint calculation.
+          The header is sticky (not fixed) so it stays in normal document flow
+          and naturally pushes content below it — no spacer div needed. */}
       <MobileTopBar />
       <div
         className="flex flex-col lg:flex-row min-h-screen w-full"
@@ -50,7 +51,6 @@ function AuthenticatedLayout() {
       >
         <AppSidebar />
         <main className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
-          <div className="mobile-header-spacer lg:hidden" aria-hidden="true" />
           <Outlet />
         </main>
       </div>
