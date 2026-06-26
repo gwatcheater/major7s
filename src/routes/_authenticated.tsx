@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect } from "react";
 import { createFileRoute, redirect, Outlet, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -30,48 +30,30 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const mainRef = useRef<HTMLElement | null>(null);
-
-  const resetScroll = () => {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-    if (mainRef.current) {
-      mainRef.current.scrollTop = 0;
-      mainRef.current.scrollLeft = 0;
-    }
-  };
 
   useLayoutEffect(() => {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
-    resetScroll();
-    requestAnimationFrame(resetScroll);
-
-    return undefined;
-  }, [pathname]);
-
-  useEffect(() => {
-    const timers = [50, 150, 350, 700, 1200].map((delay) => setTimeout(resetScroll, delay));
-    window.addEventListener("load", resetScroll, { once: true });
-
-    return () => {
-      timers.forEach(clearTimeout);
-      window.removeEventListener("load", resetScroll);
-    };
+    window.scrollTo(0, 0);
   }, [pathname]);
 
   return (
-    <div
-      className="flex flex-col lg:flex-row min-h-screen w-full"
-      style={{ backgroundColor: "var(--ui-bg)" }}
-    >
+    <>
+      {/* Render outside the flex wrapper so Chrome iOS (WKWebView) does not
+          include the fixed header in its flex-column first-paint calculation,
+          which caused sibling content to start clipped behind the header. */}
       <MobileTopBar />
-      <AppSidebar />
-      <main ref={mainRef} className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
-        <Outlet />
-      </main>
-    </div>
+      <div
+        className="flex flex-col lg:flex-row min-h-screen w-full"
+        style={{ backgroundColor: "var(--ui-bg)" }}
+      >
+        <AppSidebar />
+        <main className="mobile-shell-main flex-1 min-w-0 overflow-x-hidden">
+          <div className="mobile-header-spacer lg:hidden" aria-hidden="true" />
+          <Outlet />
+        </main>
+      </div>
+    </>
   );
 }
