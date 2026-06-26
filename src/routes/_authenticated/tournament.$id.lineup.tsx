@@ -1,7 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { sendPicksConfirmation } from "@/lib/email/picks-confirmation.functions";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
@@ -1347,11 +1345,17 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   const gemCount = buckets.flatMap((b) => byBucket[b] ?? [])
     .filter((g) => hiddenGemData[g.id] != null).length;
 
-  // Build display string: "P8 ranked 95 (+87)"
-  const gemDisplay: Record<string, string> = {};
+  // Build display: two lines — golfer name then "Finished X at {Tournament} '{yy} Ranked Y"
+  const gemDisplay: Record<string, { line1: string; line2: string }> = {};
   for (const golfer of buckets.flatMap((b) => byBucket[b] ?? [])) {
     const d = hiddenGemData[golfer.id];
-    if (d) gemDisplay[golfer.id] = `Finished ${d.bestPosition} ranked ${d.owgrAtTime}`;
+    if (d) {
+      const shortYear = String(d.year).slice(-2);
+      gemDisplay[golfer.id] = {
+        line1: golfer.golfer_name ?? "Unknown",
+        line2: `Finished ${d.bestPosition} at ${d.tournamentName} '${shortYear} Ranked ${d.owgrAtTime}`,
+      };
+    }
   }
 
   // Deploy
@@ -1364,8 +1368,8 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
         document.querySelector<HTMLElement>('[data-save-btn]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const el = document.querySelector<HTMLElement>('[data-save-btn]');
         if (el) {
-          const top = el.getBoundingClientRect().top + window.pageYOffset - (window.innerHeight / 2);
-          window.scrollTo({ top, behavior: 'smooth' });
+          const top = el.getBoundingClientRect().top + window.pageYOffset - 80;
+          try { window.scrollTo({ top, behavior: 'smooth' }); } catch { window.scrollTo(0, top); }
         }
       }, 100);
     }
@@ -1380,10 +1384,10 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
     <div className="px-5 py-4 space-y-5">
       {/* Explainer */}
       <p className="text-xs text-muted-foreground">
-        Golfers in B6 and B7 who have historically finished far above their world ranking at a major. Highest overperformance delta wins.{" "}
+        B6 and B7 golfers who have historically finished far above their world ranking at a major.{" "}
         {gemCount > 0
-          ? `${gemCount} eligible golfer${gemCount !== 1 ? "s" : ""} found across B6 and B7.`
-          : "No historical overperformance data found for this field."}
+          ? `${gemCount} golfer${gemCount !== 1 ? "s" : ""} with overperformance data in this field.`
+          : "No overperformance data found for B6/B7 golfers in this field."}
       </p>
 
       {/* B6/B7 toggles only */}
@@ -1461,14 +1465,14 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
                   <span className="text-sm text-muted-foreground flex-1">—</span>
                 ) : (
                   <>
-                    <span className="text-sm flex-1">
-                      {golfer?.golfer_name ?? "Unknown"}
-                      {hiddenGemData[golfer?.id ?? ""] && (
-                        <span className="text-muted-foreground font-normal">
-                          {" "}({gemDisplay[golfer!.id]})
+                    <div className="flex-1 flex flex-col gap-0.5">
+                      <span className="text-sm">{golfer?.golfer_name ?? "Unknown"}</span>
+                      {golfer && gemDisplay[golfer.id] && (
+                        <span className="text-xs text-muted-foreground">
+                          {gemDisplay[golfer.id].line2}
                         </span>
                       )}
-                    </span>
+                    </div>
                     <button
                       onClick={() => rerollBucket(b)}
                       className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
@@ -1698,7 +1702,6 @@ function LineupPicker() {
   const { getEffectiveUserId, impersonatingId, impersonatedProfile } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const sendConfirmation = useServerFn(sendPicksConfirmation);
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament", id],
@@ -2037,14 +2040,6 @@ function LineupPicker() {
     qc.invalidateQueries({ queryKey: ["picks"] });
     qc.invalidateQueries({ queryKey: ["roster-status"] });
     qc.invalidateQueries({ queryKey: ["missing-picks"] });
-
-    // Fire picks-confirmation email (skip when admin saves on someone else's behalf).
-    if (!impersonatingId && activeTeam?.id) {
-      void sendConfirmation({ data: { tournamentId: id, teamId: activeTeam.id } }).catch(
-        (e) => console.error("[picks-confirmation] send failed", e),
-      );
-    }
-
     navigate({ to: "/tournament/$id", params: { id } });
   }
 
@@ -2417,8 +2412,8 @@ function LineupPicker() {
           setTimeout(() => {
             const el = saveButtonRef.current;
             if (el) {
-              const top = el.getBoundingClientRect().top + window.pageYOffset - (window.innerHeight / 2);
-              window.scrollTo({ top, behavior: 'smooth' });
+              const top = el.getBoundingClientRect().top + window.pageYOffset - 80;
+              try { window.scrollTo({ top, behavior: 'smooth' }); } catch { window.scrollTo(0, top); }
             }
           }, 100);
         }
