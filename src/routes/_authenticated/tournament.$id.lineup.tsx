@@ -1298,7 +1298,6 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   isLocked: boolean;
   onDeploy: () => void;
   hiddenGemData: Record<string, { bestPosition: number; owgrAtTime: number; delta: number; tournamentName: string; year: number }>;
-  owgrFormData: Record<string, { delta: number; priorRank: number; currentRank: number; source: string }>; // golfer.id → OWGR improvement data
 }) {
   // Locked to B6 and B7 only — that's the point of this helper
   const buckets = [6, 7];
