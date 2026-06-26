@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { sendPicksConfirmation } from "@/lib/email/picks-confirmation.functions";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
@@ -1696,6 +1698,7 @@ function LineupPicker() {
   const { getEffectiveUserId, impersonatingId, impersonatedProfile } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const sendConfirmation = useServerFn(sendPicksConfirmation);
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament", id],
@@ -2034,6 +2037,14 @@ function LineupPicker() {
     qc.invalidateQueries({ queryKey: ["picks"] });
     qc.invalidateQueries({ queryKey: ["roster-status"] });
     qc.invalidateQueries({ queryKey: ["missing-picks"] });
+
+    // Fire picks-confirmation email (skip when admin saves on someone else's behalf).
+    if (!impersonatingId && activeTeam?.id) {
+      void sendConfirmation({ data: { tournamentId: id, teamId: activeTeam.id } }).catch(
+        (e) => console.error("[picks-confirmation] send failed", e),
+      );
+    }
+
     navigate({ to: "/tournament/$id", params: { id } });
   }
 
