@@ -971,9 +971,7 @@ function UserDrawer({
               <div className="mt-1 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Last seen</span>
                 <span>
-                  {user.last_sign_in_at
-                    ? new Date(user.last_sign_in_at).toLocaleString("en-GB")
-                    : "Never"}
+                  {user.last_sign_in_at ? lastSeenLabel(user.last_sign_in_at) : "Never"}
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-xs">
