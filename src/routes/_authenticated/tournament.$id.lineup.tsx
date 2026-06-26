@@ -301,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts" | "my-picks" | "hidden-gem";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts" | "my-picks" | "hidden-gem" | "owgr-form";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -1297,6 +1297,7 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   isLocked: boolean;
   onDeploy: () => void;
   hiddenGemData: Record<string, { bestPosition: number; owgrAtTime: number; delta: number; tournamentName: string; year: number }>;
+  owgrFormData: Record<string, { delta: number; priorRank: number; currentRank: number; source: string }>; // golfer.id → OWGR improvement data
 }) {
   // Locked to B6 and B7 only — that's the point of this helper
   const buckets = [6, 7];
@@ -1517,7 +1518,199 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   );
 }
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts, hiddenGemData }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
+const OWGR_FORM_MIN_DELTA = 25; // minimum ranking improvement to qualify
+
+function OwgrFormMode({ byBucket, setSelections, isLocked, onDeploy, owgrFormData }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  owgrFormData: Record<string, { delta: number; priorRank: number; currentRank: number; source: string }>;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function isOnForm(g: Golfer) {
+    return owgrFormData[g.id] != null && owgrFormData[g.id].delta >= OWGR_FORM_MIN_DELTA;
+  }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = (byBucket[b] ?? []).filter(isOnForm);
+      if (pool.length === 0) continue;
+      // Sort by delta descending, randomise ties
+      const maxDelta = Math.max(...pool.map((g) => owgrFormData[g.id].delta));
+      const topPool = pool.filter((g) => owgrFormData[g.id].delta === maxDelta);
+      result[b] = topPool[Math.floor(Math.random() * topPool.length)].id;
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter(isOnForm);
+    if (pool.length <= 1) return;
+    const currentId = suggestions?.[b];
+    const others = pool.filter((g) => g.id !== currentId);
+    others.sort((a, b) => owgrFormData[b.id].delta - owgrFormData[a.id].delta);
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: others[0].id }));
+    setDeployed(false);
+  }
+
+  const formCount = Object.values(byBucket).flat().filter(isOnForm).length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  // Display: two lines — name, then "▲{delta} (was {prior} → {current}) since {source}"
+  const formDisplay: Record<string, { line2: string }> = {};
+  for (const golfer of Object.values(byBucket).flat()) {
+    const d = owgrFormData[golfer.id];
+    if (d && d.delta >= OWGR_FORM_MIN_DELTA) {
+      formDisplay[golfer.id] = {
+        line2: `▲${d.delta} ranked ${d.currentRank} (was ${d.priorRank}) since ${d.source}`,
+      };
+    }
+  }
+
+  // Deploy button — reuse HelperPanel's deploy pattern inline
+  const activeSuggestedBuckets = suggestions
+    ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
+    : [];
+
+  function deploy() {
+    if (!suggestions) return;
+    setSelections((prev) => ({ ...prev, ...suggestions }));
+    setDeployed(true);
+    if (window.innerWidth < 1024) {
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>('[data-save-btn]');
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.pageYOffset - 80;
+          try { window.scrollTo({ top, behavior: 'smooth' }); } catch { window.scrollTo(0, top); }
+        }
+      }, 100);
+    }
+    onDeploy();
+  }
+
+  return (
+    <div className="px-5 py-4 space-y-5">
+      {/* Explainer */}
+      <p className="text-xs text-muted-foreground">
+        Golfers whose OWGR has improved by {OWGR_FORM_MIN_DELTA}+ spots since the last major — sorted by biggest rise first.{" "}
+        {formCount > 0
+          ? `${formCount} in-form golfer${formCount !== 1 ? "s" : ""} in this field.`
+          : "No significant movers found in this field."}
+      </p>
+
+      {/* Bucket selector */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Apply to buckets</p>
+        <p className="text-xs text-muted-foreground mb-2">Select 'All' or choose any combination of individual buckets</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={toggleAll}
+            className={["px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+              allActive ? "text-white border-transparent" : "text-muted-foreground border-border bg-transparent hover:bg-muted/40"].join(" ")}
+            style={allActive ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}
+          >All</button>
+          {buckets.map((b) => {
+            const isActive = targetBuckets.has(b);
+            const isEmpty = (byBucket[b] ?? []).length === 0;
+            return (
+              <button key={b} onClick={() => toggleBucket(b)} disabled={isEmpty}
+                className={["px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                  isEmpty ? "opacity-30 cursor-not-allowed border-border text-muted-foreground"
+                    : isActive ? "border-transparent text-[#1a2a10]"
+                    : "text-muted-foreground border-border bg-transparent hover:bg-muted/40"].join(" ")}
+                style={isActive && !isEmpty ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}
+              >B{b}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Generate */}
+      <div className="flex gap-2">
+        <button onClick={generate} disabled={isLocked || targetBuckets.size === 0 || formCount === 0}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-white rounded disabled:opacity-40 transition-colors"
+          style={{ backgroundColor: "var(--forest-deep)" }}>
+          <Shuffle className="h-3.5 w-3.5" />
+          {suggestions ? "Re-run" : "Find form picks"}
+        </button>
+        {suggestions && (
+          <button onClick={() => { setSuggestions(null); setDeployed(false); }}
+            className="px-3 py-2.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+            aria-label="Clear"><X className="h-4 w-4" /></button>
+        )}
+      </div>
+
+      {/* Suggestions */}
+      {suggestions && (
+        <div className="rounded border border-border overflow-hidden">
+          {buckets.map((b) => {
+            const isTargeted = targetBuckets.has(b);
+            const golferId = suggestions[b];
+            const golfer = golferId ? (byBucket[b] ?? []).find((g) => g.id === golferId) : null;
+            return (
+              <div key={b} className={["flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0",
+                !isTargeted || !golferId ? "opacity-40" : ""].join(" ")}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">B{b}</span>
+                {!isTargeted || !golferId ? (
+                  <span className="text-sm text-muted-foreground flex-1">—</span>
+                ) : (
+                  <>
+                    <div className="flex-1 flex flex-col gap-0.5">
+                      <span className="text-sm">{golfer?.golfer_name ?? "Unknown"}</span>
+                      {golfer && formDisplay[golfer.id] && (
+                        <span className="text-xs text-muted-foreground">{formDisplay[golfer.id].line2}</span>
+                      )}
+                    </div>
+                    <button onClick={() => rerollBucket(b)}
+                      className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                      aria-label={`Next B${b}`} title="Next biggest mover">
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Deploy */}
+      {suggestions && activeSuggestedBuckets.length > 0 && (
+        <div className="space-y-2">
+          <button onClick={deploy} disabled={deployed || isLocked}
+            className={["w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
+              deployed ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
+                : "text-[#1a2a10] border-transparent"].join(" ")}
+            style={!deployed ? { backgroundColor: "var(--gold)" } : {}}>
+            {deployed
+              ? <><Check className="h-3.5 w-3.5" />Deployed</>
+              : <><Play className="h-3.5 w-3.5" />Deploy to {activeSuggestedBuckets.map((b) => `B${b}`).join(", ")}</>}
+          </button>
+          <p className="text-xs text-muted-foreground text-center">
+            {deployed ? "Picks deployed — hit Save Lineup to confirm" : "Other buckets unchanged. Save lineup to confirm."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts, hiddenGemData, owgrFormData }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
   const [activeMode, setActiveMode] = useState<HelperMode>("my-picks");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
@@ -1528,6 +1721,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "last-major",      label: "Last major",   emoji: "🏆", desc: "Best finish in most recent major" },
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "hidden-gem",      label: "Hidden gem",   emoji: "💎", desc: "B6 & B7 golfers who punch above their ranking at majors" },
+    { id: "owgr-form",       label: "🔥 OWGR",      emoji: "",   desc: "Biggest world ranking risers since the last major" },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
     { id: "lefties",         label: "Lefties",      emoji: "🤚", desc: "Left-handed golfers only" },
@@ -1536,7 +1730,6 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
   ];
 
   const comingSoon = [
-    { label: "🔥 OWGR", desc: "Form-weighted by recent ranking" },
     { label: "Debutants", desc: "First major appearance" },
   ];
 
@@ -1688,6 +1881,13 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} onDeploy={onDeploy}
           hiddenGemData={hiddenGemData}
+        />
+      )}
+      {activeMode === "owgr-form" && (
+        <OwgrFormMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          owgrFormData={owgrFormData}
         />
       )}
     </Card>
@@ -2276,6 +2476,59 @@ function LineupPicker() {
     if (best) hiddenGemData[golfer.id] = best;
   }
 
+  // OWGR Form: per current field golfer, compare current owgr_rank against
+  // their rank in the last major (primary) or prior year same tournament (fallback).
+  // Delta = priorRank - currentRank (positive = improved = rising).
+  // Only golfers with delta >= OWGR_FORM_MIN_DELTA qualify.
+
+  // Build name → owgr_rank map for last major and prior year
+  const lastMajorOwgrByName = new Map<string, number>();
+  const priorYearOwgrByName = new Map<string, number>();
+  for (const row of historicalGolfers) {
+    if (!row.golfer_name || !row.owgr_rank) continue;
+    const key = row.golfer_name.toLowerCase().trim();
+    if (row.tournament_id === lastMajorTournamentId) lastMajorOwgrByName.set(key, row.owgr_rank);
+    if (row.tournament_id === priorYearTournamentId) priorYearOwgrByName.set(key, row.owgr_rank);
+  }
+
+  const lastMajorShortName = shortMajorName(lastMajorMeta?.name ?? "");
+  const lastMajorShortYear = lastMajorYear ? `'${String(lastMajorYear).slice(-2)}` : "";
+  const priorYearShortYear = priorYearYear ? `'${String(priorYearYear).slice(-2)}` : "";
+
+  type OwgrFormEntry = { delta: number; priorRank: number; currentRank: number; source: string };
+  const owgrFormData: Record<string, OwgrFormEntry> = {};
+
+  for (const golfer of field) {
+    if (!golfer.owgr_rank) continue;
+    const key = golfer.golfer_name?.toLowerCase().trim();
+    if (!key) continue;
+
+    // Primary: last major
+    const lastMajorRank = lastMajorOwgrByName.get(key);
+    if (lastMajorRank) {
+      const delta = lastMajorRank - golfer.owgr_rank;
+      if (delta >= 25) {
+        owgrFormData[golfer.id] = {
+          delta, priorRank: lastMajorRank, currentRank: golfer.owgr_rank,
+          source: `${lastMajorShortName} ${lastMajorShortYear}`,
+        };
+        continue;
+      }
+    }
+
+    // Fallback: prior year same tournament
+    const priorYearRank = priorYearOwgrByName.get(key);
+    if (priorYearRank) {
+      const delta = priorYearRank - golfer.owgr_rank;
+      if (delta >= 25) {
+        owgrFormData[golfer.id] = {
+          delta, priorRank: priorYearRank, currentRank: golfer.owgr_rank,
+          source: `${currentTournamentName} ${priorYearShortYear}`,
+        };
+      }
+    }
+  }
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -2433,6 +2686,7 @@ function LineupPicker() {
       cuntsInfo={cuntsInfo}
       myPicksCounts={myPicksCounts}
       hiddenGemData={hiddenGemData}
+      owgrFormData={owgrFormData}
     />
   );
 
