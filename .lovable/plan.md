@@ -1,21 +1,66 @@
-# Last seen → absolute local timestamp
+## Plan: accurate "last seen" via `profiles.last_seen_at`
 
-Scope: `src/components/admin/users-directory-tab.tsx` only. No other files.
+### 1. Migration (Supabase)
 
-## Changes
+Add a nullable timestamp column + permissive update policy so any signed-in user can stamp their own row.
 
-1. **Replace `lastSeenLabel` (lines 85–93)** with absolute formatting using the admin's local timezone. Implementation:
-   - Return `"—"` when null.
-   - Format as `YYYY-MM-DD HH:mm` via `Intl.DateTimeFormat(undefined, { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })` (rearranged to ISO-like order to satisfy the requested `YYYY-MM-DD HH:mm` shape).
-   - Append the resolved local zone abbreviation/offset using `Intl.DateTimeFormat(undefined, { timeZoneName:'short' })` and extracting the `timeZoneName` part (falls back to `GMT±HH:mm` from `Date#toString` if absent).
-   - Final output example: `2026-06-26 14:32 (BST)`.
+```sql
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
 
-2. **Desktop table cell (line 423)** — already calls `lastSeenLabel(...)`, so it picks up the new format automatically.
+CREATE INDEX IF NOT EXISTS profiles_last_seen_at_desc_idx
+  ON public.profiles (last_seen_at DESC NULLS LAST);
 
-3. **Mobile card view (lines 946–947)** — replace the inline `new Date(...).toLocaleString("en-GB")` with a call to the same new `lastSeenLabel(user.last_sign_in_at)` so desktop and mobile are identical.
+-- Backfill once so existing users aren't all blank on first load.
+-- Use auth.users.last_sign_in_at as the starting point.
+UPDATE public.profiles p
+  SET last_seen_at = u.last_sign_in_at
+  FROM auth.users u
+  WHERE u.id = p.id AND p.last_seen_at IS NULL;
+```
 
-4. **Sorting (lines 239–241)** — unchanged. It already sorts by `new Date(last_sign_in_at).getTime()`, independent of the rendered string.
+(`profiles` already has an update-own policy from earlier work; no new policy needed. If the linter flags otherwise after the migration I'll add a scoped `UPDATE` policy on `last_seen_at` only.)
 
-5. **CSV export (line 518)** — leave as-is (out of scope; user only asked about the column display).
+### 2. App trigger — stamp on every authenticated mount
 
-No data, route, server, or styling changes. No new dependencies.
+Add a tiny `LastSeenTracker` component inside `RootComponent` in `src/routes/__root.tsx`, rendered next to `AuthBridge`. It:
+
+- Reads `useAuth()`.
+- On `user.id` change (i.e. real sign-in / session restore on mount), fires once:
+  ```ts
+  supabase.from("profiles").update({ last_seen_at: new Date().toISOString() }).eq("id", user.id);
+  ```
+- Fire-and-forget, ignores errors (no UX impact). No throttling needed beyond "once per session/user change"; this satisfies the "persistent session returns" gap the user described.
+
+### 3. Data source swap
+
+In `src/lib/admin-users.functions.ts` → `listUsersForAdmin`:
+
+- Add `last_seen_at` to the profile `select(...)` list.
+- Extend `DirectoryRow` with `last_seen_at: string | null`.
+- Keep `last_sign_in_at` populated from the Auth admin pagination as today (no behavior regression for other consumers).
+
+In `src/components/admin/users-directory-tab.tsx`:
+
+- Every render/sort that currently reads `u.last_sign_in_at` for the "Last seen" column or `engagementOf(...)` switches to `u.last_seen_at`. This covers:
+  - `lastSeenLabel(u.last_seen_at)` (desktop cell + mobile card)
+  - `engagementOf(u.last_seen_at)` (engagement dot + filter + counters)
+  - `lastSeen` sort branch numeric comparison
+- Formatting function `lastSeenLabel` is unchanged — same `YYYY-MM-DD HH:mm (ZONE)` output.
+- CSV export switches its "Last seen" column to `last_seen_at` for consistency.
+
+### 4. Default sort
+
+Change initial state:
+
+```ts
+const [sortKey, setSortKey] = useState<SortKey>("lastSeen");
+const [sortDir, setSortDir] = useState<1 | -1>(-1); // DESC, most recent first
+```
+
+Null `last_seen_at` already sorts to the bottom in DESC (existing branch uses `-Infinity`).
+
+### Out of scope
+
+- No changes to auth flow, RLS model, or other consumers of `last_sign_in_at`.
+- No throttling table or RPC — a single update per mount is cheap and matches the user's spec ("on mount, if authenticated, update").

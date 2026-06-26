@@ -140,6 +140,21 @@ function AuthBridge() {
   return null;
 }
 
+function LastSeenTracker() {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user?.id) return;
+    void supabase
+      .from("profiles")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", user.id)
+      .then(({ error }) => {
+        if (error) console.warn("[last-seen] update failed", error.message);
+      });
+  }, [user?.id]);
+  return null;
+}
+
 function RootComponent() {
   // Force rebuild trigger
   const { queryClient } = Route.useRouteContext();
@@ -150,6 +165,7 @@ function RootComponent() {
           <TeamsProvider>
             <NowProvider>
               <AuthBridge />
+              <LastSeenTracker />
               <Outlet />
               <ImpersonationBanner />
               <Toaster />
