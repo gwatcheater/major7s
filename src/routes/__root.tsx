@@ -165,6 +165,7 @@ function RootComponent() {
           <TeamsProvider>
             <NowProvider>
               <AuthBridge />
+              <LastSeenTracker />
               <Outlet />
               <ImpersonationBanner />
               <Toaster />
