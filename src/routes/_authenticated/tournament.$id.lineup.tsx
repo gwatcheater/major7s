@@ -1359,7 +1359,12 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
     setDeployed(true);
     if (window.innerWidth < 1024) {
       setTimeout(() => {
-        document.querySelector<HTMLElement>('[data-save-button]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.querySelector<HTMLElement>('[data-save-btn]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const el = document.querySelector<HTMLElement>('[data-save-btn]');
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.pageYOffset - (window.innerHeight / 2);
+          window.scrollTo({ top, behavior: 'smooth' });
+        }
       }, 100);
     }
     onDeploy();
@@ -1507,7 +1512,7 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
 }
 
 function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts, hiddenGemData }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
-  const [activeMode, setActiveMode] = useState<HelperMode>("random");
+  const [activeMode, setActiveMode] = useState<HelperMode>("my-picks");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
     { id: "my-picks",        label: "My picks",     emoji: "🔮", desc: "Suggest picks based on your historical selections" },
@@ -2369,6 +2374,7 @@ function LineupPicker() {
         <button
           onClick={() => { save(); setHelperDeployed(false); }}
           ref={saveButtonRef}
+          data-save-btn
           disabled={!impersonatingId && isLocked}
           className={[
             "w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50 transition-colors",
@@ -2398,7 +2404,11 @@ function LineupPicker() {
         // On mobile (stacked layout), scroll the Save Lineup button into view
         if (window.innerWidth < 1024) {
           setTimeout(() => {
-            saveButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            const el = saveButtonRef.current;
+            if (el) {
+              const top = el.getBoundingClientRect().top + window.pageYOffset - (window.innerHeight / 2);
+              window.scrollTo({ top, behavior: 'smooth' });
+            }
           }, 100);
         }
       }}
