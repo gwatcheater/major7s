@@ -191,7 +191,7 @@ export function UsersDirectoryTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("joined");
+  const [sortKey, setSortKey] = useState<SortKey>("lastSeen");
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(0);
   const [sending, setSending] = useState(false);
