@@ -1698,6 +1698,7 @@ function LineupPicker() {
   const { getEffectiveUserId, impersonatingId, impersonatedProfile } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const sendConfirmation = useServerFn(sendPicksConfirmation);
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament", id],
