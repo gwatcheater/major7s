@@ -112,7 +112,13 @@
 }
 .animate-reveal { animation: reveal 0.4s ease-out forwards; }
 
+/* WKWebView (Chrome iOS) defers calc()+env() resolution past first paint,
+   so the explicit height may resolve as auto initially.  min-height:4rem
+   guarantees the header occupies at least 4rem of flow space on every
+   engine from the very first frame, while the calc() height and safe-area
+   padding kick in once the environment values are available. */
 .mobile-top-bar {
+  min-height: 4rem;
   height: calc(4rem + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
 }

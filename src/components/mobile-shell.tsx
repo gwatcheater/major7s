@@ -8,15 +8,25 @@ import { useAuth } from "@/hooks/use-auth";
 export function MobileTopBar() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [stickyReady, setStickyReady] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     setOpen(false);
   }, [path]);
 
+  // Render with position:relative on the first paint so WKWebView (Chrome
+  // iOS) treats the header as a normal in-flow element and pushes content
+  // below it. Switching to sticky after the first frame ensures the layout
+  // has already settled before the deferred sticky calculation takes effect.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setStickyReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   return (
     <header
-      className="mobile-top-bar sticky top-0 z-50 flex items-center justify-between px-4 border-b border-white/10 lg:hidden"
+      className={`mobile-top-bar ${stickyReady ? "sticky" : "relative"} top-0 z-50 flex items-center justify-between px-4 border-b border-white/10 lg:hidden`}
       style={{ backgroundColor: "var(--forest-deep)" }}
     >
       <Sheet open={open} onOpenChange={setOpen}>
