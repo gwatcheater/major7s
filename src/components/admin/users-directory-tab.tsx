@@ -219,7 +219,7 @@ export function UsersDirectoryTab() {
     for (const u of users) {
       if (u.status === "approved") c.approved++;
       else if (u.status === "pending") c.pending++;
-      const eng = engagementOf(u.last_sign_in_at);
+      const eng = engagementOf(u.last_seen_at);
       if (eng === "active") c.active++;
       if (eng === "never" && u.status === "approved") c.never++;
     }
@@ -228,7 +228,7 @@ export function UsersDirectoryTab() {
 
   // Approved users who have never logged in — the migration backlog.
   const neverLoggedIn = useMemo(
-    () => users.filter((u) => u.status === "approved" && !u.last_sign_in_at),
+    () => users.filter((u) => u.status === "approved" && !u.last_seen_at),
     [users],
   );
 
@@ -236,7 +236,7 @@ export function UsersDirectoryTab() {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
       if (statusFilter !== "all" && u.status !== statusFilter) return false;
-      if (engagementFilter !== "all" && engagementOf(u.last_sign_in_at) !== engagementFilter)
+      if (engagementFilter !== "all" && engagementOf(u.last_seen_at) !== engagementFilter)
         return false;
       if (!q) return true;
       const hay = [u.first_name, u.last_name, u.nickname, u.primary_team_nickname, u.email]
@@ -262,11 +262,11 @@ export function UsersDirectoryTab() {
           x = (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9);
           break;
         case "engagement":
-          x = engRank[engagementOf(a.last_sign_in_at)] - engRank[engagementOf(b.last_sign_in_at)];
+          x = engRank[engagementOf(a.last_seen_at)] - engRank[engagementOf(b.last_seen_at)];
           break;
         case "lastSeen": {
-          const av = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : -Infinity;
-          const bv = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : -Infinity;
+          const av = a.last_seen_at ? new Date(a.last_seen_at).getTime() : -Infinity;
+          const bv = b.last_seen_at ? new Date(b.last_seen_at).getTime() : -Infinity;
           x = av - bv;
           break;
         }
@@ -423,7 +423,7 @@ export function UsersDirectoryTab() {
                   ) : (
                     pageRows.map((u) => {
                       const full = fullNameOf(u);
-                      const eng = engagementOf(u.last_sign_in_at);
+                      const eng = engagementOf(u.last_seen_at);
                       return (
                         <TableRow
                           key={u.id}
@@ -448,7 +448,7 @@ export function UsersDirectoryTab() {
                             <EngagementDot engagement={eng} />
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {lastSeenLabel(u.last_sign_in_at)}
+                            {lastSeenLabel(u.last_seen_at)}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {fmtDate(u.created_at)}
@@ -542,8 +542,8 @@ function exportAllUsers(users: DirectoryRow[]) {
       esc(u.primary_team_nickname ?? u.nickname),
       esc(u.referral_name ?? ""),
       esc(u.status),
-      esc(engagementOf(u.last_sign_in_at)),
-      esc(u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString("en-GB") : ""),
+      esc(engagementOf(u.last_seen_at)),
+      esc(u.last_seen_at ? new Date(u.last_seen_at).toLocaleString("en-GB") : ""),
       esc(fmtDate(u.created_at)),
     ];
     lines.push(row.join(","));
@@ -966,12 +966,12 @@ function UserDrawer({
               {/* Engagement / onboarding readout */}
               <div className="mt-3 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Engagement</span>
-                <EngagementDot engagement={engagementOf(user.last_sign_in_at)} />
+                <EngagementDot engagement={engagementOf(user.last_seen_at)} />
               </div>
               <div className="mt-1 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Last seen</span>
                 <span>
-                  {user.last_sign_in_at ? lastSeenLabel(user.last_sign_in_at) : "Never"}
+                  {user.last_seen_at ? lastSeenLabel(user.last_seen_at) : "Never"}
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-xs">
