@@ -236,6 +236,7 @@ export type DirectoryRow = {
   created_at: string;
   onboarded_at: string | null;
   last_sign_in_at: string | null;
+  last_seen_at: string | null;
   primary_team_nickname: string | null;
 };
 
