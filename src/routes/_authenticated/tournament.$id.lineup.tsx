@@ -2037,6 +2037,14 @@ function LineupPicker() {
     qc.invalidateQueries({ queryKey: ["picks"] });
     qc.invalidateQueries({ queryKey: ["roster-status"] });
     qc.invalidateQueries({ queryKey: ["missing-picks"] });
+
+    // Fire picks-confirmation email (skip when admin saves on someone else's behalf).
+    if (!impersonatingId && activeTeam?.id) {
+      void sendConfirmation({ data: { tournamentId: id, teamId: activeTeam.id } }).catch(
+        (e) => console.error("[picks-confirmation] send failed", e),
+      );
+    }
+
     navigate({ to: "/tournament/$id", params: { id } });
   }
 
