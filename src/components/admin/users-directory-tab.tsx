@@ -84,12 +84,40 @@ function engagementOf(lastSignInAt: string | null): Engagement {
 
 function lastSeenLabel(s: string | null): string {
   if (!s) return "—";
-  const days = Math.floor((Date.now() - new Date(s).getTime()) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  // YYYY-MM-DD HH:mm in the admin's local timezone (24h).
+  const parts = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  let hh = get("hour");
+  if (hh === "24") hh = "00"; // some locales render midnight as 24
+  const stamp = `${get("year")}-${get("month")}-${get("day")} ${hh}:${get("minute")}`;
+
+  // Local zone label (e.g. "BST", "GMT+1").
+  let zone = "";
+  try {
+    const tzParts = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      timeZoneName: "short",
+    }).formatToParts(d);
+    zone = tzParts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    zone = "";
+  }
+  if (!zone) {
+    const m = d.toString().match(/GMT([+-]\d{2})(\d{2})/);
+    zone = m ? `GMT${m[1]}:${m[2]}` : "Local";
+  }
+
+  return `${stamp} (${zone})`;
 }
 
 function fmtDate(s: string | null): string {
