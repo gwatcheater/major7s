@@ -8,7 +8,6 @@ import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
 import { toast } from "sonner";
-import { sendPicksConfirmation } from "@/lib/email/picks-confirmation.functions";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/lineup")({
   component: LineupPicker,
@@ -302,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts" | "my-picks";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -329,6 +328,7 @@ interface PicksHelperProps {
   wagsInfo: Record<string, string>;       // espn_player_id → WAG name
   cuntsEspnIds: Set<string>;             // espn_player_id set for C@nts helper
   cuntsInfo: Record<string, string>;     // espn_player_id → helper_info
+  myPicksCounts: Record<string, number>; // golfer.id → number of times user has picked them historically
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -1200,12 +1200,103 @@ function CuntsMode({ byBucket, setSelections, isLocked, onDeploy, cuntsEspnIds, 
   );
 }
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
+function MyPicksMode({ byBucket, setSelections, isLocked, onDeploy, myPicksCounts }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  myPicksCounts: Record<string, number>;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = (byBucket[b] ?? [])
+        .filter((g) => myPicksCounts[g.id] != null && myPicksCounts[g.id] > 0)
+        .sort((a, b) => (myPicksCounts[b.id] ?? 0) - (myPicksCounts[a.id] ?? 0));
+      if (pool.length === 0) continue;
+      result[b] = pool[0].id; // highest pick count in this bucket
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? [])
+      .filter((g) => myPicksCounts[g.id] != null && myPicksCounts[g.id] > 0);
+    if (pool.length <= 1) return; // nothing else to rotate to
+    const currentId = suggestions?.[b];
+    const others = pool.filter((g) => g.id !== currentId);
+    const next = others[Math.floor(Math.random() * others.length)];
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: next.id }));
+    setDeployed(false);
+  }
+
+  const eligibleCount = Object.values(byBucket).flat()
+    .filter((g) => myPicksCounts[g.id] != null && myPicksCounts[g.id] > 0).length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  // Build pick count display for suggestion rows — shown as (N picks)
+  const pickCountDisplay: Record<string, string> = {};
+  for (const golfer of Object.values(byBucket).flat()) {
+    const count = myPicksCounts[golfer.id];
+    if (count != null && count > 0) {
+      pickCountDisplay[golfer.id] = `${count} ${count === 1 ? "pick" : "picks"}`;
+    }
+  }
+
+  return (
+    <>
+      <div className="px-5 pt-3 pb-0">
+        {totalCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {eligibleCount === 0
+              ? "No golfers from your pick history are in this field."
+              : `${eligibleCount} golfer${eligibleCount !== 1 ? "s" : ""} from your pick history in this field.`}
+          </p>
+        )}
+      </div>
+      <HelperPanel
+        buckets={buckets} byBucket={byBucket} targetBuckets={targetBuckets}
+        toggleAll={toggleAll} toggleBucket={toggleBucket} allActive={allActive}
+        suggestions={suggestions} setSuggestions={setSuggestions}
+        deployed={deployed} setDeployed={setDeployed}
+        onGenerate={generate}
+        onRerollBucket={rerollBucket}
+        tiedBuckets={new Set(
+          buckets.filter((b) =>
+            (byBucket[b] ?? []).filter((g) => myPicksCounts[g.id] != null && myPicksCounts[g.id] > 0).length > 1
+          )
+        )}
+        isLocked={isLocked} setSelections={setSelections}
+        generateLabel="Suggest from my history"
+        generateIcon={<Play className="h-3.5 w-3.5" />}
+        onDeploy={onDeploy}
+        countryData={pickCountDisplay}
+      />
+    </>
+  );
+}
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
   const [activeMode, setActiveMode] = useState<HelperMode>("random");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
-    { id: "random",          label: "Random",       emoji: "🎲", desc: "Random golfer per bucket" },
+    { id: "my-picks",        label: "My picks",     emoji: "🔮", desc: "Suggest picks based on your historical selections" },
     { id: "top-ranked",      label: "Top ranked",   emoji: "🔝", desc: "Highest OWGR in each bucket" },
+    { id: "random",          label: "Random",       emoji: "🎲", desc: "Random golfer per bucket" },
     { id: "contrarian",      label: "Contrarian",   emoji: "📉", desc: "Least-picked across all teams" },
     { id: "last-major",      label: "Last major",   emoji: "🏆", desc: "Best finish in most recent major" },
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
@@ -1355,6 +1446,13 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           cuntsEspnIds={cuntsEspnIds}
           cuntsInfo={cuntsInfo}
           espnIdByGolfer={espnIdByGolfer}
+        />
+      )}
+      {activeMode === "my-picks" && (
+        <MyPicksMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          myPicksCounts={myPicksCounts}
         />
       )}
     </Card>
@@ -1532,7 +1630,29 @@ function LineupPicker() {
     },
   });
 
-  // picks_helper table — fetch lefties (and future helpers) keyed by helper_name
+  // All picks for this team across all tournaments — used by My Picks helper.
+  // Joins to golfers table to get golfer_name for cross-tournament name grouping.
+  const { data: myHistoricalPicks = [] } = useQuery({
+    queryKey: ["my-historical-picks", activeTeam?.id],
+    enabled: !!activeTeam,
+    queryFn: async () => {
+      let all: any[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select("golfer_id, golfers(golfer_name)")
+          .eq("team_id", activeTeam!.id)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data ?? []);
+        if ((data ?? []).length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    },
+  });
   const { data: picksHelperRows = [] } = useQuery({
     queryKey: ["picks-helper"],
     queryFn: async () => {
@@ -1565,6 +1685,7 @@ function LineupPicker() {
   const [openAccordion, setOpenAccordion] = useState<number | null>(null);
   const [sheetBucket, setSheetBucket] = useState<number | null>(null);
   const [helperDeployed, setHelperDeployed] = useState(false);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const init: Record<number, string> = {};
@@ -1656,15 +1777,6 @@ function LineupPicker() {
       toast.success("Lineup saved on user's behalf (logged)");
     } else {
       toast.success("Lineup saved");
-      // Fire-and-forget picks-confirmation email (skip when admin is impersonating).
-      void sendPicksConfirmation({
-        data: {
-          tournamentId: id,
-          teamId: activeTeam!.id,
-        },
-      }).catch((err) => {
-        console.warn("picks-confirmation email failed", err);
-      });
     }
 
     qc.invalidateQueries({ queryKey: ["picks"] });
@@ -1825,6 +1937,23 @@ function LineupPicker() {
   const cuntsInfo: Record<string, string> = {};
   for (const r of cuntsRows) cuntsInfo[String(r.espn_player_id)] = r.helper_info;
 
+  // Build myPicksCounts: golfer.id (current field) → number of historical picks.
+  // Groups historical picks by golfer_name (lowercase) across all tournaments,
+  // then maps to current field golfer.id via name match.
+  const historicalNameCounts = new Map<string, number>();
+  for (const p of myHistoricalPicks) {
+    const name = (p.golfers?.golfer_name as string | undefined)?.toLowerCase().trim();
+    if (!name) continue;
+    historicalNameCounts.set(name, (historicalNameCounts.get(name) ?? 0) + 1);
+  }
+  const myPicksCounts: Record<string, number> = {};
+  for (const golfer of field) {
+    const key = golfer.golfer_name?.toLowerCase().trim();
+    if (!key) continue;
+    const count = historicalNameCounts.get(key);
+    if (count) myPicksCounts[golfer.id] = count;
+  }
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -1928,6 +2057,7 @@ function LineupPicker() {
       <div className="px-5 py-4">
         <button
           onClick={() => { save(); setHelperDeployed(false); }}
+          ref={saveButtonRef}
           disabled={!impersonatingId && isLocked}
           className={[
             "w-full py-4 font-display text-xs uppercase tracking-widest text-white disabled:opacity-50 transition-colors",
@@ -1952,7 +2082,15 @@ function LineupPicker() {
       setSelections={setSelections}
       isLocked={!impersonatingId && isLocked}
       tournamentPickCounts={tournamentPickCounts}
-      onDeploy={() => setHelperDeployed(true)}
+      onDeploy={() => {
+        setHelperDeployed(true);
+        // On mobile (stacked layout), scroll the Save Lineup button into view
+        if (window.innerWidth < 1024) {
+          setTimeout(() => {
+            saveButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 100);
+        }
+      }}
       lastMajorBest={lastMajorBest}
       sameTournamentBest={sameTournamentBest}
       currentTournamentName={currentTournamentName}
@@ -1966,6 +2104,7 @@ function LineupPicker() {
       wagsInfo={wagsInfo}
       cuntsEspnIds={cuntsEspnIds}
       cuntsInfo={cuntsInfo}
+      myPicksCounts={myPicksCounts}
     />
   );
 
