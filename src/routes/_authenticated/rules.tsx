@@ -1,21 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/rules")({
-  head: () => ({
-    meta: [
-      { title: "How to Play - Major7s" },
-      { name: "description", content: "Four Majors. Seven Picks. No Mercy. Everyone's an expert until Sunday." },
-      { property: "og:title", content: "How to Play - Major7s" },
-      { property: "og:description", content: "Four Majors. Seven Picks. No Mercy. Everyone's an expert until Sunday." },
-      { property: "og:url", content: "https://www.major7s.com/rules" },
-      { property: "og:type", content: "website" },
-      { property: "og:image", content: "https://www.major7s.com/apple-touch-icon.png" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "How to Play - Major7s" },
-      { name: "twitter:description", content: "Four Majors. Seven Picks. No Mercy. Everyone's an expert until Sunday." },
-      { name: "twitter:image", content: "https://www.major7s.com/apple-touch-icon.png" },
-    ],
-  }),
   component: RulesPage,
 });
 
@@ -207,5 +192,6 @@ function RulesPage() {
 
         </div>
       </div>
+    </div>
   );
 }
