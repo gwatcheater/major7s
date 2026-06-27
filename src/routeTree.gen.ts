@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as BlogPostIdRouteImport } from './routes/blog.$postId'
 import { Route as AuthenticatedStatsRouteImport } from './routes/_authenticated/stats'
+import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedHallOfFameRouteImport } from './routes/_authenticated/hall-of-fame'
@@ -87,6 +88,11 @@ const BlogPostIdRoute = BlogPostIdRouteImport.update({
 const AuthenticatedStatsRoute = AuthenticatedStatsRouteImport.update({
   id: '/stats',
   path: '/stats',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRulesRoute = AuthenticatedRulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -280,6 +287,7 @@ export interface FileRoutesByTo {
   '/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/_authenticated/hall-of-fame': typeof AuthenticatedHallOfFameRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/rules': typeof AuthenticatedRulesRoute
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -356,6 +365,7 @@ export interface FileRouteTypes {
     | '/hall-of-fame'
     | '/home'
     | '/profile'
+    | '/rules'
     | '/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
@@ -391,6 +401,7 @@ export interface FileRouteTypes {
     | '/hall-of-fame'
     | '/home'
     | '/profile'
+    | '/rules'
     | '/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
@@ -428,6 +439,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hall-of-fame'
     | '/_authenticated/home'
     | '/_authenticated/profile'
+    | '/_authenticated/rules'
     | '/_authenticated/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
@@ -536,6 +548,13 @@ declare module '@tanstack/react-router' {
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof AuthenticatedStatsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/rules': {
+      id: '/_authenticated/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof AuthenticatedRulesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/profile': {
@@ -773,6 +792,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHallOfFameRoute: typeof AuthenticatedHallOfFameRoute
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
   AuthenticatedStatsRoute: typeof AuthenticatedStatsRoute
   AuthenticatedBlogNewRoute: typeof AuthenticatedBlogNewRoute
   AuthenticatedTournamentIdRoute: typeof AuthenticatedTournamentIdRouteWithChildren
@@ -786,6 +806,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHallOfFameRoute: AuthenticatedHallOfFameRoute,
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedRulesRoute: AuthenticatedRulesRoute,
   AuthenticatedStatsRoute: AuthenticatedStatsRoute,
   AuthenticatedBlogNewRoute: AuthenticatedBlogNewRoute,
   AuthenticatedTournamentIdRoute: AuthenticatedTournamentIdRouteWithChildren,
@@ -818,3 +839,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

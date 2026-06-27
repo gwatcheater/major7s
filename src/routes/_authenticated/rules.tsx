@@ -1,7 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Helmet } from "react-helmet-async";
 
 export const Route = createFileRoute("/_authenticated/rules")({
+  head: () => ({
+    meta: [
+      { title: "How to Play - Major7s" },
+      { name: "description", content: "Four Majors. Seven Picks. No Mercy. Learn how to play Major7s - the fantasy golf picks game built around the four men's majors." },
+      { property: "og:title", content: "How to Play - Major7s" },
+      { property: "og:description", content: "Four Majors. Seven Picks. No Mercy. Pick one golfer from each of seven buckets across the Masters, PGA, US Open and The Open. Lowest score wins." },
+      { property: "og:url", content: "https://www.major7s.com/rules" },
+      { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "Major7s" },
+      { property: "og:image", content: "https://www.major7s.com/og-image.png" },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "How to Play - Major7s" },
+      { name: "twitter:description", content: "Four Majors. Seven Picks. No Mercy. The fantasy golf picks game built around the four men's majors." },
+      { name: "twitter:image", content: "https://www.major7s.com/og-image.png" },
+    ],
+  }),
   component: RulesPage,
 });
 
