@@ -24,7 +24,6 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [adminMode, setAdminMode] = useState(false);
 
   // Check which teams have missing picks for any open tournament
   const { data: missingPicksTeams = [] } = useQuery({
@@ -165,30 +164,8 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
         )}
       </nav>
 
-      {/* User / admin toggle / sign out */}
+      {/* User / sign out */}
       <div className="p-4 mt-auto border-t border-white/10" style={{ backgroundColor: "rgba(0,0,0,0.2)" }}>
-        {isAdmin && (
-          <div className="flex items-center bg-black/30 p-1 rounded-sm border border-white/10 mb-3">
-            <button
-              onClick={() => setAdminMode(false)}
-              className={cn(
-                "flex-1 py-1 text-[10px] font-bold uppercase tracking-widest",
-                !adminMode ? "bg-white/10 text-white" : "text-white/40 hover:text-white"
-              )}
-            >
-              User
-            </button>
-            <button
-              onClick={() => { setAdminMode(true); navigate({ to: "/admin" }); }}
-              className={cn(
-                "flex-1 py-1 text-[10px] font-bold uppercase tracking-widest",
-                adminMode ? "bg-white/10 text-white" : "text-white/40 hover:text-white"
-              )}
-            >
-              Admin
-            </button>
-          </div>
-        )}
         <Link to="/profile" className="flex items-center gap-3 px-1 hover:opacity-80 transition-opacity">
           <div className="size-9 rounded-full bg-white/10 border border-white/20 grid place-items-center font-display text-xs text-white/80">
             {user?.email?.[0]?.toUpperCase() ?? "?"}
