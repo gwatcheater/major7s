@@ -1,9 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeams } from "@/hooks/use-teams";
 import { useImpersonation } from "@/context/impersonation-context";
+import { sendPicksConfirmation } from "@/lib/email/picks-confirmation.functions";
 import { Countdown } from "@/components/countdown";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Check, ChevronDown, X, XCircle, Shuffle, RefreshCw, Play } from "lucide-react";
@@ -2086,6 +2088,7 @@ function LineupPicker() {
   const { getEffectiveUserId, impersonatingId, impersonatedProfile } = useImpersonation();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const triggerPicksEmail = useServerFn(sendPicksConfirmation);
 
   const { data: tournament } = useQuery({
     queryKey: ["tournament", id],
@@ -2419,6 +2422,11 @@ function LineupPicker() {
       toast.success("Lineup saved on user's behalf (logged)");
     } else {
       toast.success("Lineup saved");
+      // Fire picks confirmation email — fire-and-forget, idempotency key prevents duplicates
+      if (activeTeam?.id) {
+        void triggerPicksEmail({ data: { tournamentId: id, teamId: activeTeam.id } })
+          .catch((e) => console.error("[picks-confirmation] trigger failed", e));
+      }
     }
 
     qc.invalidateQueries({ queryKey: ["picks"] });
