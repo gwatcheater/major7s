@@ -1,24 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/_authenticated/rules")({
-  head: () => ({
-    meta: [
-      { title: "How to Play - Major7s" },
-      { name: "description", content: "Four Majors. Seven Picks. No Mercy. Learn how to play Major7s - the fantasy golf picks game built around the four men's majors." },
-      { property: "og:title", content: "How to Play - Major7s" },
-      { property: "og:description", content: "Four Majors. Seven Picks. No Mercy. Pick one golfer from each of seven buckets across the Masters, PGA, US Open and The Open. Lowest score wins." },
-      { property: "og:url", content: "https://www.major7s.com/rules" },
-      { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "Major7s" },
-      { property: "og:image", content: "https://www.major7s.com/og-image.png" },
-      { property: "og:image:width", content: "1200" },
-      { property: "og:image:height", content: "630" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "How to Play - Major7s" },
-      { name: "twitter:description", content: "Four Majors. Seven Picks. No Mercy. The fantasy golf picks game built around the four men's majors." },
-      { name: "twitter:image", content: "https://www.major7s.com/og-image.png" },
-    ],
-  }),
   component: RulesPage,
 });
 
@@ -54,30 +37,12 @@ function RulesPage() {
     },
   ];
 
+  useEffect(() => {
+    document.title = "How to Play - Major7s";
+  }, []);
+
   return (
-    <>
-      <Helmet>
-        <title>How to Play - Major7s</title>
-        <meta name="description" content="Four Majors. Seven Picks. No Mercy. Learn how to play Major7s - the fantasy golf picks game built around the four men's majors." />
-
-        {/* Open Graph - used by WhatsApp, Facebook, LinkedIn */}
-        <meta property="og:title" content="How to Play - Major7s" />
-        <meta property="og:description" content="Four Majors. Seven Picks. No Mercy. Pick one golfer from each of seven buckets across the Masters, PGA, US Open and The Open. Lowest score wins." />
-        <meta property="og:url" content="https://www.major7s.com/rules" />
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Major7s" />
-        <meta property="og:image" content="https://www.major7s.com/og-image.png" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-
-        {/* Twitter / X card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="How to Play - Major7s" />
-        <meta name="twitter:description" content="Four Majors. Seven Picks. No Mercy. The fantasy golf picks game built around the four men's majors." />
-        <meta name="twitter:image" content="https://www.major7s.com/og-image.png" />
-      </Helmet>
-
-      <div className="min-h-screen" style={{ backgroundColor: "#243d24", color: "#fff" }}>
+    <div className="min-h-screen" style={{ backgroundColor: "#243d24", color: "#fff" }}>
         <div className="max-w-2xl lg:max-w-4xl mx-auto px-6 lg:px-16 py-10 lg:py-16 pb-20">
 
           {/* Hero */}
@@ -232,6 +197,6 @@ function RulesPage() {
 
         </div>
       </div>
-    </>
+    </div>
   );
 }
