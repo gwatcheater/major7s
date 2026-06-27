@@ -141,20 +141,28 @@ function AuthBridge() {
   return null;
 }
 
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
 function LastSeenTracker() {
   const { user } = useAuth();
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const lastStampRef = useRef<number>(0);
   useEffect(() => {
     if (!user?.id) return;
+    const now = Date.now();
+    if (now - lastStampRef.current < LAST_SEEN_THROTTLE_MS) return;
+    lastStampRef.current = now;
     void supabase
       .from("profiles")
-      .update({ last_seen_at: new Date().toISOString() })
+      .update({ last_seen_at: new Date(now).toISOString() })
       .eq("id", user.id)
       .then(({ error }) => {
         if (error) console.warn("[last-seen] update failed", error.message);
       });
-  }, [user?.id]);
+  }, [user?.id, pathname]);
   return null;
 }
+
 
 function RootComponent() {
   // Force rebuild trigger
