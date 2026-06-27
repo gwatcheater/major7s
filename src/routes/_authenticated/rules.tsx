@@ -190,7 +190,6 @@ function RulesPage() {
             ))}
           </div>
 
-        </div>
       </div>
     </div>
   );
