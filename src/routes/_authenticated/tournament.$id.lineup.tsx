@@ -2863,6 +2863,15 @@ function LineupPicker() {
       tournamentPickCounts={tournamentPickCounts}
       onDeploy={() => {
         setHelperDeployed(true);
+        // Log helper usage — fire and forget, no await, non-blocking
+        if (activeTeam?.id) {
+          supabase
+            .from("tournament_scores")
+            .update({ helper_used: true })
+            .eq("team_id", activeTeam.id)
+            .eq("tournament_id", id)
+            .then(() => {}); // intentionally silent — logging failure shouldn't affect UX
+        }
         // On mobile (stacked layout), scroll the Save Lineup button into view
         if (window.innerWidth < 1024) {
           setTimeout(() => {
