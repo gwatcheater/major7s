@@ -1899,7 +1899,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "hidden-gem",      label: "Hidden gem",   emoji: "💎", desc: "B6 & B7 golfers who punch above their ranking at majors" },
     { id: "owgr-form",       label: "🔥 OWGR",      emoji: "",   desc: "Biggest world ranking risers since the last major" },
-    { id: "debutants",       label: "Debutants",    emoji: "🆕", desc: `First-ever ${currentTournamentName} appearance in Major7s` },
+    { id: "debutants",       label: "Debutants",    emoji: "🆕", desc: `First-ever ${currentTournamentName} appearance` },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
     { id: "lefties",         label: "Lefties",      emoji: "🤚", desc: "Left-handed golfers only" },
