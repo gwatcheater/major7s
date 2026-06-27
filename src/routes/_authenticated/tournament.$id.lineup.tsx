@@ -301,7 +301,7 @@ function BottomSheet({
 
 // ─── PicksHelper ──────────────────────────────────────────────────────────────
 
-type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts" | "my-picks" | "hidden-gem" | "owgr-form";
+type HelperMode = "random" | "top-ranked" | "contrarian" | "last-major" | "same-tournament" | "no-yanks" | "team-europe" | "lefties" | "wags" | "cunts" | "my-picks" | "hidden-gem" | "owgr-form" | "debutants";
 
 // golfer_id (current field) → best historical finish for that golfer
 interface HistoricalBestByGolfer {
@@ -330,7 +330,6 @@ interface PicksHelperProps {
   cuntsInfo: Record<string, string>;     // espn_player_id → helper_info
   myPicksCounts: Record<string, number>; // golfer.id → number of times user has picked them historically
   hiddenGemData: Record<string, { bestPosition: number; owgrAtTime: number; delta: number; tournamentName: string; year: number }>; // golfer.id → best overperformance data
-  owgrFormData: Record<string, { delta: number; priorRank: number; currentRank: number; source: string }>; // golfer.id → OWGR improvement data
 }
 
 // Shared bucket toggle + suggestion list + deploy UI used by all modes
@@ -1298,6 +1297,8 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
   isLocked: boolean;
   onDeploy: () => void;
   hiddenGemData: Record<string, { bestPosition: number; owgrAtTime: number; delta: number; tournamentName: string; year: number }>;
+  owgrFormData: Record<string, { delta: number; priorRank: number; currentRank: number; source: string }>;
+  debutantIds: Set<string>; // golfer.id → never appeared in this tournament family before
 }) {
   // Locked to B6 and B7 only — that's the point of this helper
   const buckets = [6, 7];
@@ -1710,7 +1711,179 @@ function OwgrFormMode({ byBucket, setSelections, isLocked, onDeploy, owgrFormDat
   );
 }
 
-function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts, hiddenGemData, owgrFormData }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
+function DebutantsMode({ byBucket, setSelections, isLocked, onDeploy, debutantIds, currentTournamentName }: {
+  byBucket: Record<number, Golfer[]>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  isLocked: boolean;
+  onDeploy: () => void;
+  debutantIds: Set<string>;
+  currentTournamentName: string;
+}) {
+  const buckets = [1, 2, 3, 4, 5, 6, 7];
+  const [targetBuckets, setTargetBuckets] = useState<Set<number>>(new Set(buckets));
+  const [suggestions, setSuggestions] = useState<Record<number, string> | null>(null);
+  const [deployed, setDeployed] = useState(false);
+  const allActive = buckets.every((b) => targetBuckets.has(b));
+
+  function toggleAll() { setTargetBuckets(allActive ? new Set() : new Set(buckets)); setSuggestions(null); }
+  function toggleBucket(b: number) {
+    setTargetBuckets((prev) => { const next = new Set(prev); next.has(b) ? next.delete(b) : next.add(b); return next; });
+    setSuggestions(null);
+  }
+
+  function isDebutant(g: Golfer) { return debutantIds.has(g.id); }
+  function pickRandom(pool: Golfer[]) { return pool[Math.floor(Math.random() * pool.length)].id; }
+
+  function generate() {
+    const result: Record<number, string> = {};
+    for (const b of buckets) {
+      if (!targetBuckets.has(b)) continue;
+      const pool = (byBucket[b] ?? []).filter(isDebutant);
+      if (pool.length === 0) continue;
+      result[b] = pickRandom(pool);
+    }
+    setSuggestions(result);
+    setDeployed(false);
+  }
+
+  function rerollBucket(b: number) {
+    const pool = (byBucket[b] ?? []).filter(isDebutant);
+    if (pool.length <= 1) return;
+    const currentId = suggestions?.[b];
+    const others = pool.filter((g) => g.id !== currentId);
+    setSuggestions((prev) => ({ ...(prev ?? {}), [b]: pickRandom(others) }));
+    setDeployed(false);
+  }
+
+  const debutantCount = Object.values(byBucket).flat().filter(isDebutant).length;
+  const totalCount = Object.values(byBucket).flat().length;
+
+  const activeSuggestedBuckets = suggestions
+    ? Object.keys(suggestions).map(Number).filter((b) => !!suggestions[b])
+    : [];
+
+  function deploy() {
+    if (!suggestions) return;
+    setSelections((prev) => ({ ...prev, ...suggestions }));
+    setDeployed(true);
+    if (window.innerWidth < 1024) {
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>('[data-save-btn]');
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.pageYOffset - 80;
+          try { window.scrollTo({ top, behavior: 'smooth' }); } catch { window.scrollTo(0, top); }
+        }
+      }, 100);
+    }
+    onDeploy();
+  }
+
+  return (
+    <div className="px-5 py-4 space-y-5">
+      <p className="text-xs text-muted-foreground">
+        Golfers making their first-ever {currentTournamentName} appearance in Major7s — zero historical entries for this tournament family.{" "}
+        {debutantCount > 0
+          ? `${debutantCount} debutant${debutantCount !== 1 ? "s" : ""} in this field.`
+          : "No debutants found — every golfer in this field has appeared before."}
+      </p>
+
+      {/* Bucket selector */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Apply to buckets</p>
+        <p className="text-xs text-muted-foreground mb-2">Select 'All' or choose any combination of individual buckets</p>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={toggleAll}
+            className={["px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+              allActive ? "text-white border-transparent" : "text-muted-foreground border-border bg-transparent hover:bg-muted/40"].join(" ")}
+            style={allActive ? { backgroundColor: "var(--forest-deep)", borderColor: "var(--forest-deep)" } : {}}>
+            All
+          </button>
+          {buckets.map((b) => {
+            const isActive = targetBuckets.has(b);
+            const isEmpty = (byBucket[b] ?? []).length === 0;
+            return (
+              <button key={b} onClick={() => toggleBucket(b)} disabled={isEmpty}
+                className={["px-3 py-1 rounded-full text-xs font-semibold border transition-colors",
+                  isEmpty ? "opacity-30 cursor-not-allowed border-border text-muted-foreground"
+                    : isActive ? "border-transparent text-[#1a2a10]"
+                    : "text-muted-foreground border-border bg-transparent hover:bg-muted/40"].join(" ")}
+                style={isActive && !isEmpty ? { backgroundColor: "var(--gold)", borderColor: "var(--gold)" } : {}}>
+                B{b}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Generate */}
+      <div className="flex gap-2">
+        <button onClick={generate} disabled={isLocked || targetBuckets.size === 0 || debutantCount === 0}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-white rounded disabled:opacity-40 transition-colors"
+          style={{ backgroundColor: "var(--forest-deep)" }}>
+          <Shuffle className="h-3.5 w-3.5" />
+          {suggestions ? "Re-run" : "Find debutants"}
+        </button>
+        {suggestions && (
+          <button onClick={() => { setSuggestions(null); setDeployed(false); }}
+            className="px-3 py-2.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+            aria-label="Clear"><X className="h-4 w-4" /></button>
+        )}
+      </div>
+
+      {/* Suggestions */}
+      {suggestions && (
+        <div className="rounded border border-border overflow-hidden">
+          {buckets.map((b) => {
+            const isTargeted = targetBuckets.has(b);
+            const golferId = suggestions[b];
+            const golfer = golferId ? (byBucket[b] ?? []).find((g) => g.id === golferId) : null;
+            return (
+              <div key={b} className={["flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0",
+                !isTargeted || !golferId ? "opacity-40" : ""].join(" ")}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-5 shrink-0">B{b}</span>
+                {!isTargeted || !golferId ? (
+                  <span className="text-sm text-muted-foreground flex-1">—</span>
+                ) : (
+                  <>
+                    <div className="flex-1 flex flex-col gap-0.5">
+                      <span className="text-sm">{golfer?.golfer_name ?? "Unknown"}</span>
+                      <span className="text-xs text-muted-foreground">{currentTournamentName} debutant</span>
+                    </div>
+                    <button onClick={() => rerollBucket(b)}
+                      className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                      aria-label={`Re-roll B${b}`} title="Pick another debutant">
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Deploy */}
+      {suggestions && activeSuggestedBuckets.length > 0 && (
+        <div className="space-y-2">
+          <button onClick={deploy} disabled={deployed || isLocked}
+            className={["w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold uppercase tracking-wider rounded border transition-colors disabled:opacity-50",
+              deployed ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800"
+                : "text-[#1a2a10] border-transparent"].join(" ")}
+            style={!deployed ? { backgroundColor: "var(--gold)" } : {}}>
+            {deployed
+              ? <><Check className="h-3.5 w-3.5" />Deployed</>
+              : <><Play className="h-3.5 w-3.5" />Deploy to {activeSuggestedBuckets.map((b) => `B${b}`).join(", ")}</>}
+          </button>
+          <p className="text-xs text-muted-foreground text-center">
+            {deployed ? "Picks deployed — hit Save Lineup to confirm" : "Other buckets unchanged. Save lineup to confirm."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PicksHelper({ byBucket, selections, setSelections, isLocked, tournamentPickCounts, onDeploy, lastMajorBest, sameTournamentBest, currentTournamentName, lastMajorLabel, priorYearLabel, golferCountries, leftiesEspnIds, leftiesInfo, espnIdByGolfer, wagsEspnIds, wagsInfo, cuntsEspnIds, cuntsInfo, myPicksCounts, hiddenGemData, owgrFormData, debutantIds }: PicksHelperProps & { espnIdByGolfer: Record<string, string> }) {
   const [activeMode, setActiveMode] = useState<HelperMode>("my-picks");
 
   const liveModes: { id: HelperMode; label: string; emoji: string; desc: string }[] = [
@@ -1722,6 +1895,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "same-tournament", label: "Prior year",   emoji: "📅", desc: `Best finish in prior ${currentTournamentName}` },
     { id: "hidden-gem",      label: "Hidden gem",   emoji: "💎", desc: "B6 & B7 golfers who punch above their ranking at majors" },
     { id: "owgr-form",       label: "🔥 OWGR",      emoji: "",   desc: "Biggest world ranking risers since the last major" },
+    { id: "debutants",       label: "Debutants",    emoji: "🆕", desc: `First-ever ${currentTournamentName} appearance in Major7s` },
     { id: "no-yanks",        label: "No Yanks",     emoji: "🌍", desc: "Random non-USA golfer per bucket" },
     { id: "team-europe",     label: "Team Europe",  emoji: "🇪🇺", desc: "Random European golfer per bucket" },
     { id: "lefties",         label: "Lefties",      emoji: "🤚", desc: "Left-handed golfers only" },
@@ -1729,9 +1903,7 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
     { id: "cunts",           label: "C@nts",        emoji: "🤬", desc: "The ultimate buzzkill on the leaderboard." },
   ];
 
-  const comingSoon = [
-    { label: "Debutants", desc: "First major appearance" },
-  ];
+  const comingSoon: { label: string; desc: string }[] = [];
 
   const activeDesc = liveModes.find((m) => m.id === activeMode)?.desc ?? "";
 
@@ -1888,6 +2060,14 @@ function PicksHelper({ byBucket, selections, setSelections, isLocked, tournament
           byBucket={byBucket} setSelections={setSelections}
           isLocked={isLocked} onDeploy={onDeploy}
           owgrFormData={owgrFormData}
+        />
+      )}
+      {activeMode === "debutants" && (
+        <DebutantsMode
+          byBucket={byBucket} setSelections={setSelections}
+          isLocked={isLocked} onDeploy={onDeploy}
+          debutantIds={debutantIds}
+          currentTournamentName={currentTournamentName}
         />
       )}
     </Card>
@@ -2529,6 +2709,25 @@ function LineupPicker() {
     }
   }
 
+  // Debutants: current field golfers with zero historical appearances in this
+  // tournament family (same shortMajorName across all years).
+  const familyTournamentIds = new Set(
+    allTournaments
+      .filter((t) => shortMajorName(t.name) === currentTournamentName && t.id !== id)
+      .map((t) => t.id)
+  );
+  const historicalFamilyNames = new Set<string>();
+  for (const row of historicalGolfers) {
+    if (!familyTournamentIds.has(row.tournament_id)) continue;
+    const key = row.golfer_name?.toLowerCase().trim();
+    if (key) historicalFamilyNames.add(key);
+  }
+  const debutantIds = new Set<string>();
+  for (const golfer of field) {
+    const key = golfer.golfer_name?.toLowerCase().trim();
+    if (key && !historicalFamilyNames.has(key)) debutantIds.add(golfer.id);
+  }
+
   // ── Shared inner content blocks (used in both layout modes) ──────────────
 
   const headerBlock = (
@@ -2687,6 +2886,7 @@ function LineupPicker() {
       myPicksCounts={myPicksCounts}
       hiddenGemData={hiddenGemData}
       owgrFormData={owgrFormData}
+      debutantIds={debutantIds}
     />
   );
 
