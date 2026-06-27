@@ -497,7 +497,8 @@ function HelperPanel({
                     {onRerollBucket && (!tiedBuckets || tiedBuckets.has(b)) && (
                       <button
                         onClick={() => { onRerollBucket(b); setDeployed(false); }}
-                        className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                        className="ml-1 p-1.5 rounded border text-[#1a2a10] hover:opacity-80 transition-colors"
+                        style={{ backgroundColor: "var(--gold)", borderColor: "var(--gold)" }}
                         aria-label={`Re-roll B${b}`}
                         title={tiedBuckets?.has(b) ? "Tied — click to pick another" : "Re-roll"}
                       >
@@ -1477,7 +1478,8 @@ function HiddenGemMode({ byBucket, setSelections, isLocked, onDeploy, hiddenGemD
                     </div>
                     <button
                       onClick={() => rerollBucket(b)}
-                      className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                      className="ml-1 p-1.5 rounded border text-[#1a2a10] hover:opacity-80 transition-colors"
+                      style={{ backgroundColor: "var(--gold)", borderColor: "var(--gold)" }}
                       aria-label={`Next best B${b}`}
                       title="Next best overperformer"
                     >
@@ -1677,11 +1679,14 @@ function OwgrFormMode({ byBucket, setSelections, isLocked, onDeploy, owgrFormDat
                         <span className="text-xs text-muted-foreground">{formDisplay[golfer.id].line2}</span>
                       )}
                     </div>
-                    <button onClick={() => rerollBucket(b)}
-                      className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
-                      aria-label={`Next B${b}`} title="Next biggest mover">
-                      <RefreshCw className="h-3 w-3" />
-                    </button>
+                    {(byBucket[b] ?? []).filter(isOnForm).length > 1 && (
+                      <button onClick={() => rerollBucket(b)}
+                        className="ml-1 p-1.5 rounded border text-[#1a2a10] hover:opacity-80 transition-colors"
+                        style={{ backgroundColor: "var(--gold)", borderColor: "var(--gold)" }}
+                        aria-label={`Next B${b}`} title="Next biggest mover">
+                        <RefreshCw className="h-3 w-3" />
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1781,7 +1786,6 @@ function DebutantsMode({ byBucket, setSelections, isLocked, onDeploy, debutantId
   return (
     <div className="px-5 py-4 space-y-5">
       <p className="text-xs text-muted-foreground">
-        Golfers making their first-ever {currentTournamentName} appearance in Major7s — zero historical entries for this tournament family.{" "}
         {debutantCount > 0
           ? `${debutantCount} debutant${debutantCount !== 1 ? "s" : ""} in this field.`
           : "No debutants found — every golfer in this field has appeared before."}
@@ -1845,12 +1849,12 @@ function DebutantsMode({ byBucket, setSelections, isLocked, onDeploy, debutantId
                   <span className="text-sm text-muted-foreground flex-1">—</span>
                 ) : (
                   <>
-                    <div className="flex-1 flex flex-col gap-0.5">
+                    <div className="flex-1">
                       <span className="text-sm">{golfer?.golfer_name ?? "Unknown"}</span>
-                      <span className="text-xs text-muted-foreground">{currentTournamentName} debutant</span>
                     </div>
                     <button onClick={() => rerollBucket(b)}
-                      className="ml-1 p-1.5 rounded border border-border text-muted-foreground hover:bg-muted/40 transition-colors"
+                      className="ml-1 p-1.5 rounded border text-[#1a2a10] hover:opacity-80 transition-colors"
+                      style={{ backgroundColor: "var(--gold)", borderColor: "var(--gold)" }}
                       aria-label={`Re-roll B${b}`} title="Pick another debutant">
                       <RefreshCw className="h-3 w-3" />
                     </button>
