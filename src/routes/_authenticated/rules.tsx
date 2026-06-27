@@ -1,4 +1,11 @@
-export default function RulesPage() {
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/_authenticated/rules")({
+  component: RulesPage,
+});
+
+function RulesPage() {
+
   return (
     <div
       className="min-h-screen text-white"
