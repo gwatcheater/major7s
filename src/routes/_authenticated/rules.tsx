@@ -14,7 +14,7 @@ function RulesPage() {
       <div className="max-w-2xl mx-auto px-6 py-10 pb-20">
 
         {/* Hero */}
-        <div className="pb-8 mb-8 border-b border-white/8">
+        <div className="pb-8 mb-8 border-b border-white/10">
           <h1
             className="text-4xl font-medium leading-tight tracking-tight mb-2"
             style={{ letterSpacing: "-0.02em" }}
