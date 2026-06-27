@@ -575,6 +575,7 @@ export type Database = {
         Row: {
           calculated_at: string
           calculated_by: string | null
+          helper_used: boolean | null
           id: string
           position_display: string
           position_numeric: number
@@ -586,6 +587,7 @@ export type Database = {
         Insert: {
           calculated_at?: string
           calculated_by?: string | null
+          helper_used?: boolean | null
           id?: string
           position_display: string
           position_numeric: number
@@ -597,6 +599,7 @@ export type Database = {
         Update: {
           calculated_at?: string
           calculated_by?: string | null
+          helper_used?: boolean | null
           id?: string
           position_display?: string
           position_numeric?: number
