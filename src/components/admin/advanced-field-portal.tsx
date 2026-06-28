@@ -48,7 +48,7 @@ export function parseFieldCsv(text: string): ParseResult {
       return {
         line: idx + 1,
         raw: trimmed,
-        parts: trimmed.split(",").map((p) => p.trim()),
+        parts: trimmed.split("|").map((p) => p.trim()),
       };
     },
   );
@@ -63,10 +63,25 @@ export function parseFieldCsv(text: string): ParseResult {
     }
     const { line, raw, parts } = item;
 
+    if (parts.length === 1) {
+      provisional.push({
+        row: null,
+        error: {
+          line,
+          raw,
+          reason: 'Missing "|" delimiter — use: Name | OWGR Ranking',
+        },
+      });
+      continue;
+    }
     if (parts.length !== 2) {
       provisional.push({
         row: null,
-        error: { line, raw, reason: `Expected 2 comma-separated fields, got ${parts.length}` },
+        error: {
+          line,
+          raw,
+          reason: `Expected 2 pipe-separated fields (Name | OWGR Ranking), got ${parts.length}`,
+        },
       });
       continue;
     }
@@ -83,6 +98,7 @@ export function parseFieldCsv(text: string): ParseResult {
       });
       continue;
     }
+
 
     const key = name.toLowerCase();
     const arr = nameOccurrences.get(key) ?? [];
@@ -275,14 +291,15 @@ export function AdvancedFieldPortal({
       {/* Help panel */}
       <Alert>
         <FileText className="size-4" />
-        <AlertTitle>CSV format</AlertTitle>
+        <AlertTitle>Roster format</AlertTitle>
         <AlertDescription>
           <div className="space-y-3 mt-2">
             <p className="text-xs">
-              One golfer per line. Two comma-separated fields, in this exact order:
+              One golfer per line. Two pipe-separated fields, in this exact order: Name | OWGR
+              Ranking
             </p>
             <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto">
-              Name, OWGR Ranking
+              Name | OWGR Ranking
             </pre>
             <p className="text-xs">
               Buckets are assigned automatically by OWGR ranking (lowest fills Bucket 1 first, then
@@ -290,12 +307,11 @@ export function AdvancedFieldPortal({
             </p>
             <p className="text-xs">Valid sample:</p>
             <pre className="rounded-md bg-muted p-3 text-xs font-mono overflow-x-auto">
-              {`Scottie Scheffler, 1
-Rory McIlroy, 2
-Ludvig Aberg, 5`}
+              {`Scottie Scheffler | 1
+Rich Berberian, Jr. | 2057`}
             </pre>
             <ul className="text-xs list-disc pl-5 space-y-1 text-muted-foreground">
-              <li>Exactly 2 fields per row — extra commas in the name will break the row.</li>
+              <li>Exactly 2 fields per row, separated by "|". Commas in names are allowed.</li>
               <li>Name is required and cannot be blank.</li>
               <li>OWGR must be a positive integer.</li>
               <li>Bucket assignment is automatic based on OWGR and configured bucket sizes.</li>
@@ -304,6 +320,7 @@ Ludvig Aberg, 5`}
           </div>
         </AlertDescription>
       </Alert>
+
 
       {/* Upload + metrics grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -323,7 +340,7 @@ Ludvig Aberg, 5`}
             <Textarea
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"Scottie Scheffler, 1\nRory McIlroy, 2\nXander Schauffele, 3"}
+              placeholder={"Scottie Scheffler | 1\nRich Berberian, Jr. | 2057\nRory McIlroy | 2"}
               className="min-h-[240px] font-mono text-sm"
             />
             {parsed.rows.length > 0 && parsed.rows.length > remainingCapacity && (
