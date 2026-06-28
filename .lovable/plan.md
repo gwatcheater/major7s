@@ -1,52 +1,54 @@
-## Goal
+# Audit: `tournaments.external_url` ("External Link URL")
 
-Create `docs/data-dictionary.md` — a comprehensive markdown reference of every table in the Major7s Lovable Cloud (`public` schema) database, including columns, types, descriptions, primary keys, foreign keys, unique constraints, and relationship notes.
+This is a findings report, not a code change. Decide at the end whether to keep, hide, or remove.
 
-## Approach
+## 1. Origin
 
-1. Pull authoritative schema from the live database:
-   - `information_schema.columns` for all column metadata
-   - `information_schema.table_constraints` + `key_column_usage` + `constraint_column_usage` for PK / FK / UNIQUE
-   - `pg_indexes` for supporting indexes
-   - `pg_description` (`obj_description` / `col_description`) for any existing comments
-2. Cross-reference with `src/integrations/supabase/types.ts` and `handle_new_user` / RLS context already in code to write accurate, human-readable descriptions for each column (especially enums like `profile_status`, `app_role`).
-3. Author `docs/data-dictionary.md` with a consistent per-table layout.
+- Introduced by you in this chat on request: **"i would like to add an external web link to the tournament card"**.
+- Implemented as migration `supabase/migrations/20260618204802_baf3060c-5f55-41da-a15d-7252428d2c65.sql`:
+  ```sql
+  ALTER TABLE public.tournaments ADD COLUMN external_url text;
+  ```
+- Not auto-generated, not part of any scanner/security fix, not required by an integration.
 
-## Document structure
+## 2. Functionality
 
-```text
-# Major7s Data Dictionary
-- Overview (schema = public, generated <date>, source of truth)
-- Entity relationship summary (ASCII map of how tables connect)
-- Enums (app_role, profile_status, ...)
-- Tables (alphabetical), each with:
-    - Purpose (1–2 sentences)
-    - Columns table: name | type | nullable | default | description
-    - Primary key
-    - Foreign keys (this table → other) with on-delete behaviour
-    - Referenced by (other tables → this)
-    - Unique constraints / notable indexes
-    - RLS / access notes (one line: who can read/write)
-```
+- Free-text URL field on the admin **Create / Edit Tournament** forms (`src/routes/_authenticated/admin.index.tsx`, lines ~688 and ~980).
+- Stored as nullable `text` on `public.tournaments`.
+- On the tournament detail page (`src/routes/_authenticated/tournament.$id.tsx` lines 321-331) it renders a card titled **"Live Leaderboard"** that opens the URL in a new tab.
+- No validation beyond `<input type="url">`; no tracking, no redirect handler, no server fn — purely a frontend `<a href>`.
 
-Tables to cover (17): `admin_audit`, `blog_posts`, `email_send_log`, `email_send_state`, `email_unsubscribe_tokens`, `golfers`, `picks`, `picks_helper`, `profiles`, `suppressed_emails`, `teams`, `tournament_leaderboard`, `tournament_results`, `tournament_score_picks`, `tournament_scores`, `tournaments`, `user_roles`.
+## 3. Data linkage
 
-Relationship highlights to call out explicitly:
-- `profiles.id` → `auth.users.id` (1:1, managed)
-- `teams.owner_user_id` → `auth.users.id`; one `is_primary` team per user
-- `picks` links `teams` + `tournaments` + `golfers` (composite uniqueness on team+tournament+bucket)
-- `golfers.tournament_id` → `tournaments.id` (per-tournament field)
-- `tournament_leaderboard` / `tournament_scores` / `tournament_score_picks` / `tournament_results` → `tournaments.id` (and `golfer_id` where applicable)
-- `user_roles.user_id` → `auth.users.id` (separate from `profiles` for security)
-- `blog_posts.author_id` → `auth.users.id`, optional `tournament_id` → `tournaments.id`
-- Email tables (`email_send_log`, `email_send_state`, `email_unsubscribe_tokens`, `suppressed_emails`) — standalone, keyed by `email` text not user id
+| Layer | Reference |
+|---|---|
+| DB column | `public.tournaments.external_url` (text, nullable) |
+| Generated types | `src/integrations/supabase/types.ts` (Row/Insert/Update) |
+| Admin read | `admin.index.tsx` select list (line 484) |
+| Admin write | Create form (line 597) + Edit form (line 925) — direct `supabase.from('tournaments')` insert/update |
+| Public read | `home.tsx` and `archive.tsx` tournament shapes (typed but not rendered) |
+| Public render | `tournament.$id.tsx` — single `<a>` "Live Leaderboard" tile |
+| Docs | `docs/tournament-creation.md`, `docs/data-dictionary.md` |
 
-## Out of scope
+No FK, no trigger, no edge function, no cron job, no email template, no third-party integration reads or writes this column.
 
-- `auth`, `storage`, `pgmq`, `net`, `supabase_functions` schemas (not user-managed)
-- Database functions / triggers (already documented in `docs/email-handover.md` for email pipeline)
-- Generating this from a build step — it's a one-shot doc snapshot, dated at top
+## 4. Dependencies / blast radius
 
-## Deliverable
+- **Database usage today:** 30 tournaments, **1** has a non-null `external_url`. The other 29 already render fine without it.
+- Removing the column would require:
+  - dropping references in `admin.index.tsx` (2 forms + select list),
+  - removing the "Live Leaderboard" block in `tournament.$id.tsx`,
+  - removing the optional field from the `Tournament` types in `home.tsx` / `archive.tsx`,
+  - a migration `ALTER TABLE public.tournaments DROP COLUMN external_url`,
+  - regenerating `types.ts`,
+  - trimming the two docs files.
+- Nothing else breaks: no email, no pg_cron, no ESPN sync, no picks logic, no leaderboard import, no analytics depends on it.
+- Hiding (instead of dropping) is a one-line change: remove the two Label/Input blocks and the `<a>` render; column stays in DB harmlessly.
 
-Single file: `docs/data-dictionary.md`.
+## 5. Recommendation options
+
+1. **Keep as-is** — zero work; one tournament already uses it.
+2. **Hide UI, keep column** — remove the two form fields and the "Live Leaderboard" tile; data preserved, easy to restore.
+3. **Full removal** — UI + render + types + migration drop column. Cleanest but destructive for the 1 existing value.
+
+Tell me which option you want and I'll switch to build mode to execute it.
