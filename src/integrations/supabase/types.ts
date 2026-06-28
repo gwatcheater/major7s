@@ -173,8 +173,10 @@ export type Database = {
         Row: {
           bucket_number: number
           created_at: string
+          espn_player_id: string | null
           golfer_name: string
           id: string
+          owgr_player_id: number | null
           owgr_rank: number | null
           tournament_id: string
           updated_at: string
@@ -182,8 +184,10 @@ export type Database = {
         Insert: {
           bucket_number: number
           created_at?: string
+          espn_player_id?: string | null
           golfer_name: string
           id?: string
+          owgr_player_id?: number | null
           owgr_rank?: number | null
           tournament_id: string
           updated_at?: string
@@ -191,8 +195,10 @@ export type Database = {
         Update: {
           bucket_number?: number
           created_at?: string
+          espn_player_id?: string | null
           golfer_name?: string
           id?: string
+          owgr_player_id?: number | null
           owgr_rank?: number | null
           tournament_id?: string
           updated_at?: string
@@ -206,6 +212,108 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      owgr_event_results: {
+        Row: {
+          country: string | null
+          country_code: string | null
+          event_id: number
+          event_name: string | null
+          event_year: number | null
+          finish: number | null
+          is_amateur: boolean | null
+          non_finisher: boolean | null
+          player: string | null
+          player_id: number
+          points_won: number | null
+          rank_from: number | null
+          rank_to: number | null
+          week: number | null
+        }
+        Insert: {
+          country?: string | null
+          country_code?: string | null
+          event_id: number
+          event_name?: string | null
+          event_year?: number | null
+          finish?: number | null
+          is_amateur?: boolean | null
+          non_finisher?: boolean | null
+          player?: string | null
+          player_id: number
+          points_won?: number | null
+          rank_from?: number | null
+          rank_to?: number | null
+          week?: number | null
+        }
+        Update: {
+          country?: string | null
+          country_code?: string | null
+          event_id?: number
+          event_name?: string | null
+          event_year?: number | null
+          finish?: number | null
+          is_amateur?: boolean | null
+          non_finisher?: boolean | null
+          player?: string | null
+          player_id?: number
+          points_won?: number | null
+          rank_from?: number | null
+          rank_to?: number | null
+          week?: number | null
+        }
+        Relationships: []
+      }
+      owgr_event_results_raw: {
+        Row: {
+          country: string | null
+          country_code: string | null
+          event_id: string | null
+          event_name: string | null
+          event_year: string | null
+          finish: string | null
+          is_amateur: string | null
+          non_finisher: string | null
+          player: string | null
+          player_id: string | null
+          points_won: string | null
+          rank_from: string | null
+          rank_to: string | null
+          week: string | null
+        }
+        Insert: {
+          country?: string | null
+          country_code?: string | null
+          event_id?: string | null
+          event_name?: string | null
+          event_year?: string | null
+          finish?: string | null
+          is_amateur?: string | null
+          non_finisher?: string | null
+          player?: string | null
+          player_id?: string | null
+          points_won?: string | null
+          rank_from?: string | null
+          rank_to?: string | null
+          week?: string | null
+        }
+        Update: {
+          country?: string | null
+          country_code?: string | null
+          event_id?: string | null
+          event_name?: string | null
+          event_year?: string | null
+          finish?: string | null
+          is_amateur?: string | null
+          non_finisher?: string | null
+          player?: string | null
+          player_id?: string | null
+          points_won?: string | null
+          rank_from?: string | null
+          rank_to?: string | null
+          week?: string | null
+        }
+        Relationships: []
       }
       picks: {
         Row: {
@@ -636,6 +744,7 @@ export type Database = {
           location: string
           logo_url: string | null
           name: string
+          owgr_event_id: number | null
           recap_blog: string | null
           start_date: string
           status: Database["public"]["Enums"]["tournament_status"]
@@ -652,6 +761,7 @@ export type Database = {
           location: string
           logo_url?: string | null
           name: string
+          owgr_event_id?: number | null
           recap_blog?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["tournament_status"]
@@ -668,6 +778,7 @@ export type Database = {
           location?: string
           logo_url?: string | null
           name?: string
+          owgr_event_id?: number | null
           recap_blog?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["tournament_status"]
@@ -743,6 +854,7 @@ export type Database = {
         }[]
       }
       set_primary_team: { Args: { _team_id: string }; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user"
