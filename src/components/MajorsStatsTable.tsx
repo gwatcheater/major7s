@@ -79,9 +79,9 @@ function useGolferMajorStats(filters: ServerFilters) {
     setError(null);
     supabase
       .rpc("golfer_major_stats", {
-        p_major: filters.major,
-        p_year_from: filters.yearFrom,
-        p_year_to: filters.yearTo,
+        p_major: filters.major ?? undefined,
+        p_year_from: filters.yearFrom ?? undefined,
+        p_year_to: filters.yearTo ?? undefined,
         p_min_majors: filters.minMajors,
       })
       .then(({ data, error }) => {
