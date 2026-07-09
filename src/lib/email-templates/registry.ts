@@ -26,4 +26,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'pick-reminder': pickReminderTemplate,
   'admin-new-user': adminNewUserTemplate,
   'migration-welcome': migrationWelcomeTemplate,
+  'recovery-link': recoveryLinkTemplate,
 }
