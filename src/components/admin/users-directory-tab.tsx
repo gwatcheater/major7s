@@ -321,6 +321,84 @@ export function UsersDirectoryTab() {
     }
   }
 
+  async function sendRecovery(ids: string[]) {
+    if (ids.length === 0) {
+      toast.message("No users selected");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Send a set-password recovery link to ${ids.length} user${ids.length === 1 ? "" : "s"}? ` +
+          `Each user gets a unique one-click link valid for 72 hours.`,
+      )
+    )
+      return;
+    setSending(true);
+    try {
+      const res = await sendRecoveryFn({ data: { userIds: ids } });
+      if (res.sent > 0)
+        toast.success(
+          `Sent ${res.sent} recovery link${res.sent === 1 ? "" : "s"}` +
+            (res.failed > 0 ? `, ${res.failed} failed` : ""),
+        );
+      else if (res.failed > 0) toast.error(`${res.failed} failed to send`);
+
+      if (res.failed > 0) {
+        const failedRows = res.results.filter((r) => !r.ok);
+        const failedIds = failedRows.map((r) => r.id);
+        const summary =
+          failedRows
+            .slice(0, 5)
+            .map((r) => `${r.email ?? r.id}: ${r.error ?? "unknown"}`)
+            .join("\n") + (failedRows.length > 5 ? `\n…and ${failedRows.length - 5} more` : "");
+        toast.error("Some links failed", {
+          description: summary,
+          duration: 12_000,
+          action: {
+            label: "Retry failed",
+            onClick: () => sendRecovery(failedIds),
+          },
+        });
+      } else {
+        // Full success — clear selection.
+        setSelectedIds(new Set());
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const pageIds = pageRows.map((u) => u.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id));
+
+  function toggleOne(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  function togglePage(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+  function selectAllFiltered() {
+    setSelectedIds(new Set(sorted.map((u) => u.id)));
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   return (
     <Card>
       <CardHeader>
