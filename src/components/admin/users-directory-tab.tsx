@@ -7,9 +7,11 @@ import {
   updateUserEmail,
   listUsersForAdmin,
   sendWelcomeEmails,
+  sendRecoveryLinks,
   type DirectoryRow,
 } from "@/lib/admin-users.functions";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
