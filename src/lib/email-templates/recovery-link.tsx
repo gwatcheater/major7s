@@ -55,7 +55,7 @@ const RecoveryLinkEmail = ({ firstName, setPasswordUrl }: RecoveryLinkProps) => 
             </Text>
 
             <Text style={text}>
-              This link is valid for <strong>72 hours</strong>. If it expires, ask an admin to send
+              This link is valid for <strong>48 hours</strong>. If it expires, ask an admin to send
               you a fresh one.
             </Text>
 
