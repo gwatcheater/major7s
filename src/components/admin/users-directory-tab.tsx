@@ -197,10 +197,12 @@ export function UsersDirectoryTab() {
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(0);
   const [sending, setSending] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const { startImpersonation } = useImpersonation();
   const navigate = useNavigate();
   const listFn = useServerFn(listUsersForAdmin);
   const sendWelcomeFn = useServerFn(sendWelcomeEmails);
+  const sendRecoveryFn = useServerFn(sendRecoveryLinks);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-directory"],
