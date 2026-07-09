@@ -1,33 +1,22 @@
-// =====================================================================
+// =============================================================
 // MajorsStatsTable.tsx
-// Global majors performance table, backed by the golfer_major_stats RPC.
-// Major / year / min-majors filters re-aggregate on the server (debounced);
-// search / nationality / sort are client-side on the returned set.
+// Career major-championship performance (OWGR, 2000-present), backed by the
+// golfer_major_stats RPC over owgr_event_results. Sits as a third tab on the
+// stats page alongside Team Stats and Golfer Stats.
 //
-// WIRE UP (2 things):
-//   1. import your Supabase browser client below (marked ADJUST).
-//   2. pass onSelectGolfer to route into Golfer Stats (marked ADJUST).
-//
-// THEME: colours reference CSS vars you already use. If your token names
-// differ, remap the THEME object - nothing else needs touching.
-// =====================================================================
-import { useEffect, useMemo, useRef, useState } from "react";
-
-// ADJUST: point at your Supabase browser client instance.
+// Filter model: major + year range re-aggregate on the server (they change the
+// numbers). Min-majors, search, nationality and sort are client-side on the
+// returned set (instant). Styling mirrors GolferStatsView.
+// =============================================================
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-// ---- theme (remap to your tokens if names differ) -------------------
-const THEME = {
-  bg: "var(--forest-deep)",
-  bgAlt: "var(--surface-muted)",
-  gold: "var(--gold)",
-  text: "var(--text, #e8e6df)",
-  textMuted: "var(--text-muted, #9aa79a)",
-  border: "var(--border, rgba(255,255,255,0.08))",
-};
+const MAJORS = ["Masters", "PGA", "US Open", "The Open"] as const;
+const YEAR_MIN = 2000;
+const YEAR_MAX = new Date().getFullYear();
 
-// ---- types ----------------------------------------------------------
-type GolferStat = {
+interface GolferMajorStat {
   owgr_player_id: number;
   player: string;
   country: string | null;
@@ -44,264 +33,276 @@ type GolferStat = {
   best_seed: number | null;
   avg_seed: number | null;
   total_points: number;
-};
-
-type ServerFilters = {
-  major: string | null;
-  yearFrom: number | null;
-  yearTo: number | null;
-  minMajors: number;
-};
-
-const MAJORS = ["Masters", "PGA", "US Open", "The Open"] as const;
-const YEAR_MIN = 2000;
-const YEAR_MAX = new Date().getFullYear();
-
-// ---- tiny debounce hook ---------------------------------------------
-function useDebounced<T>(value: T, ms = 300): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
 }
 
-// ---- data hook: server-side aggregate -------------------------------
-function useGolferMajorStats(filters: ServerFilters) {
-  const [data, setData] = useState<GolferStat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type SortKey =
+  | "player" | "majors_played" | "best_seed" | "avg_seed" | "cut_pct"
+  | "wins" | "top10s" | "best_finish" | "avg_finish" | "total_points";
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    supabase
-      .rpc("golfer_major_stats", {
-        p_major: filters.major ?? undefined,
-        p_year_from: filters.yearFrom ?? undefined,
-        p_year_to: filters.yearTo ?? undefined,
-        p_min_majors: filters.minMajors,
-      })
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) setError(error.message);
-        else setData((data as GolferStat[]) ?? []);
-        setLoading(false);
+// server-side aggregate. p_min_majors=1: min-majors is applied client-side so
+// its slider never refetches. Only major / year change the query key.
+function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
+  return useQuery({
+    queryKey: ["golfer-major-stats", major, yearFrom, yearTo],
+    queryFn: async (): Promise<GolferMajorStat[]> => {
+      const { data, error } = await supabase.rpc("golfer_major_stats", {
+        p_major: major ?? undefined,
+        p_year_from: yearFrom,
+        p_year_to: yearTo,
+        p_min_majors: 1,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.major, filters.yearFrom, filters.yearTo, filters.minMajors]);
-
-  return { data, loading, error };
+      if (error) throw new Error(error.message);
+      // avg_finish comes back as a numeric string from PostgREST — coerce it.
+      return ((data ?? []) as GolferMajorStat[]).map((r) => ({
+        ...r,
+        avg_finish: r.avg_finish == null ? null : Number(r.avg_finish),
+      }));
+    },
+  });
 }
 
-// ---- column config (seed columns sit next to identity) --------------
-type Col = { key: keyof GolferStat; label: string; kind: "txt" | "num" | "f" | "pair"; cnt?: keyof GolferStat; pct?: keyof GolferStat };
-const COLS: Col[] = [
-  { key: "player", label: "Player", kind: "txt" },
-  { key: "country", label: "Nat", kind: "txt" },
-  { key: "majors_played", label: "Majors", kind: "num" },
-  { key: "best_seed", label: "OWGR seed · best", kind: "num" },
-  { key: "avg_seed", label: "OWGR seed · avg", kind: "num" },
-  { key: "cut_pct", label: "Cuts", kind: "pair", cnt: "cuts_made", pct: "cut_pct" },
-  { key: "wins", label: "Wins", kind: "num" },
-  { key: "top10s", label: "Top 10", kind: "pair", cnt: "top10s", pct: "top10_pct" },
-  { key: "best_finish", label: "Best", kind: "num" },
-  { key: "avg_finish", label: "Avg fin", kind: "f" },
-  { key: "total_points", label: "Points", kind: "num" },
-  { key: "debut_year", label: "Debut", kind: "num" },
-  { key: "last_year", label: "Last", kind: "num" },
-];
-
-export default function MajorsStatsTable({
-  onSelectGolfer,
-}: {
-  onSelectGolfer?: (owgrPlayerId: number) => void;
-}) {
-  // server-side (re-aggregating) filters
+export default function MajorsStatsTable() {
+  // server filters (re-aggregate)
   const [major, setMajor] = useState<string | null>(null);
-  const [yearFrom, setYearFrom] = useState<number>(YEAR_MIN);
-  const [yearTo, setYearTo] = useState<number>(YEAR_MAX);
-  const [minMajors, setMinMajors] = useState<number>(12);
+  const [yearFrom, setYearFrom] = useState(YEAR_MIN);
+  const [yearTo, setYearTo] = useState(YEAR_MAX);
+  const { data = [], isLoading, error } = useMajorStats(major, yearFrom, yearTo);
 
-  const serverFilters = useDebounced<ServerFilters>(
-    { major, yearFrom, yearTo, minMajors },
-    300
-  );
-  const { data, loading, error } = useGolferMajorStats(serverFilters);
-
-  // client-side filters + sort
-  const [q, setQ] = useState("");
+  // client filters
+  const [minMajors, setMinMajors] = useState(12);
   const [nat, setNat] = useState("");
-  const [sortKey, setSortKey] = useState<keyof GolferStat>("majors_played");
-  const [sortDir, setSortDir] = useState<1 | -1>(-1);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("majors_played");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // stable nationality list: monotonic union so it never flickers/shrinks
-  const natUnion = useRef<Set<string>>(new Set());
-  data.forEach((d) => d.country && natUnion.current.add(d.country));
   const natOptions = useMemo(
-    () => Array.from(natUnion.current).sort(),
-    [data.length]
+    () => Array.from(new Set(data.map((d) => d.country).filter(Boolean) as string[])).sort(),
+    [data],
   );
 
   const rows = useMemo(() => {
-    const ql = q.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     let r = data.filter(
       (d) =>
-        (!ql || d.player.toLowerCase().includes(ql)) &&
-        (!nat || d.country === nat)
+        d.majors_played >= minMajors &&
+        (!nat || d.country === nat) &&
+        (!q || d.player.toLowerCase().includes(q)),
     );
+    const dir = sortDir === "asc" ? 1 : -1;
     r = [...r].sort((a, b) => {
-      const x = a[sortKey] as number | string | null;
-      const y = b[sortKey] as number | string | null;
+      const x = a[sortKey], y = b[sortKey];
       if (x == null) return 1;
       if (y == null) return -1;
-      if (typeof x === "string") return sortDir * x.localeCompare(y as string);
-      return sortDir * ((x as number) - (y as number));
+      if (typeof x === "string") return dir * x.localeCompare(y as string);
+      return dir * ((x as number) - (y as number));
     });
     return r;
-  }, [data, q, nat, sortKey, sortDir]);
+  }, [data, minMajors, nat, search, sortKey, sortDir]);
 
-  function toggleSort(c: Col) {
-    if (sortKey === c.key) setSortDir((d) => (d * -1) as 1 | -1);
-    else {
-      setSortKey(c.key);
-      setSortDir(c.kind === "txt" ? 1 : -1);
-    }
+  function toggleSort(k: SortKey) {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir(k === "player" ? "asc" : "desc"); }
   }
 
-  const ctrl: React.CSSProperties = {
-    background: THEME.bgAlt,
-    color: THEME.text,
-    border: `1px solid ${THEME.border}`,
-    borderRadius: 8,
-    padding: "6px 10px",
-    fontSize: 13,
-  };
+  if (error) {
+    return (
+      <div className="text-center py-12 text-sm">
+        <div className="text-red-600 font-semibold mb-2">Failed to load major stats</div>
+        <div className="text-slate-500 text-xs font-mono">{(error as Error).message}</div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ color: THEME.text, fontSize: 13 }}>
-      {/* filter rail */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search player"
-          style={{ ...ctrl, flex: 1, minWidth: 160 }}
-          aria-label="Search player"
-        />
-        <select value={major ?? ""} onChange={(e) => setMajor(e.target.value || null)} style={ctrl} aria-label="Major">
-          <option value="">All majors</option>
-          {MAJORS.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
-        <select value={nat} onChange={(e) => setNat(e.target.value)} style={ctrl} aria-label="Nationality">
-          <option value="">All nations</option>
-          {natOptions.map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </select>
+    <div>
+      {/* Intro */}
+      <div className="mb-4 text-xs text-slate-600 leading-relaxed">
+        <p>
+          Career performance across the four men's majors since 2000, sourced from OWGR results.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> OWGR seed</span> is the world ranking a golfer entered a major with — best and average, unranked entries excluded.
+          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Avg fin</span> counts made cuts only. Rates sit beside their counts so a strong record isn't confused with a long one.
+        </p>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", marginBottom: 12, color: THEME.textMuted }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span>Year</span>
-          <select value={yearFrom} onChange={(e) => setYearFrom(+e.target.value)} style={ctrl}>
-            {years().map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <span>–</span>
-          <select value={yearTo} onChange={(e) => setYearTo(+e.target.value)} style={ctrl}>
-            {years().map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span>Min majors</span>
-          <input type="range" min={1} max={80} step={1} value={minMajors} onChange={(e) => setMinMajors(+e.target.value)} style={{ width: 120 }} />
-          <span style={{ color: THEME.gold, fontWeight: 500, minWidth: 20 }}>{minMajors}</span>
-        </label>
-        <span style={{ marginLeft: "auto", color: THEME.text }}>
-          {loading ? "Loading…" : `${rows.length} golfer${rows.length === 1 ? "" : "s"}`}
+      {/* Filter row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <FilterSelect label="Major" value={major ?? "all"} onChange={(v) => setMajor(v === "all" ? null : v)}>
+          <option value="all">All majors</option>
+          {MAJORS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </FilterSelect>
+        <FilterSelect label="From" value={String(yearFrom)} onChange={(v) => setYearFrom(Number(v))}>
+          {years().map((y) => <option key={y} value={y}>{y}</option>)}
+        </FilterSelect>
+        <FilterSelect label="To" value={String(yearTo)} onChange={(v) => setYearTo(Number(v))}>
+          {years().map((y) => <option key={y} value={y}>{y}</option>)}
+        </FilterSelect>
+        <FilterSelect label="Nationality" value={nat} onChange={setNat}>
+          <option value="">All nations</option>
+          {natOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+        </FilterSelect>
+      </div>
+
+      {/* Min majors slider + count */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+        <div className="flex items-center gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Min majors</label>
+          <input type="range" min={1} max={80} step={1} value={minMajors}
+            onChange={(e) => setMinMajors(Number(e.target.value))}
+            className="w-32 accent-[color:var(--gold)]" />
+          <span className="text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>{minMajors}</span>
+        </div>
+        <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-slate-500">
+          {isLoading ? "Loading…" : `${rows.length} golfer${rows.length === 1 ? "" : "s"}`}
         </span>
       </div>
 
-      {error && <div style={{ color: "var(--danger, #d47)", marginBottom: 12 }}>Couldn’t load stats. {error}</div>}
+      {/* Search */}
+      <div className="mb-3">
+        <input type="text" placeholder="Search golfers…" value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full h-9 px-3 border border-slate-200 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+          style={{ color: "var(--forest-deep)" }} />
+      </div>
 
-      <div style={{ overflowX: "auto", border: `1px solid ${THEME.border}`, borderRadius: 12 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", whiteSpace: "nowrap", minWidth: 820 }}>
-          <thead>
-            <tr style={{ background: THEME.bgAlt }}>
-              {COLS.map((c) => {
-                const num = c.kind !== "txt";
-                const active = sortKey === c.key;
-                return (
-                  <th
-                    key={String(c.key)}
-                    onClick={() => toggleSort(c)}
-                    style={{
-                      padding: "9px 10px",
-                      textAlign: num ? "right" : "left",
-                      cursor: "pointer",
-                      userSelect: "none",
-                      color: active ? THEME.gold : THEME.textMuted,
-                      fontWeight: 500,
-                      borderBottom: `1px solid ${THEME.border}`,
-                    }}
-                  >
-                    {c.label}{" "}
-                    <span style={{ color: THEME.gold, fontSize: 10 }}>
-                      {active ? (sortDir < 0 ? "▼" : "▲") : ""}
-                    </span>
-                  </th>
-                );
-              })}
+      {/* Desktop table */}
+      <div className="hidden md:block border border-slate-200 rounded-md overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
+            <tr>
+              <SortHeader label="Golfer" k="player" sk={sortKey} sd={sortDir} on={toggleSort} align="left" />
+              <SortHeader label="Majors" k="majors_played" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="OWGR seed · best" k="best_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="OWGR seed · avg" k="avg_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Cuts" k="cut_pct" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Wins" k="wins" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Top 10" k="top10s" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Best" k="best_finish" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Avg fin" k="avg_finish" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="Points" k="total_points" sk={sortKey} sd={sortDir} on={toggleSort} align="right" />
             </tr>
           </thead>
-          <tbody>
-            {rows.map((d, i) => (
-              <tr
-                key={d.owgr_player_id}
-                onClick={() => onSelectGolfer?.(d.owgr_player_id)}
-                style={{
-                  background: i % 2 ? THEME.bg : "transparent",
-                  borderBottom: `1px solid ${THEME.border}`,
-                  cursor: onSelectGolfer ? "pointer" : "default",
-                }}
-              >
-                {COLS.map((c) => {
-                  const num = c.kind !== "txt";
-                  let content: React.ReactNode;
-                  if (c.kind === "pair") {
-                    content = (
-                      <>
-                        {d[c.cnt!] as number}
-                        <span style={{ color: THEME.textMuted, fontSize: 11 }}> · {d[c.pct!] as number}%</span>
-                      </>
-                    );
-                  } else if (c.kind === "f") {
-                    const v = d[c.key] as number | null;
-                    content = v == null ? "—" : v.toFixed(1);
-                  } else if (c.key === "player") {
-                    content = <span style={{ fontWeight: 500 }}>{d.player}</span>;
-                  } else if (c.key === "wins" && d.wins > 0) {
-                    content = <span style={{ color: THEME.gold, fontWeight: 500 }}>{d.wins}</span>;
-                  } else {
-                    const v = d[c.key];
-                    content = v == null ? "—" : (v as React.ReactNode);
-                  }
-                  return (
-                    <td key={String(c.key)} style={{ padding: "8px 10px", textAlign: num ? "right" : "left" }}>
-                      {content}
-                    </td>
-                  );
-                })}
+          <tbody className="divide-y divide-slate-100">
+            {isLoading ? (
+              <tr><td colSpan={10} className="text-center py-6 text-slate-400 text-xs italic">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={10} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors for this selection.</td></tr>
+            ) : rows.map((r) => (
+              <tr key={r.owgr_player_id} className="hover:bg-slate-50">
+                <td className="px-2 py-2 text-left">
+                  <div className="text-xs font-semibold" style={{ color: "var(--forest-deep)" }}>{r.player}</div>
+                  <div className="text-[10px] text-slate-500">{r.country ?? ""} · {r.debut_year}–{r.last_year}</div>
+                </td>
+                <NumCell>{r.majors_played}</NumCell>
+                <NumCell gold={r.best_seed === 1}>{r.best_seed ?? "—"}</NumCell>
+                <NumCell>{r.avg_seed ?? "—"}</NumCell>
+                <PairCell count={r.cuts_made} pct={r.cut_pct} />
+                <NumCell gold={r.wins > 0}>{r.wins}</NumCell>
+                <PairCell count={r.top10s} pct={r.top10_pct} />
+                <NumCell muted>{r.best_finish ?? "—"}</NumCell>
+                <NumCell>{r.avg_finish == null ? "—" : r.avg_finish.toFixed(1)}</NumCell>
+                <td className="px-2 py-2 text-right font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">{r.total_points}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2">
+        {isLoading ? (
+          <div className="text-center py-6 text-slate-400 text-xs italic">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors.</div>
+        ) : rows.map((r) => <MobileCard key={r.owgr_player_id} r={r} />)}
+      </div>
+    </div>
+  );
+}
+
+// ---- presentational bits (match GolferStatsView) --------------------
+function NumCell({ children, gold, muted }: { children: React.ReactNode; gold?: boolean; muted?: boolean }) {
+  return (
+    <td className="px-2 py-2 text-center font-mono font-bold tabular-nums text-xs whitespace-nowrap"
+      style={{ color: gold ? "var(--gold)" : muted ? undefined : "var(--forest-deep)" }}>
+      <span className={muted ? "text-slate-600 font-normal" : ""}>{children}</span>
+    </td>
+  );
+}
+
+function PairCell({ count, pct }: { count: number; pct: number }) {
+  return (
+    <td className="px-2 py-2 text-center font-mono tabular-nums text-xs whitespace-nowrap">
+      <span className="font-bold" style={{ color: "var(--forest-deep)" }}>{count}</span>
+      <span className="text-slate-400"> · {pct}%</span>
+    </td>
+  );
+}
+
+function FilterSelect({ label, value, onChange, children }: {
+  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] uppercase tracking-widest font-bold text-slate-500 block mb-1">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full h-9 px-2 border border-slate-200 rounded-md bg-white text-sm"
+        style={{ color: "var(--forest-deep)" }}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
+function SortHeader({ label, k, sk, sd, on, align }: {
+  label: string; k: SortKey; sk: SortKey; sd: "asc" | "desc"; on: (k: SortKey) => void;
+  align: "left" | "center" | "right";
+}) {
+  const active = sk === k;
+  const arrow = active ? (sd === "asc" ? "▲" : "▼") : "";
+  const a = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center";
+  return (
+    <th className={`px-2 py-2 ${a} whitespace-nowrap`}>
+      <button type="button" onClick={() => on(k)}
+        className={`inline-flex items-center gap-1 ${active ? "text-[color:var(--forest-deep)]" : "hover:text-[color:var(--forest-deep)]"}`}>
+        {label}<span className="text-[8px]">{arrow}</span>
+      </button>
+    </th>
+  );
+}
+
+function MobileCard({ r }: { r: GolferMajorStat }) {
+  const cells = [
+    { label: "MAJORS", value: String(r.majors_played) },
+    { label: "CUT%", value: `${r.cut_pct}%` },
+    { label: "WINS", value: String(r.wins), gold: r.wins > 0 },
+    { label: "T10", value: String(r.top10s) },
+  ];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold truncate" style={{ color: "var(--forest-deep)" }}>{r.player}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{r.country ?? ""} · {r.debut_year}–{r.last_year}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">Avg fin</div>
+          <div className="text-lg font-mono font-bold tabular-nums leading-tight mt-0.5" style={{ color: "var(--forest-deep)" }}>
+            {r.avg_finish == null ? "—" : r.avg_finish.toFixed(1)}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-1 text-center">
+        {cells.map((c) => <div key={c.label} className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">{c.label}</div>)}
+        {cells.map((c) => (
+          <div key={`${c.label}-v`} className="text-sm font-mono font-bold tabular-nums leading-none mt-1"
+            style={{ color: c.gold ? "var(--gold)" : "var(--forest-deep)" }}>{c.value}</div>
+        ))}
+      </div>
+      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+        <span><span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best seed</span>
+          <span className="font-mono font-semibold tabular-nums">{r.best_seed ?? "—"}</span></span>
+        <span><span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best fin</span>
+          <span className="font-mono font-semibold tabular-nums">{r.best_finish ?? "—"}</span></span>
       </div>
     </div>
   );
