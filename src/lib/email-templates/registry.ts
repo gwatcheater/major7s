@@ -5,6 +5,7 @@ import { template as picksConfirmationTemplate } from './picks-confirmation'
 import { template as pickReminderTemplate } from './pick-reminder'
 import { template as adminNewUserTemplate } from './admin-new-user'
 import { template as migrationWelcomeTemplate } from './migration-welcome'
+import { template as recoveryLinkTemplate } from './recovery-link'
 
 export interface TemplateEntry {
   component: ComponentType<any>
