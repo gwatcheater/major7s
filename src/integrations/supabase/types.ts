@@ -315,6 +315,60 @@ export type Database = {
         }
         Relationships: []
       }
+      owgr_form_results: {
+        Row: {
+          country: string | null
+          event_date: string | null
+          event_id: number
+          event_name: string | null
+          event_year: number | null
+          finish: number | null
+          imported_at: string
+          non_finisher: boolean | null
+          player: string | null
+          player_id: number
+          points_won: number | null
+          rank_from: number | null
+          rank_to: number | null
+          tour_code: string
+          week: number | null
+        }
+        Insert: {
+          country?: string | null
+          event_date?: string | null
+          event_id: number
+          event_name?: string | null
+          event_year?: number | null
+          finish?: number | null
+          imported_at?: string
+          non_finisher?: boolean | null
+          player?: string | null
+          player_id: number
+          points_won?: number | null
+          rank_from?: number | null
+          rank_to?: number | null
+          tour_code: string
+          week?: number | null
+        }
+        Update: {
+          country?: string | null
+          event_date?: string | null
+          event_id?: number
+          event_name?: string | null
+          event_year?: number | null
+          finish?: number | null
+          imported_at?: string
+          non_finisher?: boolean | null
+          player?: string | null
+          player_id?: number
+          points_won?: number | null
+          rank_from?: number | null
+          rank_to?: number | null
+          tour_code?: string
+          week?: number | null
+        }
+        Relationships: []
+      }
       picks: {
         Row: {
           bucket: number
@@ -388,6 +442,33 @@ export type Database = {
           golfer_name?: string
           helper_info?: string
           helper_name?: string
+        }
+        Relationships: []
+      }
+      player_id_xref: {
+        Row: {
+          confidence: string
+          created_at: string
+          display_name: string | null
+          espn_player_id: string
+          owgr_player_id: number
+          updated_at: string
+        }
+        Insert: {
+          confidence?: string
+          created_at?: string
+          display_name?: string | null
+          espn_player_id: string
+          owgr_player_id: number
+          updated_at?: string
+        }
+        Update: {
+          confidence?: string
+          created_at?: string
+          display_name?: string | null
+          espn_player_id?: string
+          owgr_player_id?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -810,7 +891,43 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      owgr_form_last5: {
+        Row: {
+          country: string | null
+          event_date: string | null
+          event_id: number | null
+          event_name: string | null
+          event_year: number | null
+          finish: number | null
+          imported_at: string | null
+          non_finisher: boolean | null
+          player: string | null
+          player_id: number | null
+          points_won: number | null
+          rank_from: number | null
+          rank_to: number | null
+          recency: number | null
+          tour_code: string | null
+          week: number | null
+        }
+        Relationships: []
+      }
+      owgr_major_rows: {
+        Row: {
+          country: string | null
+          event_id: number | null
+          event_year: number | null
+          finish: number | null
+          major_type: string | null
+          non_finisher: boolean | null
+          player: string | null
+          player_id: number | null
+          points_won: number | null
+          rank_from: number | null
+          week: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       audit_admin_pick_edit: {
@@ -821,9 +938,47 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      golfer_major_history: {
+        Args: { p_owgr_player_id: number }
+        Returns: {
+          event_year: number
+          finish: number
+          made_cut: boolean
+          major_type: string
+          points_won: number
+          seed: number
+        }[]
+      }
+      golfer_major_stats: {
+        Args: {
+          p_major?: string
+          p_min_majors?: number
+          p_year_from?: number
+          p_year_to?: number
+        }
+        Returns: {
+          avg_finish: number
+          avg_seed: number
+          best_finish: number
+          best_seed: number
+          country: string
+          cut_pct: number
+          cuts_made: number
+          debut_year: number
+          last_year: number
+          majors_played: number
+          owgr_player_id: number
+          player: string
+          top10_pct: number
+          top10s: number
+          total_points: number
+          wins: number
+        }[]
       }
       has_role: {
         Args: {
