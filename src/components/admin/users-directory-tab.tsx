@@ -482,10 +482,51 @@ export function UsersDirectoryTab() {
           <p className="text-sm text-muted-foreground p-4">Loading…</p>
         ) : (
           <>
+            {selectedIds.size > 0 && (
+              <div className="mb-3 rounded-lg border bg-primary/5 p-3 flex items-center justify-between flex-wrap gap-2">
+                <div className="text-sm">
+                  <span className="font-medium">{selectedIds.size}</span> selected
+                  {selectedIds.size < sorted.length && (
+                    <>
+                      {" "}·{" "}
+                      <button
+                        type="button"
+                        onClick={selectAllFiltered}
+                        className="underline underline-offset-2 hover:no-underline"
+                      >
+                        Select all {sorted.length} matching
+                      </button>
+                    </>
+                  )}{" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="underline underline-offset-2 hover:no-underline text-muted-foreground"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={sending}
+                  onClick={() => sendRecovery(Array.from(selectedIds))}
+                >
+                  <Mail className="size-3.5" /> Send recovery link ({selectedIds.size})
+                </Button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      <Checkbox
+                        checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                        onCheckedChange={(v) => togglePage(v === true)}
+                        aria-label="Select all on page"
+                      />
+                    </TableHead>
                     <SortHead label="User" k="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Email" k="email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
@@ -498,7 +539,7 @@ export function UsersDirectoryTab() {
                 <TableBody>
                   {pageRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
                         No users match.
                       </TableCell>
                     </TableRow>
@@ -506,12 +547,21 @@ export function UsersDirectoryTab() {
                     pageRows.map((u) => {
                       const full = fullNameOf(u);
                       const eng = engagementOf(u.last_seen_at);
+                      const checked = selectedIds.has(u.id);
                       return (
                         <TableRow
                           key={u.id}
                           className="cursor-pointer"
                           onClick={() => setSelectedId(u.id)}
+                          data-state={checked ? "selected" : undefined}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()} className="w-8">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => toggleOne(u.id, v === true)}
+                              aria-label={`Select ${full}`}
+                            />
+                          </TableCell>
                           <TableCell>
                             <div className="font-medium">{full}</div>
                             <div className="text-[11px] text-muted-foreground">
