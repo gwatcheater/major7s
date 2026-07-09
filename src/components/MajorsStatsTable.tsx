@@ -37,7 +37,7 @@ interface GolferMajorStat {
 
 type SortKey =
   | "player" | "majors_played" | "best_seed" | "avg_seed" | "cut_pct"
-  | "wins" | "top10s" | "best_finish" | "avg_finish" | "total_points";
+  | "wins" | "top10s" | "best_finish" | "avg_finish";
 
 // server-side aggregate. p_min_majors=1: min-majors is applied client-side so
 // its slider never refetches. Only major / year change the query key.
@@ -45,7 +45,8 @@ function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
   return useQuery({
     queryKey: ["golfer-major-stats", major, yearFrom, yearTo],
     queryFn: async (): Promise<GolferMajorStat[]> => {
-      const { data, error } = await supabase.rpc("golfer_major_stats", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)("golfer_major_stats", {
         p_major: major ?? undefined,
         p_year_from: yearFrom,
         p_year_to: yearTo,
@@ -70,22 +71,15 @@ export default function MajorsStatsTable() {
 
   // client filters
   const [minMajors, setMinMajors] = useState(12);
-  const [nat, setNat] = useState("");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("majors_played");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  const natOptions = useMemo(
-    () => Array.from(new Set(data.map((d) => d.country).filter(Boolean) as string[])).sort(),
-    [data],
-  );
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     let r = data.filter(
       (d) =>
         d.majors_played >= minMajors &&
-        (!nat || d.country === nat) &&
         (!q || d.player.toLowerCase().includes(q)),
     );
     const dir = sortDir === "asc" ? 1 : -1;
@@ -97,7 +91,7 @@ export default function MajorsStatsTable() {
       return dir * ((x as number) - (y as number));
     });
     return r;
-  }, [data, minMajors, nat, search, sortKey, sortDir]);
+  }, [data, minMajors, search, sortKey, sortDir]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -118,27 +112,40 @@ export default function MajorsStatsTable() {
       {/* Intro */}
       <div className="mb-4 text-xs text-slate-600 leading-relaxed">
         <p>
-          Career performance across the four men's majors since 2000, sourced from OWGR results.
-          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> OWGR seed</span> is the world ranking a golfer entered a major with — best and average, unranked entries excluded.
-          <span className="font-semibold" style={{ color: "var(--forest-deep)" }}> Avg fin</span> counts made cuts only. Rates sit beside their counts so a strong record isn't confused with a long one.
+          Career performance across majors since 2000. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>OWGR</span> is the ranking a golfer entered a major with — best and average, unranked entries excluded. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>Avg Pos</span> counts made cuts only.
         </p>
       </div>
 
       {/* Filter row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <FilterSelect label="Major" value={major ?? "all"} onChange={(v) => setMajor(v === "all" ? null : v)}>
-          <option value="all">All majors</option>
-          {MAJORS.map((m) => <option key={m} value={m}>{m}</option>)}
-        </FilterSelect>
+      {/* Major chips */}
+      <div className="mb-3">
+        <div className="inline-flex flex-wrap gap-0.5 rounded-full border border-slate-200 p-0.5">
+          {([{ label: "All", value: null }, ...MAJORS.map((m) => ({ label: m, value: m as string | null }))]).map((c) => {
+            const active = major === c.value;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setMajor(c.value)}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${
+                  active ? "shadow-sm" : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+                }`}
+                style={active ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Year range */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
         <FilterSelect label="From" value={String(yearFrom)} onChange={(v) => setYearFrom(Number(v))}>
           {years().map((y) => <option key={y} value={y}>{y}</option>)}
         </FilterSelect>
         <FilterSelect label="To" value={String(yearTo)} onChange={(v) => setYearTo(Number(v))}>
           {years().map((y) => <option key={y} value={y}>{y}</option>)}
-        </FilterSelect>
-        <FilterSelect label="Nationality" value={nat} onChange={setNat}>
-          <option value="">All nations</option>
-          {natOptions.map((n) => <option key={n} value={n}>{n}</option>)}
         </FilterSelect>
       </div>
 
@@ -171,21 +178,20 @@ export default function MajorsStatsTable() {
             <tr>
               <SortHeader label="Golfer" k="player" sk={sortKey} sd={sortDir} on={toggleSort} align="left" />
               <SortHeader label="Majors" k="majors_played" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
-              <SortHeader label="OWGR seed · best" k="best_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
-              <SortHeader label="OWGR seed · avg" k="avg_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="OWGR · best" k="best_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
+              <SortHeader label="OWGR · avg" k="avg_seed" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
               <SortHeader label="Cuts" k="cut_pct" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
               <SortHeader label="Wins" k="wins" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
               <SortHeader label="Top 10" k="top10s" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
               <SortHeader label="Best" k="best_finish" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
-              <SortHeader label="Avg fin" k="avg_finish" sk={sortKey} sd={sortDir} on={toggleSort} align="center" />
-              <SortHeader label="Points" k="total_points" sk={sortKey} sd={sortDir} on={toggleSort} align="right" />
+              <SortHeader label="Avg Pos" k="avg_finish" sk={sortKey} sd={sortDir} on={toggleSort} align="right" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
-              <tr><td colSpan={10} className="text-center py-6 text-slate-400 text-xs italic">Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-6 text-slate-400 text-xs italic">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={10} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors for this selection.</td></tr>
+              <tr><td colSpan={9} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors for this selection.</td></tr>
             ) : rows.map((r) => (
               <tr key={r.owgr_player_id} className="hover:bg-slate-50">
                 <td className="px-2 py-2 text-left">
@@ -199,8 +205,7 @@ export default function MajorsStatsTable() {
                 <NumCell gold={r.wins > 0}>{r.wins}</NumCell>
                 <PairCell count={r.top10s} pct={r.top10_pct} />
                 <NumCell muted>{r.best_finish ?? "—"}</NumCell>
-                <NumCell>{r.avg_finish == null ? "—" : r.avg_finish.toFixed(1)}</NumCell>
-                <td className="px-2 py-2 text-right font-mono tabular-nums text-xs text-slate-600 whitespace-nowrap">{r.total_points}</td>
+                <td className="px-2 py-2 text-right font-mono font-bold tabular-nums text-xs whitespace-nowrap" style={{ color: "var(--forest-deep)" }}>{r.avg_finish == null ? "—" : r.avg_finish.toFixed(1)}</td>
               </tr>
             ))}
           </tbody>
@@ -285,7 +290,7 @@ function MobileCard({ r }: { r: GolferMajorStat }) {
           <div className="text-[10px] text-slate-500 mt-0.5">{r.country ?? ""} · {r.debut_year}–{r.last_year}</div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">Avg fin</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none">Avg Pos</div>
           <div className="text-lg font-mono font-bold tabular-nums leading-tight mt-0.5" style={{ color: "var(--forest-deep)" }}>
             {r.avg_finish == null ? "—" : r.avg_finish.toFixed(1)}
           </div>
@@ -299,7 +304,7 @@ function MobileCard({ r }: { r: GolferMajorStat }) {
         ))}
       </div>
       <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-        <span><span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best seed</span>
+        <span><span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best OWGR</span>
           <span className="font-mono font-semibold tabular-nums">{r.best_seed ?? "—"}</span></span>
         <span><span className="font-bold uppercase tracking-wider text-slate-400 mr-1">Best fin</span>
           <span className="font-mono font-semibold tabular-nums">{r.best_finish ?? "—"}</span></span>
