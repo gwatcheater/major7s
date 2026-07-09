@@ -7,9 +7,11 @@ import {
   updateUserEmail,
   listUsersForAdmin,
   sendWelcomeEmails,
+  sendRecoveryLinks,
   type DirectoryRow,
 } from "@/lib/admin-users.functions";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -195,10 +197,12 @@ export function UsersDirectoryTab() {
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(0);
   const [sending, setSending] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const { startImpersonation } = useImpersonation();
   const navigate = useNavigate();
   const listFn = useServerFn(listUsersForAdmin);
   const sendWelcomeFn = useServerFn(sendWelcomeEmails);
+  const sendRecoveryFn = useServerFn(sendRecoveryLinks);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users-directory"],
@@ -317,6 +321,84 @@ export function UsersDirectoryTab() {
     }
   }
 
+  async function sendRecovery(ids: string[]) {
+    if (ids.length === 0) {
+      toast.message("No users selected");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Send a set-password recovery link to ${ids.length} user${ids.length === 1 ? "" : "s"}? ` +
+          `Each user gets a unique one-click link valid for 72 hours.`,
+      )
+    )
+      return;
+    setSending(true);
+    try {
+      const res = await sendRecoveryFn({ data: { userIds: ids } });
+      if (res.sent > 0)
+        toast.success(
+          `Sent ${res.sent} recovery link${res.sent === 1 ? "" : "s"}` +
+            (res.failed > 0 ? `, ${res.failed} failed` : ""),
+        );
+      else if (res.failed > 0) toast.error(`${res.failed} failed to send`);
+
+      if (res.failed > 0) {
+        const failedRows = res.results.filter((r) => !r.ok);
+        const failedIds = failedRows.map((r) => r.id);
+        const summary =
+          failedRows
+            .slice(0, 5)
+            .map((r) => `${r.email ?? r.id}: ${r.error ?? "unknown"}`)
+            .join("\n") + (failedRows.length > 5 ? `\n…and ${failedRows.length - 5} more` : "");
+        toast.error("Some links failed", {
+          description: summary,
+          duration: 12_000,
+          action: {
+            label: "Retry failed",
+            onClick: () => sendRecovery(failedIds),
+          },
+        });
+      } else {
+        // Full success — clear selection.
+        setSelectedIds(new Set());
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const pageIds = pageRows.map((u) => u.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id));
+
+  function toggleOne(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  function togglePage(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+  function selectAllFiltered() {
+    setSelectedIds(new Set(sorted.map((u) => u.id)));
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -400,10 +482,51 @@ export function UsersDirectoryTab() {
           <p className="text-sm text-muted-foreground p-4">Loading…</p>
         ) : (
           <>
+            {selectedIds.size > 0 && (
+              <div className="mb-3 rounded-lg border bg-primary/5 p-3 flex items-center justify-between flex-wrap gap-2">
+                <div className="text-sm">
+                  <span className="font-medium">{selectedIds.size}</span> selected
+                  {selectedIds.size < sorted.length && (
+                    <>
+                      {" "}·{" "}
+                      <button
+                        type="button"
+                        onClick={selectAllFiltered}
+                        className="underline underline-offset-2 hover:no-underline"
+                      >
+                        Select all {sorted.length} matching
+                      </button>
+                    </>
+                  )}{" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="underline underline-offset-2 hover:no-underline text-muted-foreground"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={sending}
+                  onClick={() => sendRecovery(Array.from(selectedIds))}
+                >
+                  <Mail className="size-3.5" /> Send recovery link ({selectedIds.size})
+                </Button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      <Checkbox
+                        checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                        onCheckedChange={(v) => togglePage(v === true)}
+                        aria-label="Select all on page"
+                      />
+                    </TableHead>
                     <SortHead label="User" k="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Email" k="email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
@@ -416,7 +539,7 @@ export function UsersDirectoryTab() {
                 <TableBody>
                   {pageRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
                         No users match.
                       </TableCell>
                     </TableRow>
@@ -424,12 +547,21 @@ export function UsersDirectoryTab() {
                     pageRows.map((u) => {
                       const full = fullNameOf(u);
                       const eng = engagementOf(u.last_seen_at);
+                      const checked = selectedIds.has(u.id);
                       return (
                         <TableRow
                           key={u.id}
                           className="cursor-pointer"
                           onClick={() => setSelectedId(u.id)}
+                          data-state={checked ? "selected" : undefined}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()} className="w-8">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => toggleOne(u.id, v === true)}
+                              aria-label={`Select ${full}`}
+                            />
+                          </TableCell>
                           <TableCell>
                             <div className="font-medium">{full}</div>
                             <div className="text-[11px] text-muted-foreground">
