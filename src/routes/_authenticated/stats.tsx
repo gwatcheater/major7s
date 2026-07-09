@@ -40,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
+import MajorsStatsTable from "@/components/stats/MajorsStatsTable";
 
 export const Route = createFileRoute("/_authenticated/stats")({
   component: AllTimeStatsPage,
@@ -150,7 +151,7 @@ function AllTimeStatsPage() {
   const [courseFilter, setCourseFilter] = useState<string>("all");
   // Top-level tab: team-shaped stats vs golfer-shaped stats. The four filters above
   // apply to the team tab only; the golfer tab has its own filtering.
-  const [tab, setTab] = useState<"team" | "golfer">("team");
+  const [tab, setTab] = useState<"team" | "golfer" | "majors">("team");
 
   // Available years derived from tournaments (descending). Only years that have at least
   // one tournament show up in the dropdown.
@@ -402,8 +403,9 @@ function AllTimeStatsPage() {
 
       {/* Tab switcher */}
       <div className="flex gap-2 mb-6">
-        <TabChip label="Team Stats"   active={tab === "team"}   onClick={() => setTab("team")} />
-        <TabChip label="Golfer Stats" active={tab === "golfer"} onClick={() => setTab("golfer")} />
+        <TabChip label="Team Stats"    active={tab === "team"}   onClick={() => setTab("team")} />
+        <TabChip label="Golfer Stats"  active={tab === "golfer"} onClick={() => setTab("golfer")} />
+        <TabChip label="Major History" active={tab === "majors"} onClick={() => setTab("majors")} />
       </div>
 
       {tab === "team" && (
@@ -586,6 +588,8 @@ function AllTimeStatsPage() {
       )}
 
       {tab === "golfer" && <GolferStatsView />}
+
+      {tab === "majors" && <MajorsStatsTable />}
     </div>
   );
 }
