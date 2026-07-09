@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 // ADJUST: point at your Supabase browser client instance.
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 // ---- theme (remap to your tokens if names differ) -------------------
 const THEME = {
