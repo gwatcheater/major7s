@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import GolferHistoryPanel, { type GolferSummary } from "@/components/GolferHistoryPanel";
 
 const MAJORS = ["Masters", "PGA", "US Open", "The Open"] as const;
 const YEAR_MIN = 2000;
@@ -74,6 +75,7 @@ export default function MajorsStatsTable() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("majors_played");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selected, setSelected] = useState<GolferSummary | null>(null);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -193,7 +195,7 @@ export default function MajorsStatsTable() {
             ) : rows.length === 0 ? (
               <tr><td colSpan={9} className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors for this selection.</td></tr>
             ) : rows.map((r) => (
-              <tr key={r.owgr_player_id} className="hover:bg-slate-50">
+              <tr key={r.owgr_player_id} onClick={() => setSelected(r)} className="hover:bg-slate-50 cursor-pointer">
                 <td className="px-2 py-2 text-left">
                   <div className="text-xs font-semibold" style={{ color: "var(--forest-deep)" }}>{r.player}</div>
                   <div className="text-[10px] text-slate-500">{r.country ?? ""} · {r.debut_year}–{r.last_year}</div>
@@ -218,8 +220,14 @@ export default function MajorsStatsTable() {
           <div className="text-center py-6 text-slate-400 text-xs italic">Loading…</div>
         ) : rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs italic">No golfers with {minMajors}+ majors.</div>
-        ) : rows.map((r) => <MobileCard key={r.owgr_player_id} r={r} />)}
+        ) : rows.map((r) => (
+          <div key={r.owgr_player_id} onClick={() => setSelected(r)} className="cursor-pointer">
+            <MobileCard r={r} />
+          </div>
+        ))}
       </div>
+
+      {selected && <GolferHistoryPanel golfer={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
