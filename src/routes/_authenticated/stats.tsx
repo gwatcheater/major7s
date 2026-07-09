@@ -40,7 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
-import MajorsStatsTable from "@/components/stats/MajorsStatsTable";
+import MajorsStatsTable from "@/components/MajorsStatsTable";
 
 export const Route = createFileRoute("/_authenticated/stats")({
   component: AllTimeStatsPage,
