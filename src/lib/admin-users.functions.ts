@@ -539,3 +539,167 @@ export const previewWelcomeEmails = createServerFn({ method: "POST" })
     return { results: out };
   });
 
+/* ============================================================
+   BULK RECOVERY LINKS — admin mints a per-user Supabase recovery
+   link and enqueues the branded "recovery-link" email. Same shape
+   as sendWelcomeEmails but redirects to /reset-password and uses
+   the password-focused template (no welcome copy).
+   ============================================================ */
+export const sendRecoveryLinks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        userIds: z.array(z.string().uuid()).min(1).max(500),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    type ProfileRow = { id: string; email: string | null; first_name: string | null };
+    const profileById = new Map<string, ProfileRow>();
+    const ids = [...data.userIds];
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const { data: rows, error } = await supabaseAdmin
+        .from("profiles")
+        .select("id, email, first_name")
+        .in("id", chunk);
+      if (error) throw new Error(error.message);
+      for (const r of (rows ?? []) as ProfileRow[]) profileById.set(r.id, r);
+    }
+
+    const results: Array<{ id: string; email?: string; ok: boolean; error?: string }> = [];
+    for (const id of data.userIds) {
+      const profile = profileById.get(id);
+      const email = profile?.email ?? undefined;
+      if (!email) {
+        results.push({ id, ok: false, error: "No email on profile" });
+        continue;
+      }
+
+      try {
+        const { data: suppressed, error: suppErr } = await supabaseAdmin
+          .from("suppressed_emails")
+          .select("id")
+          .eq("email", email.toLowerCase())
+          .maybeSingle();
+        if (suppErr) throw new Error(`Suppression check failed: ${suppErr.message}`);
+        if (suppressed) {
+          results.push({ id, email, ok: false, error: "Email suppressed" });
+          await new Promise((r) => setTimeout(r, 150));
+          continue;
+        }
+
+        const redirectTo = `${getPublicSiteOrigin()}/reset-password`;
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: "recovery",
+          email,
+          options: { redirectTo },
+        });
+        if (linkErr) throw new Error(linkErr.message);
+        const setPasswordUrl = (linkData as any)?.properties?.action_link as string | undefined;
+        if (!setPasswordUrl) throw new Error("generateLink returned no action_link");
+
+        const firstName = profile?.first_name?.trim() || undefined;
+        const element = React.createElement(recoveryLinkTemplate.component, {
+          firstName,
+          setPasswordUrl,
+        });
+        const html = await render(element);
+        const text = toPlainText(html);
+
+        const rawSubject = recoveryLinkTemplate.subject as
+          | string
+          | ((d: Record<string, any>) => string);
+        const subject = typeof rawSubject === "function" ? rawSubject({}) : rawSubject;
+
+        const messageId = crypto.randomUUID();
+        const idempotencyKey = `recovery-link:${id}:${Date.now()}`;
+
+        const normalizedEmail = email.toLowerCase();
+        let unsubscribeToken: string;
+        const { data: existingToken } = await supabaseAdmin
+          .from("email_unsubscribe_tokens")
+          .select("token, used_at")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (existingToken && !existingToken.used_at) {
+          unsubscribeToken = existingToken.token;
+        } else {
+          const bytes = new Uint8Array(32);
+          crypto.getRandomValues(bytes);
+          const newToken = Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .upsert(
+              { token: newToken, email: normalizedEmail },
+              { onConflict: "email", ignoreDuplicates: true },
+            );
+          const { data: stored } = await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .select("token")
+            .eq("email", normalizedEmail)
+            .maybeSingle();
+          unsubscribeToken = stored?.token ?? newToken;
+        }
+
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: messageId,
+          template_name: "recovery-link",
+          recipient_email: email,
+          status: "pending",
+        });
+
+        const { error: enqErr } = await supabaseAdmin.rpc("enqueue_email", {
+          queue_name: "transactional_emails",
+          payload: {
+            message_id: messageId,
+            to: email,
+            from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+            sender_domain: SENDER_DOMAIN,
+            subject,
+            html,
+            text,
+            purpose: "transactional",
+            label: "recovery-link",
+            idempotency_key: idempotencyKey,
+            unsubscribe_token: unsubscribeToken,
+            queued_at: new Date().toISOString(),
+          },
+        });
+
+        if (enqErr) {
+          await supabaseAdmin.from("email_send_log").insert({
+            message_id: messageId,
+            template_name: "recovery-link",
+            recipient_email: email,
+            status: "failed",
+            error_message: "Failed to enqueue email",
+          });
+          throw new Error(`Enqueue failed: ${enqErr.message}`);
+        }
+
+        results.push({ id, email, ok: true });
+      } catch (e: any) {
+        results.push({ id, email, ok: false, error: e?.message ?? String(e) });
+      }
+
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    const failed = results.length - sent;
+
+    await supabaseAdmin.from("admin_audit").insert({
+      actor_id: context.userId,
+      action: "user.recovery_link_sent",
+      detail: { requested: data.userIds.length, sent, failed },
+    });
+
+    return { sent, failed, results };
+  });
+
