@@ -17,6 +17,15 @@ const MAJORS = ["Masters", "PGA", "US Open", "The Open"] as const;
 const YEAR_MIN = 2000;
 const YEAR_MAX = new Date().getFullYear();
 
+// Relative year windows (chips). from = start year; to is always the current year.
+const YEAR_WINDOWS = [
+  { label: "All", value: "all", from: YEAR_MIN },
+  { label: "Last 10", value: "10", from: YEAR_MAX - 9 },
+  { label: "Last 5", value: "5", from: YEAR_MAX - 4 },
+  { label: "Last 3", value: "3", from: YEAR_MAX - 2 },
+  { label: "Last 1", value: "1", from: YEAR_MAX },
+] as const;
+
 interface GolferMajorStat {
   owgr_player_id: number;
   player: string;
@@ -40,8 +49,12 @@ type SortKey =
   | "player" | "majors_played" | "best_seed" | "avg_seed" | "cut_pct"
   | "wins" | "top10s" | "best_finish" | "avg_finish";
 
-// server-side aggregate. p_min_majors=1: min-majors is applied client-side so
-// its slider never refetches. Only major / year change the query key.
+// The RPC aggregates every player with >=1 major (~2,200 rows), which Supabase
+// truncates at 1,000 — so some players silently vanish. We floor the server side
+// at SERVER_MIN_MAJORS (well under the cap) since sub-floor players are out of
+// scope for a career-comparison table; the min-majors slider filters from there.
+const SERVER_MIN_MAJORS = 4;
+
 function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
   return useQuery({
     queryKey: ["golfer-major-stats", major, yearFrom, yearTo],
@@ -51,7 +64,7 @@ function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
         p_major: major ?? undefined,
         p_year_from: yearFrom,
         p_year_to: yearTo,
-        p_min_majors: 1,
+        p_min_majors: SERVER_MIN_MAJORS,
       });
       if (error) throw new Error(error.message);
       // avg_finish comes back as a numeric string from PostgREST — coerce it.
@@ -66,8 +79,9 @@ function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
 export default function MajorsStatsTable() {
   // server filters (re-aggregate)
   const [major, setMajor] = useState<string | null>(null);
-  const [yearFrom, setYearFrom] = useState(YEAR_MIN);
-  const [yearTo, setYearTo] = useState(YEAR_MAX);
+  const [yearWin, setYearWin] = useState<string>("all");
+  const yearFrom = YEAR_WINDOWS.find((w) => w.value === yearWin)!.from;
+  const yearTo = YEAR_MAX;
   const { data = [], isLoading, error } = useMajorStats(major, yearFrom, yearTo);
 
   // client filters
@@ -118,9 +132,9 @@ export default function MajorsStatsTable() {
         </p>
       </div>
 
-      {/* Filter row */}
       {/* Major chips */}
       <div className="mb-3">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">Major</div>
         <div className="inline-flex flex-wrap gap-0.5 rounded-full border border-slate-200 p-0.5">
           {([{ label: "All", value: null }, ...MAJORS.map((m) => ({ label: m, value: m as string | null }))]).map((c) => {
             const active = major === c.value;
@@ -141,21 +155,34 @@ export default function MajorsStatsTable() {
         </div>
       </div>
 
-      {/* Year range */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-        <FilterSelect label="From" value={String(yearFrom)} onChange={(v) => setYearFrom(Number(v))}>
-          {years().map((y) => <option key={y} value={y}>{y}</option>)}
-        </FilterSelect>
-        <FilterSelect label="To" value={String(yearTo)} onChange={(v) => setYearTo(Number(v))}>
-          {years().map((y) => <option key={y} value={y}>{y}</option>)}
-        </FilterSelect>
+      {/* Years chips */}
+      <div className="mb-3">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">Years</div>
+        <div className="inline-flex flex-wrap gap-0.5 rounded-full border border-slate-200 p-0.5">
+          {YEAR_WINDOWS.map((w) => {
+            const active = yearWin === w.value;
+            return (
+              <button
+                key={w.value}
+                type="button"
+                onClick={() => setYearWin(w.value)}
+                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${
+                  active ? "shadow-sm" : "text-slate-500 hover:text-[color:var(--forest-deep)]"
+                }`}
+                style={active ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+              >
+                {w.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Min majors slider + count */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
         <div className="flex items-center gap-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Min majors</label>
-          <input type="range" min={1} max={80} step={1} value={minMajors}
+          <input type="range" min={SERVER_MIN_MAJORS} max={80} step={1} value={minMajors}
             onChange={(e) => setMinMajors(Number(e.target.value))}
             className="w-32 accent-[color:var(--gold)]" />
           <span className="text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>{minMajors}</span>
@@ -251,21 +278,6 @@ function PairCell({ count, pct }: { count: number; pct: number }) {
   );
 }
 
-function FilterSelect({ label, value, onChange, children }: {
-  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="text-[10px] uppercase tracking-widest font-bold text-slate-500 block mb-1">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full h-9 px-2 border border-slate-200 rounded-md bg-white text-sm"
-        style={{ color: "var(--forest-deep)" }}>
-        {children}
-      </select>
-    </div>
-  );
-}
-
 function SortHeader({ label, k, sk, sd, on, align }: {
   label: string; k: SortKey; sk: SortKey; sd: "asc" | "desc"; on: (k: SortKey) => void;
   align: "left" | "center" | "right";
@@ -319,10 +331,4 @@ function MobileCard({ r }: { r: GolferMajorStat }) {
       </div>
     </div>
   );
-}
-
-function years(): number[] {
-  const out: number[] = [];
-  for (let y = YEAR_MAX; y >= YEAR_MIN; y--) out.push(y);
-  return out;
 }
