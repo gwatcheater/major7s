@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import GolferHistoryPanel, { type GolferSummary } from "@/components/GolferHistoryPanel";
 
 const MAJORS = ["Masters", "PGA", "US Open", "The Open"] as const;
-const YEAR_MIN = 2000;
+const YEAR_MIN = 1990;
 const YEAR_MAX = new Date().getFullYear();
 
 // Relative year windows (chips). from = start year; to is always the current year.
@@ -134,7 +134,7 @@ export default function MajorsStatsTable() {
       {/* Intro */}
       <div className="mb-4 text-xs text-slate-600 leading-relaxed">
         <p>
-          Career performance across majors since 2000. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>OWGR</span> is the ranking a golfer entered a major with — best and average, unranked entries excluded. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>Avg Pos</span> counts made cuts only.
+          Career performance across majors since 1990. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>OWGR</span> is the ranking a golfer entered a major with — best and average, unranked entries excluded. <span className="font-semibold" style={{ color: "var(--forest-deep)" }}>Avg Pos</span> counts made cuts only.
         </p>
       </div>
 
