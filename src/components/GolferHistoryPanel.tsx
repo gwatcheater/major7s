@@ -90,14 +90,14 @@ export default function GolferHistoryPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end"
+      className="fixed inset-0 z-50 flex items-stretch md:items-center md:justify-center"
       style={{ background: "rgba(0,0,0,0.45)" }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="h-full w-full md:w-[440px] bg-white shadow-2xl overflow-y-auto transition-transform duration-200 ease-out"
-        style={{ transform: shown ? "translateX(0)" : "translateX(100%)" }}
+        className="bg-white overflow-y-auto w-full h-full md:h-auto md:max-h-[85vh] md:w-[520px] md:rounded-xl md:shadow-2xl transition-all duration-200 ease-out"
+        style={{ opacity: shown ? 1 : 0, transform: shown ? "translateY(0)" : "translateY(8px)" }}
       >
         {/* header */}
         <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-3 flex items-start justify-between gap-3 z-10">
