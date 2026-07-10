@@ -6,6 +6,7 @@ import { template as pickReminderTemplate } from './pick-reminder'
 import { template as adminNewUserTemplate } from './admin-new-user'
 import { template as migrationWelcomeTemplate } from './migration-welcome'
 import { template as recoveryLinkTemplate } from './recovery-link'
+import { template as userApprovedTemplate } from './user-approved'
 
 export interface TemplateEntry {
   component: ComponentType<any>
@@ -27,4 +28,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'admin-new-user': adminNewUserTemplate,
   'migration-welcome': migrationWelcomeTemplate,
   'recovery-link': recoveryLinkTemplate,
+  'user-approved': userApprovedTemplate,
 }

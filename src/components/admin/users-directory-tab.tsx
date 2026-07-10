@@ -8,6 +8,7 @@ import {
   listUsersForAdmin,
   sendWelcomeEmails,
   sendRecoveryLinks,
+  sendApprovalEmail,
   type DirectoryRow,
 } from "@/lib/admin-users.functions";
 import { toast } from "sonner";
@@ -737,6 +738,7 @@ function UserDrawer({
   const [status, setStatus] = useState<string>("pending");
   const [emailDraft, setEmailDraft] = useState<string>("");
   const updateUserEmailFn = useServerFn(updateUserEmail);
+  const sendApproval = useServerFn(sendApprovalEmail);
 
   const { data: currentRole = "user", refetch: refetchRole } = useQuery({
     queryKey: ["admin-user-role", user?.id],
@@ -868,6 +870,7 @@ function UserDrawer({
 
   async function handleStatusChange(next: string) {
     if (!user || next === status) return;
+    const prevStatus = status;
     setBusy(true);
     const { error } = await supabase.from("profiles").update({ status: next as "approved" | "pending" | "rejected" | "suspended" }).eq("id", user.id);
     setBusy(false);
@@ -880,6 +883,14 @@ function UserDrawer({
     qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
     qc.invalidateQueries({ queryKey: ["admin-pending-profiles"] });
     qc.invalidateQueries({ queryKey: ["admin-pending-count"] });
+
+    if (prevStatus === "pending" && next === "approved") {
+      sendApproval({ data: { userId: user.id } })
+        .then((res) => {
+          if (!res?.ok) toast.error(`Approval email failed: ${res?.error ?? "unknown"}`);
+        })
+        .catch((e: any) => toast.error(`Approval email failed: ${e?.message ?? String(e)}`));
+    }
   }
 
   async function handleDelete(team: TeamRow) {
