@@ -49,26 +49,32 @@ type SortKey =
   | "player" | "majors_played" | "best_seed" | "avg_seed" | "cut_pct"
   | "wins" | "top10s" | "best_finish" | "avg_finish";
 
-// The RPC aggregates every player with >=1 major (~2,200 rows), which Supabase
-// truncates at 1,000 — so some players silently vanish. We floor the server side
-// at SERVER_MIN_MAJORS (well under the cap) since sub-floor players are out of
-// scope for a career-comparison table; the min-majors slider filters from there.
-const SERVER_MIN_MAJORS = 4;
+// The RPC aggregates every player with >=1 major (~2,200 rows), and Supabase
+// caps any single response at 1,000. We page through with .range() so the full
+// field is available — every major winner is searchable, and the client keeps
+// the instant min-majors slider. (Relies on the RPC's ORDER BY for stable paging.)
+const PAGE = 1000;
 
 function useMajorStats(major: string | null, yearFrom: number, yearTo: number) {
   return useQuery({
     queryKey: ["golfer-major-stats", major, yearFrom, yearTo],
     queryFn: async (): Promise<GolferMajorStat[]> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)("golfer_major_stats", {
-        p_major: major ?? undefined,
-        p_year_from: yearFrom,
-        p_year_to: yearTo,
-        p_min_majors: SERVER_MIN_MAJORS,
-      });
-      if (error) throw new Error(error.message);
+      const all: GolferMajorStat[] = [];
+      for (let from = 0; from < 6000; from += PAGE) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.rpc as any)("golfer_major_stats", {
+          p_major: major ?? undefined,
+          p_year_from: yearFrom,
+          p_year_to: yearTo,
+          p_min_majors: 1,
+        }).range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        const batch = (data ?? []) as GolferMajorStat[];
+        all.push(...batch);
+        if (batch.length < PAGE) break; // short page = last page
+      }
       // avg_finish comes back as a numeric string from PostgREST — coerce it.
-      return ((data ?? []) as GolferMajorStat[]).map((r) => ({
+      return all.map((r) => ({
         ...r,
         avg_finish: r.avg_finish == null ? null : Number(r.avg_finish),
       }));
@@ -182,7 +188,7 @@ export default function MajorsStatsTable() {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
         <div className="flex items-center gap-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Min majors</label>
-          <input type="range" min={SERVER_MIN_MAJORS} max={80} step={1} value={minMajors}
+          <input type="range" min={1} max={80} step={1} value={minMajors}
             onChange={(e) => setMinMajors(Number(e.target.value))}
             className="w-32 accent-[color:var(--gold)]" />
           <span className="text-xs font-mono font-bold tabular-nums" style={{ color: "var(--forest-deep)" }}>{minMajors}</span>
