@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { template as migrationWelcomeTemplate } from "@/lib/email-templates/migration-welcome";
 import { template as recoveryLinkTemplate } from "@/lib/email-templates/recovery-link";
+import { template as userApprovedTemplate } from "@/lib/email-templates/user-approved";
 import { getPublicSiteOrigin } from "@/lib/email/site-origin";
 
 const SITE_NAME = "major7s";
@@ -701,5 +702,158 @@ export const sendRecoveryLinks = createServerFn({ method: "POST" })
     });
 
     return { sent, failed, results };
+  });
+
+/* ============================================================
+   SEND APPROVAL EMAIL — single-user, fires on pending→approved.
+   Mirrors sendRecoveryLinks enqueue pipeline. Never throws so a
+   failed email cannot roll back the admin's status update.
+   ============================================================ */
+export const sendApprovalEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ userId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      await assertAdmin(context);
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? "Forbidden" };
+    }
+
+    const userId = data.userId;
+
+    try {
+      const { data: profile, error: profErr } = await supabaseAdmin
+        .from("profiles")
+        .select("id, email, first_name")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profErr) throw new Error(profErr.message);
+      const email = profile?.email ?? null;
+      if (!email) throw new Error("No email on profile");
+
+      const normalizedEmail = email.toLowerCase();
+
+      const { data: suppressed, error: suppErr } = await supabaseAdmin
+        .from("suppressed_emails")
+        .select("id")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+      if (suppErr) throw new Error(`Suppression check failed: ${suppErr.message}`);
+      if (suppressed) {
+        await supabaseAdmin.from("admin_audit").insert({
+          actor_id: context.userId,
+          action: "user.approved_email_skipped",
+          target_user: userId,
+          detail: { reason: "suppressed" },
+        });
+        return { ok: false, error: "suppressed" };
+      }
+
+      const loginUrl = `${getPublicSiteOrigin()}/login`;
+      const firstName = profile?.first_name?.trim() || undefined;
+      const element = React.createElement(userApprovedTemplate.component, {
+        firstName,
+        loginUrl,
+      });
+      const html = await render(element);
+      const text = toPlainText(html);
+
+      const rawSubject = userApprovedTemplate.subject as
+        | string
+        | ((d: Record<string, any>) => string);
+      const subject = typeof rawSubject === "function" ? rawSubject({}) : rawSubject;
+
+      const messageId = crypto.randomUUID();
+      const idempotencyKey = `user-approved:${userId}:${Date.now()}`;
+
+      let unsubscribeToken: string;
+      const { data: existingToken } = await supabaseAdmin
+        .from("email_unsubscribe_tokens")
+        .select("token, used_at")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+      if (existingToken && !existingToken.used_at) {
+        unsubscribeToken = existingToken.token;
+      } else {
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        const newToken = Array.from(bytes)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        await supabaseAdmin
+          .from("email_unsubscribe_tokens")
+          .upsert(
+            { token: newToken, email: normalizedEmail },
+            { onConflict: "email", ignoreDuplicates: true },
+          );
+        const { data: stored } = await supabaseAdmin
+          .from("email_unsubscribe_tokens")
+          .select("token")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        unsubscribeToken = stored?.token ?? newToken;
+      }
+
+      await supabaseAdmin.from("email_send_log").insert({
+        message_id: messageId,
+        template_name: "user-approved",
+        recipient_email: email,
+        status: "pending",
+      });
+
+      const { error: enqErr } = await supabaseAdmin.rpc("enqueue_email", {
+        queue_name: "transactional_emails",
+        payload: {
+          message_id: messageId,
+          to: email,
+          from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+          sender_domain: SENDER_DOMAIN,
+          subject,
+          html,
+          text,
+          purpose: "transactional",
+          label: "user-approved",
+          idempotency_key: idempotencyKey,
+          unsubscribe_token: unsubscribeToken,
+          queued_at: new Date().toISOString(),
+        },
+      });
+
+      if (enqErr) {
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: messageId,
+          template_name: "user-approved",
+          recipient_email: email,
+          status: "failed",
+          error_message: "Failed to enqueue email",
+        });
+        await supabaseAdmin.from("admin_audit").insert({
+          actor_id: context.userId,
+          action: "user.approved_email_failed",
+          target_user: userId,
+          detail: { error: enqErr.message },
+        });
+        return { ok: false, error: `Enqueue failed: ${enqErr.message}` };
+      }
+
+      await supabaseAdmin.from("admin_audit").insert({
+        actor_id: context.userId,
+        action: "user.approved_email_sent",
+        target_user: userId,
+        detail: {},
+      });
+      return { ok: true };
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      await supabaseAdmin.from("admin_audit").insert({
+        actor_id: context.userId,
+        action: "user.approved_email_failed",
+        target_user: userId,
+        detail: { error: msg },
+      });
+      return { ok: false, error: msg };
+    }
   });
 
