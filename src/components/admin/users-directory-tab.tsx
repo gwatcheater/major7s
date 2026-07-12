@@ -90,9 +90,9 @@ function lastSeenLabel(s: string | null): string {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "—";
 
-  // YYYY-MM-DD HH:mm in the admin's local timezone (24h).
+  // dd/mm/yy hh:mm in the admin's local timezone (24h).
   const parts = new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
+    year: "2-digit",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -102,25 +102,8 @@ function lastSeenLabel(s: string | null): string {
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   let hh = get("hour");
   if (hh === "24") hh = "00"; // some locales render midnight as 24
-  const stamp = `${get("year")}-${get("month")}-${get("day")} ${hh}:${get("minute")}`;
 
-  // Local zone label (e.g. "BST", "GMT+1").
-  let zone = "";
-  try {
-    const tzParts = new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      timeZoneName: "short",
-    }).formatToParts(d);
-    zone = tzParts.find((p) => p.type === "timeZoneName")?.value ?? "";
-  } catch {
-    zone = "";
-  }
-  if (!zone) {
-    const m = d.toString().match(/GMT([+-]\d{2})(\d{2})/);
-    zone = m ? `GMT${m[1]}:${m[2]}` : "Local";
-  }
-
-  return `${stamp} (${zone})`;
+  return `${get("day")}/${get("month")}/${get("year")} ${hh}:${get("minute")}`;
 }
 
 function fmtDate(s: string | null): string {
@@ -529,7 +512,6 @@ export function UsersDirectoryTab() {
                       />
                     </TableHead>
                     <SortHead label="User" k="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                    <SortHead label="Email" k="email" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Engagement" k="engagement" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Last seen" k="lastSeen" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
@@ -540,7 +522,7 @@ export function UsersDirectoryTab() {
                 <TableBody>
                   {pageRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
                         No users match.
                       </TableCell>
                     </TableRow>
@@ -568,9 +550,6 @@ export function UsersDirectoryTab() {
                             <div className="text-[11px] text-muted-foreground">
                               {u.primary_team_nickname ?? u.nickname}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">
-                            {u.email ?? "—"}
                           </TableCell>
                           <TableCell>
                             <Badge variant={statusBadgeVariant(u.status)} className="capitalize">
