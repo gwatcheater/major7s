@@ -318,7 +318,7 @@ function TournamentHub() {
 
       {/* ── NAV ROWS ── */}
       <div className="mt-6 flex flex-col gap-3">
-        {t.external_url && (
+        {t.external_url && t.status !== "completed" && (
           <a
             href={t.external_url}
             target="_blank"
