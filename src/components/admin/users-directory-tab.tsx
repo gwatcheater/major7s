@@ -71,7 +71,28 @@ const ENGAGEMENT_OPTIONS = ["all", "active", "dormant", "never"] as const;
 type EngagementFilter = (typeof ENGAGEMENT_OPTIONS)[number];
 type Engagement = "active" | "dormant" | "never";
 
-type SortKey = "name" | "email" | "status" | "engagement" | "lastSeen" | "joined";
+type SortKey = "name" | "email" | "status" | "engagement" | "lastSeen" | "joined" | "entryCount" | "lastPlayed";
+
+const TOURNAMENT_SHORT: Record<string, string> = {
+  "Masters Tournament": "Masters",
+  "PGA Championship": "PGA",
+  "U.S. Open": "US Open",
+  "The Open Championship": "The Open",
+};
+
+function shortTournamentLabel(name: string, startDate: string | null): string {
+  const short = TOURNAMENT_SHORT[name] ?? name;
+  if (!startDate) return short;
+  const yr = new Date(startDate).getFullYear();
+  if (Number.isNaN(yr)) return short;
+  return `${short} ${String(yr).slice(-2)}`;
+}
+
+interface EntrySummary {
+  count: number;
+  lastLabel: string;
+  lastTime: number;
+}
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "approved") return "default";
@@ -193,6 +214,83 @@ export function UsersDirectoryTab() {
     queryFn: async () => (await listFn()) as DirectoryRow[],
   });
 
+  // All picks across all tournaments, joined to the owning user and the
+  // tournament they were submitted for. Used to derive "competitions played"
+  // and "last competition played" per user. Paginated to dodge the Supabase
+  // 1000-row default cap (same pattern as the Submissions tab).
+  const { data: allEntryPicks = [] } = useQuery({
+    queryKey: ["admin-all-entry-picks"],
+    queryFn: async () => {
+      const PAGE = 1000;
+      let all: Array<{
+        owner_user_id: string;
+        tournament_id: string;
+        tournament_name: string;
+        tournament_start: string | null;
+      }> = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select(
+            `
+            teams!inner ( owner_user_id ),
+            tournaments!inner ( id, name, start_date )
+          `,
+          )
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const page = (data ?? []) as unknown as Array<{
+          teams: { owner_user_id: string };
+          tournaments: { id: string; name: string; start_date: string | null };
+        }>;
+        all = all.concat(
+          page.map((row) => ({
+            owner_user_id: row.teams.owner_user_id,
+            tournament_id: row.tournaments.id,
+            tournament_name: row.tournaments.name,
+            tournament_start: row.tournaments.start_date,
+          })),
+        );
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    },
+  });
+
+  // Per-user: distinct tournaments entered (>=1 pick counts as entered) and
+  // the most recent one by start date, rendered as e.g. "US Open 25".
+  const entriesByUser = useMemo(() => {
+    const byUser = new Map<string, Map<string, { name: string; start: string | null }>>();
+    for (const row of allEntryPicks) {
+      let tset = byUser.get(row.owner_user_id);
+      if (!tset) {
+        tset = new Map();
+        byUser.set(row.owner_user_id, tset);
+      }
+      tset.set(row.tournament_id, { name: row.tournament_name, start: row.tournament_start });
+    }
+    const out = new Map<string, EntrySummary>();
+    for (const [userId, tset] of byUser) {
+      let lastLabel = "—";
+      let lastTime = -Infinity;
+      for (const t of tset.values()) {
+        const time = t.start ? new Date(t.start).getTime() : -Infinity;
+        if (time > lastTime) {
+          lastTime = time;
+          lastLabel = shortTournamentLabel(t.name, t.start);
+        }
+      }
+      out.set(userId, { count: tset.size, lastLabel, lastTime });
+    }
+    return out;
+  }, [allEntryPicks]);
+
+  function entrySummaryFor(userId: string): EntrySummary {
+    return entriesByUser.get(userId) ?? { count: 0, lastLabel: "—", lastTime: -Infinity };
+  }
+
   const selected = useMemo(
     () => (selectedId ? (users.find((u) => u.id === selectedId) ?? null) : null),
     [selectedId, users],
@@ -261,11 +359,17 @@ export function UsersDirectoryTab() {
         case "joined":
           x = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
+        case "entryCount":
+          x = entrySummaryFor(a.id).count - entrySummaryFor(b.id).count;
+          break;
+        case "lastPlayed":
+          x = entrySummaryFor(a.id).lastTime - entrySummaryFor(b.id).lastTime;
+          break;
       }
       return x * sortDir;
     });
     return rows;
-  }, [filtered, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir, entriesByUser]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const pageRows = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -389,7 +493,7 @@ export function UsersDirectoryTab() {
         <CardTitle className="flex items-center justify-between flex-wrap gap-2">
           <span>User Directory &amp; Management</span>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => exportAllUsers(users)}>
+            <Button size="sm" variant="outline" onClick={() => exportAllUsers(users, entriesByUser)}>
               <Download className="size-3.5" /> Export Users
             </Button>
             <span className="text-xs font-mono text-muted-foreground">{counts.total} users</span>
@@ -516,13 +620,15 @@ export function UsersDirectoryTab() {
                     <SortHead label="Engagement" k="engagement" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Last seen" k="lastSeen" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <SortHead label="Joined" k="joined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Comps played" k="entryCount" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortHead label="Last comp" k="lastPlayed" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pageRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
                         No users match.
                       </TableCell>
                     </TableRow>
@@ -564,6 +670,12 @@ export function UsersDirectoryTab() {
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {fmtDate(u.created_at)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground text-center">
+                            {entrySummaryFor(u.id).count}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {entrySummaryFor(u.id).lastLabel}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
@@ -640,12 +752,13 @@ export function UsersDirectoryTab() {
   );
 }
 
-function exportAllUsers(users: DirectoryRow[]) {
+function exportAllUsers(users: DirectoryRow[], entriesByUser: Map<string, EntrySummary>) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const headers =
-    "First Name,Last Name,Email,Phone,Primary Team Nickname,Referral,Status,Engagement,Last Seen,Joined";
+    "First Name,Last Name,Email,Phone,Primary Team Nickname,Referral,Status,Engagement,Last Seen,Joined,Comps Played,Last Comp Played";
   const lines = [headers];
   for (const u of users) {
+    const summary = entriesByUser.get(u.id) ?? { count: 0, lastLabel: "—", lastTime: -Infinity };
     const row = [
       esc(u.first_name ?? ""),
       esc(u.last_name ?? ""),
@@ -657,6 +770,8 @@ function exportAllUsers(users: DirectoryRow[]) {
       esc(engagementOf(u.last_seen_at)),
       esc(u.last_seen_at ? new Date(u.last_seen_at).toLocaleString("en-GB") : ""),
       esc(fmtDate(u.created_at)),
+      esc(String(summary.count)),
+      esc(summary.lastLabel),
     ];
     lines.push(row.join(","));
   }
