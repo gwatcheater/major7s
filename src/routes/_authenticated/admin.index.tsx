@@ -1226,6 +1226,31 @@ function SubmissionsTab() {
     },
   });
 
+  // tournament_scores carries the helper_used analytics flag, one row per
+  // team per tournament. Paginated for consistency with the other queries
+  // here, even though it's well under the 1000-row cap at current scale.
+  const { data: fetchedScores = [] } = useQuery({
+    enabled: !!activeId,
+    queryKey: ["admin-scores-for-tournament", activeId],
+    queryFn: async () => {
+      const PAGE = 1000;
+      let all: Array<{ team_id: string; helper_used: boolean | null }> = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("tournament_scores")
+          .select("team_id, helper_used")
+          .eq("tournament_id", activeId!)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data ?? []);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    },
+  });
+
   // JS pivot: one row per team
   type PivotRow = {
     teamId: string;
@@ -1233,7 +1258,14 @@ function SubmissionsTab() {
     ownerUserId: string;
     buckets: Record<number, string | undefined>;
     tweaks: number;
+    helperUsed: boolean;
   };
+  const helperUsedByTeam = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const s of fetchedScores) m.set(s.team_id, !!s.helper_used);
+    return m;
+  }, [fetchedScores]);
+
   const pivotedRows = useMemo<PivotRow[]>(() => {
     const m = new Map<string, PivotRow>();
     for (const p of fetchedPicks) {
@@ -1245,13 +1277,14 @@ function SubmissionsTab() {
         ownerUserId: t.owner_user_id,
         buckets: {},
         tweaks: 0,
+        helperUsed: helperUsedByTeam.get(t.id) ?? false,
       };
       entry.buckets[p.bucket] = p.golfers?.golfer_name;
       entry.tweaks = Math.max(entry.tweaks, p.tweak_count ?? 0);
       m.set(t.id, entry);
     }
     return Array.from(m.values());
-  }, [fetchedPicks]);
+  }, [fetchedPicks, helperUsedByTeam]);
 
   // Profile lookup by user id (for resolving names/email/phone on the grid)
   const profileById = useMemo(() => {
@@ -1294,7 +1327,7 @@ function SubmissionsTab() {
 
   function exportCsv() {
     const headers =
-      "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7";
+      "UUID,Full Name,Email,Team Nickname,Bucket 1,Bucket 2,Bucket 3,Bucket 4,Bucket 5,Bucket 6,Bucket 7,Tweaks,Helper Used";
     const lines = [headers];
     for (const r of pivotedRows) {
       const p = profileById.get(r.ownerUserId);
@@ -1305,6 +1338,8 @@ function SubmissionsTab() {
         p?.email ?? "",
         `"${r.teamName ?? "—"}"`,
         ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${r.buckets[b] ?? "—"}"`),
+        r.tweaks,
+        r.helperUsed ? "Y" : "N",
       ];
       lines.push(row.join(","));
     }
@@ -1402,12 +1437,13 @@ function SubmissionsTab() {
                   <TableHead key={b}>Bucket {b}</TableHead>
                 ))}
                 <TableHead className="text-right">Tweaks</TableHead>
+                <TableHead className="text-center">Helper Used</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pivotedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">
                     No submissions yet for this tournament.
                   </TableCell>
                 </TableRow>
@@ -1421,6 +1457,9 @@ function SubmissionsTab() {
                       </TableCell>
                     ))}
                     <TableCell className="text-right font-mono">{r.tweaks}</TableCell>
+                    <TableCell className="text-center text-xs font-semibold">
+                      {r.helperUsed ? "Y" : "N"}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
