@@ -86,13 +86,7 @@ function AdminConsole() {
     <TooltipProvider>
       <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto">
         <header className="mb-6">
-          <p
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--gold)" }}
-          >
-            Governance
-          </p>
-          <h1 className="font-display text-3xl md:text-4xl uppercase mt-1">
+          <h1 className="font-display text-3xl md:text-4xl uppercase">
             Admin Management Center
           </h1>
         </header>
