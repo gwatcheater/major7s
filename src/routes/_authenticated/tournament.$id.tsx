@@ -21,11 +21,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { tournamentDateRange } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id")({
@@ -61,7 +56,6 @@ function TournamentHub() {
   const effectiveId = getEffectiveUserId(user?.id);
   const { activeTeam } = useTeams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [blogOpen, setBlogOpen] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
 
   console.log("[tournament hub debug]", { userId: user?.id, email: user?.email, isAdmin });
@@ -370,18 +364,15 @@ function TournamentHub() {
           </Link>
         )}
 
-        <Collapsible open={blogOpen} onOpenChange={setBlogOpen}>
-          <CollapsibleTrigger className="w-full flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors">
+        <div className="border border-border bg-card">
+          <div className="flex items-center gap-3 p-4">
             <FileText className="h-5 w-5 text-primary" />
             <div className="flex-1 text-left">
               <div className="font-display text-sm uppercase">Blog</div>
               <div className="text-xs text-muted-foreground">Tournament recap & notes</div>
             </div>
-            <ChevronRight
-              className={`h-4 w-4 text-muted-foreground transition-transform ${blogOpen ? "rotate-90" : ""}`}
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="border border-t-0 border-border bg-card">
+          </div>
+          <div className="border-t border-border">
             {isAdmin ? (
               <Button
                 asChild
@@ -431,8 +422,8 @@ function TournamentHub() {
                 {t.recap_blog ?? "No recap yet. Check back after the tournament concludes."}
               </div>
             )}
-          </CollapsibleContent>
-        </Collapsible>
+          </div>
+        </div>
       </div>
     </div>
   );
