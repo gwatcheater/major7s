@@ -16,13 +16,16 @@ export const Route = createFileRoute("/_authenticated")({
     }
     const { data: profile } = await supabase
       .from("profiles")
-      .select("status")
+      .select("status, must_change_password")
       .eq("id", data.session.user.id)
       .maybeSingle();
     const status = (profile?.status ?? "pending") as "pending" | "approved" | "rejected";
     if (status !== "approved") {
       await supabase.auth.signOut();
       throw redirect({ to: "/login", search: { redirect: location.href } });
+    }
+    if (profile?.must_change_password) {
+      throw redirect({ to: "/force-update-password" });
     }
   },
   component: AuthenticatedLayout,

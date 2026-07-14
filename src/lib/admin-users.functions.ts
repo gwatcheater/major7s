@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { template as migrationWelcomeTemplate } from "@/lib/email-templates/migration-welcome";
 import { template as recoveryLinkTemplate } from "@/lib/email-templates/recovery-link";
 import { template as userApprovedTemplate } from "@/lib/email-templates/user-approved";
+import { template as adminSetPasswordTemplate } from "@/lib/email-templates/admin-set-password";
 import { getPublicSiteOrigin } from "@/lib/email/site-origin";
 
 const SITE_NAME = "major7s";
@@ -102,6 +103,191 @@ export const updateUserEmail = createServerFn({ method: "POST" })
     }
     return { ok: true, from: fromEmail, to: newEmail };
   });
+
+/* ============================================================
+   SET USER PASSWORD — admin overrides a user's password (manual or
+   generated), forces a change on next login, and emails the temp
+   password. The plaintext password is returned to the caller once
+   and NEVER persisted anywhere. Mirrors sendApprovalEmail's never-
+   throw email pipeline: a failed email must not undo the password.
+   ============================================================ */
+function generateStrongPassword(): string {
+  // 24 chars from a broad set — comfortably passes GoTrue length/HIBP checks.
+  const charset =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => charset[b % charset.length])
+    .join("");
+}
+
+export const setUserPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        newPassword: z.string().min(8).max(72).optional(),
+      })
+      .parse(input),
+  )
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<
+      | { ok: true; password: string; emailError?: string }
+      | { ok: false; error: string }
+    > => {
+      await assertAdmin(context);
+
+      const generated = !data.newPassword;
+      const newPassword = data.newPassword ?? generateStrongPassword();
+
+      // Set the password in Supabase auth (source of truth). On GoTrue error
+      // (weak password, HIBP-pwned, etc.) write a failed audit row and return
+      // { ok: false } rather than throwing.
+      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(
+        data.userId,
+        { password: newPassword },
+      );
+      if (updErr) {
+        await supabaseAdmin.from("admin_audit").insert({
+          actor_id: context.userId,
+          action: "user.password_override",
+          target_user: data.userId,
+          detail: { generated, ok: false, error: updErr.message },
+        });
+        return { ok: false, error: updErr.message };
+      }
+
+      // Force the user to change it on next login.
+      await supabaseAdmin
+        .from("profiles")
+        .update({ must_change_password: true })
+        .eq("id", data.userId);
+
+      // Audit the successful override — never log the password itself.
+      await supabaseAdmin.from("admin_audit").insert({
+        actor_id: context.userId,
+        action: "user.password_override",
+        target_user: data.userId,
+        detail: { generated },
+      });
+
+      // Email the temporary password. Failure here must NOT fail the action —
+      // the password is already set. Mirror the profileMirrorError pattern.
+      let emailError: string | undefined;
+      try {
+        const { data: profile, error: profErr } = await supabaseAdmin
+          .from("profiles")
+          .select("id, email, first_name")
+          .eq("id", data.userId)
+          .maybeSingle();
+        if (profErr) throw new Error(profErr.message);
+        const email = profile?.email ?? null;
+        if (!email) throw new Error("No email on profile");
+
+        const normalizedEmail = email.toLowerCase();
+
+        const { data: suppressed, error: suppErr } = await supabaseAdmin
+          .from("suppressed_emails")
+          .select("id")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (suppErr) throw new Error(`Suppression check failed: ${suppErr.message}`);
+        if (suppressed) throw new Error("Email suppressed");
+
+        const loginUrl = `${getPublicSiteOrigin()}/login`;
+        const firstName = profile?.first_name?.trim() || undefined;
+        const element = React.createElement(adminSetPasswordTemplate.component, {
+          firstName,
+          password: newPassword,
+          loginUrl,
+        });
+        const html = await render(element);
+        const text = toPlainText(html);
+
+        const rawSubject = adminSetPasswordTemplate.subject as
+          | string
+          | ((d: Record<string, any>) => string);
+        const subject = typeof rawSubject === "function" ? rawSubject({}) : rawSubject;
+
+        const messageId = crypto.randomUUID();
+        const idempotencyKey = `admin-set-password:${data.userId}:${Date.now()}`;
+
+        let unsubscribeToken: string;
+        const { data: existingToken } = await supabaseAdmin
+          .from("email_unsubscribe_tokens")
+          .select("token, used_at")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (existingToken && !existingToken.used_at) {
+          unsubscribeToken = existingToken.token;
+        } else {
+          const bytes = new Uint8Array(32);
+          crypto.getRandomValues(bytes);
+          const newToken = Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .upsert(
+              { token: newToken, email: normalizedEmail },
+              { onConflict: "email", ignoreDuplicates: true },
+            );
+          const { data: stored } = await supabaseAdmin
+            .from("email_unsubscribe_tokens")
+            .select("token")
+            .eq("email", normalizedEmail)
+            .maybeSingle();
+          unsubscribeToken = stored?.token ?? newToken;
+        }
+
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: messageId,
+          template_name: "admin-set-password",
+          recipient_email: email,
+          status: "pending",
+        });
+
+        const { error: enqErr } = await supabaseAdmin.rpc("enqueue_email", {
+          queue_name: "transactional_emails",
+          payload: {
+            message_id: messageId,
+            to: email,
+            from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+            sender_domain: SENDER_DOMAIN,
+            subject,
+            html,
+            text,
+            purpose: "transactional",
+            label: "admin-set-password",
+            idempotency_key: idempotencyKey,
+            unsubscribe_token: unsubscribeToken,
+            queued_at: new Date().toISOString(),
+          },
+        });
+
+        if (enqErr) {
+          await supabaseAdmin.from("email_send_log").insert({
+            message_id: messageId,
+            template_name: "admin-set-password",
+            recipient_email: email,
+            status: "failed",
+            error_message: "Failed to enqueue email",
+          });
+          throw new Error(`Enqueue failed: ${enqErr.message}`);
+        }
+      } catch (e: any) {
+        emailError = e?.message ?? String(e);
+        console.error("setUserPassword:email", emailError);
+      }
+
+      return { ok: true, password: newPassword, emailError };
+    },
+  );
 
 type RowResult = {
   email: string;
@@ -487,6 +673,22 @@ export const completeOnboarding = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ onboarded_at: new Date().toISOString() })
+      .eq("id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/* ============================================================
+   CLEAR MUST-CHANGE-PASSWORD — the caller has just set a new
+   password on their own session; drop the force-change flag.
+   Mirrors completeOnboarding exactly.
+   ============================================================ */
+export const clearMustChangePassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ must_change_password: false })
       .eq("id", context.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
