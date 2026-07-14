@@ -2389,6 +2389,12 @@ function LineupPicker() {
     const newTweaks = currentTweaks + tweakIncrement;
     const nowIso = new Date().toISOString();
 
+    // helper_used is sticky per pick, same idea as tweak_count: once the
+    // helper's been deployed this session, or was already flagged on any
+    // existing pick for this team/tournament, every row gets marked used.
+    const helperUsedFlag =
+      helperDeployed || existingPicks.some((p: any) => p.helper_used === true);
+
     for (const b of buckets) {
       const existing = existingByBucket.get(b);
       if (existing) {
@@ -2398,6 +2404,7 @@ function LineupPicker() {
             golfer_id: selections[b],
             last_edited_at: nowIso,
             tweak_count: newTweaks,
+            helper_used: helperUsedFlag,
           })
           .eq("id", existing.id);
         if (error) { toast.error(error.message); return; }
@@ -2408,6 +2415,7 @@ function LineupPicker() {
           bucket: b,
           golfer_id: selections[b],
           tweak_count: newTweaks,
+          helper_used: helperUsedFlag,
         });
         if (error) { toast.error(error.message); return; }
       }
@@ -2871,15 +2879,10 @@ function LineupPicker() {
       tournamentPickCounts={tournamentPickCounts}
       onDeploy={() => {
         setHelperDeployed(true);
-        // Log helper usage — fire and forget, no await, non-blocking
-        if (activeTeam?.id) {
-          supabase
-            .from("tournament_scores")
-            .update({ helper_used: true })
-            .eq("team_id", activeTeam.id)
-            .eq("tournament_id", id)
-            .then(() => {}); // intentionally silent — logging failure shouldn't affect UX
-        }
+        // helper_used is now persisted on the picks rows themselves when the
+        // lineup is saved (see save()), which is available immediately —
+        // unlike tournament_scores, which only populates after the
+        // tournament runs and made this flag invisible until then.
         // On mobile (stacked layout), scroll the Save Lineup button into view
         if (window.innerWidth < 1024) {
           setTimeout(() => {
