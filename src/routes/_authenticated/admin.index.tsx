@@ -1197,6 +1197,7 @@ function SubmissionsTab() {
         id: string;
         bucket: number;
         tweak_count: number;
+        helper_used: boolean | null;
         tournament_id: string;
         golfers: { golfer_name: string } | null;
         teams: { id: string; nickname: string; owner_user_id: string };
@@ -1210,6 +1211,7 @@ function SubmissionsTab() {
             id,
             bucket,
             tweak_count,
+            helper_used,
             tournament_id,
             golfers ( golfer_name ),
             teams!inner ( id, nickname, owner_user_id )
@@ -1226,31 +1228,6 @@ function SubmissionsTab() {
     },
   });
 
-  // tournament_scores carries the helper_used analytics flag, one row per
-  // team per tournament. Paginated for consistency with the other queries
-  // here, even though it's well under the 1000-row cap at current scale.
-  const { data: fetchedScores = [] } = useQuery({
-    enabled: !!activeId,
-    queryKey: ["admin-scores-for-tournament", activeId],
-    queryFn: async () => {
-      const PAGE = 1000;
-      let all: Array<{ team_id: string; helper_used: boolean | null }> = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("tournament_scores")
-          .select("team_id, helper_used")
-          .eq("tournament_id", activeId!)
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        all = all.concat(data ?? []);
-        if (!data || data.length < PAGE) break;
-        from += PAGE;
-      }
-      return all;
-    },
-  });
-
   // JS pivot: one row per team
   type PivotRow = {
     teamId: string;
@@ -1260,11 +1237,6 @@ function SubmissionsTab() {
     tweaks: number;
     helperUsed: boolean;
   };
-  const helperUsedByTeam = useMemo(() => {
-    const m = new Map<string, boolean>();
-    for (const s of fetchedScores) m.set(s.team_id, !!s.helper_used);
-    return m;
-  }, [fetchedScores]);
 
   const pivotedRows = useMemo<PivotRow[]>(() => {
     const m = new Map<string, PivotRow>();
@@ -1277,14 +1249,17 @@ function SubmissionsTab() {
         ownerUserId: t.owner_user_id,
         buckets: {},
         tweaks: 0,
-        helperUsed: helperUsedByTeam.get(t.id) ?? false,
+        helperUsed: false,
       };
       entry.buckets[p.bucket] = p.golfers?.golfer_name;
       entry.tweaks = Math.max(entry.tweaks, p.tweak_count ?? 0);
+      // helper_used is per-pick, same as tweak_count — a team counts as
+      // having used the helper if any one of its 7 picks did.
+      entry.helperUsed = entry.helperUsed || !!p.helper_used;
       m.set(t.id, entry);
     }
     return Array.from(m.values());
-  }, [fetchedPicks, helperUsedByTeam]);
+  }, [fetchedPicks]);
 
   // Profile lookup by user id (for resolving names/email/phone on the grid)
   const profileById = useMemo(() => {
