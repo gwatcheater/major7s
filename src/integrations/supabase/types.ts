@@ -373,6 +373,7 @@ export type Database = {
         Row: {
           bucket: number
           golfer_id: string
+          helper_used: boolean
           id: string
           last_edited_at: string
           submitted_at: string
@@ -383,6 +384,7 @@ export type Database = {
         Insert: {
           bucket: number
           golfer_id: string
+          helper_used?: boolean
           id?: string
           last_edited_at?: string
           submitted_at?: string
@@ -393,6 +395,7 @@ export type Database = {
         Update: {
           bucket?: number
           golfer_id?: string
+          helper_used?: boolean
           id?: string
           last_edited_at?: string
           submitted_at?: string
@@ -934,6 +937,12 @@ export type Database = {
         Args: { _after_lock: boolean; _target: string; _tournament: string }
         Returns: undefined
       }
+      current_field_player_ids: {
+        Args: never
+        Returns: {
+          owgr_player_id: number
+        }[]
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -942,6 +951,25 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      form_events: {
+        Args: never
+        Returns: {
+          event_date: string
+          event_id: number
+          event_name: string
+          tour_code: string
+          week: number
+        }[]
+      }
+      form_matrix: {
+        Args: never
+        Returns: {
+          finishes: Json
+          owgr_player_id: number
+          player: string
+          points: Json
+        }[]
       }
       golfer_major_history: {
         Args: { p_owgr_player_id: number }
