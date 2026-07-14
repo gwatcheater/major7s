@@ -483,6 +483,7 @@ export type Database = {
           id: string
           last_name: string | null
           last_seen_at: string | null
+          must_change_password: boolean
           nickname: string
           onboarded_at: string | null
           phone: string | null
@@ -498,6 +499,7 @@ export type Database = {
           id: string
           last_name?: string | null
           last_seen_at?: string | null
+          must_change_password?: boolean
           nickname: string
           onboarded_at?: string | null
           phone?: string | null
@@ -513,6 +515,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           last_seen_at?: string | null
+          must_change_password?: boolean
           nickname?: string
           onboarded_at?: string | null
           phone?: string | null

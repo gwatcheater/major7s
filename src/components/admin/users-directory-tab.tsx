@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import {
   updateUserEmail,
+  setUserPassword,
   listUsersForAdmin,
   sendWelcomeEmails,
   sendRecoveryLinks,
@@ -39,6 +40,8 @@ import {
   Download,
   Pencil,
   Mail,
+  KeyRound,
+  Copy,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
@@ -831,7 +834,10 @@ function UserDrawer({
   const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
   const [status, setStatus] = useState<string>("pending");
   const [emailDraft, setEmailDraft] = useState<string>("");
+  const [passwordDraft, setPasswordDraft] = useState<string>("");
+  const [issuedPassword, setIssuedPassword] = useState<string | null>(null);
   const updateUserEmailFn = useServerFn(updateUserEmail);
+  const setUserPasswordFn = useServerFn(setUserPassword);
   const sendApproval = useServerFn(sendApprovalEmail);
 
   const { data: currentRole = "user", refetch: refetchRole } = useQuery({
@@ -925,6 +931,8 @@ function UserDrawer({
     if (user) {
       setStatus(user.status);
       setEmailDraft(user.email ?? "");
+      setPasswordDraft("");
+      setIssuedPassword(null);
     }
   }, [user]);
 
@@ -952,6 +960,49 @@ function UserDrawer({
       qc.invalidateQueries({ queryKey: ["admin-user-activity", user.id] });
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to update email");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSetPassword(generate: boolean) {
+    if (!user) return;
+    const manual = passwordDraft.trim();
+    if (!generate && manual.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Set a temporary password for ${user.email ?? fullName}? ` +
+          `They'll be forced to choose a new one at next login, and the temporary password will be emailed to them.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setIssuedPassword(null);
+    try {
+      const res = await setUserPasswordFn({
+        data: { userId: user.id, newPassword: generate ? undefined : manual },
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Failed to set password");
+        return;
+      }
+      setIssuedPassword(res.password);
+      setPasswordDraft("");
+      if (res.emailError) {
+        toast.warning("Password set, but the notification email failed to send", {
+          description: res.emailError,
+        });
+      } else {
+        toast.success("Temporary password set — emailed to the user");
+      }
+      qc.invalidateQueries({ queryKey: ["admin-users-directory"] });
+      qc.invalidateQueries({ queryKey: ["admin-user-activity", user.id] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to set password");
     } finally {
       setBusy(false);
     }
@@ -1299,6 +1350,72 @@ function UserDrawer({
                   />
                 </div>
               )}
+            </section>
+
+            {/* Set Temporary Password */}
+            <section className="mt-4 rounded-lg border bg-card/50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <KeyRound className="size-3.5" /> Set Temporary Password
+              </h3>
+              <div className="flex gap-2">
+                <Input
+                  className="h-9 flex-1"
+                  value={passwordDraft}
+                  onChange={(e) => setPasswordDraft(e.target.value)}
+                  placeholder="New password (min 8 chars)"
+                  type="text"
+                  autoComplete="off"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || passwordDraft.trim().length < 8}
+                  onClick={() => handleSetPassword(false)}
+                >
+                  Set
+                </Button>
+              </div>
+              <div className="mt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => handleSetPassword(true)}
+                >
+                  <KeyRound className="size-3.5" /> Generate Secure Password
+                </Button>
+              </div>
+              {issuedPassword && (
+                <div className="mt-3 rounded-md border bg-background p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                    Temporary password (shown once)
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 font-mono text-sm break-all">{issuedPassword}</code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard
+                          .writeText(issuedPassword)
+                          .then(() => toast.success("Copied to clipboard"))
+                          .catch(() => toast.error("Copy failed"));
+                      }}
+                      title="Copy password"
+                    >
+                      <Copy className="size-3.5" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Also emailed to the user. They'll be required to set a new password at next
+                    login.
+                  </p>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Overrides the user's password immediately and forces a change on their next login.
+              </p>
             </section>
 
             {/* Teams */}
