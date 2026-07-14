@@ -340,18 +340,20 @@ function TournamentHub() {
           </a>
         )}
 
-        <Link
-          to="/tournament/$id/leaderboard"
-          params={{ id }}
-          className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
-        >
-          <Trophy className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <div className="font-display text-sm uppercase">Leaderboard</div>
-            <div className="text-xs text-muted-foreground">End of round leaderboards</div>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </Link>
+        {["live", "completed"].includes(t.status) && (
+          <Link
+            to="/tournament/$id/leaderboard"
+            params={{ id }}
+            className="flex items-center gap-3 p-4 border border-border bg-card hover:bg-accent transition-colors"
+          >
+            <Trophy className="h-5 w-5 text-primary" />
+            <div className="flex-1">
+              <div className="font-display text-sm uppercase">Leaderboard</div>
+              <div className="text-xs text-muted-foreground">End of round leaderboards</div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        )}
 
         {["picks_closed", "live", "completed"].includes(t.status) && (
           <Link
