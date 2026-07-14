@@ -22,6 +22,7 @@ import { useImpersonation } from "@/context/impersonation-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { tournamentDateRange } from "@/lib/format";
+import blogDefault from "@/assets/blog-default.png.asset.json";
 
 export const Route = createFileRoute("/_authenticated/tournament/$id")({
   component: TournamentHub,
@@ -119,7 +120,7 @@ function TournamentHub() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("blog_posts")
-        .select("id, title, created_at")
+        .select("id, title, created_at, image_url")
         .eq("tournament_id", id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -399,9 +400,21 @@ function TournamentHub() {
                     <Link
                       to="/tournament/$id/blog/$postId"
                       params={{ id, postId: p.id }}
-                      className="flex items-center gap-3 p-4 hover:bg-accent transition-colors"
+                      className="flex items-center gap-4 p-4 hover:bg-accent transition-colors"
                     >
-                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      {p.image_url ? (
+                        <img
+                          src={p.image_url}
+                          alt=""
+                          className="w-16 h-16 object-cover rounded-sm border border-border shrink-0"
+                        />
+                      ) : (
+                        <img
+                          src={blogDefault.url}
+                          alt=""
+                          className="w-16 h-16 object-contain rounded-sm border border-border shrink-0 bg-muted p-1"
+                        />
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{p.title}</div>
                         <div className="text-xs text-muted-foreground">
