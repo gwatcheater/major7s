@@ -70,13 +70,30 @@ LENGTH: SHORT. Lead with the single biggest headline in the first two paragraphs
 Readers switch off at detail. Do not explain methodology. Close by directing
 readers to the tournament stats page for the full breakdown.
 
-STRUCTURE for a Picks Closed report:
-1. Opening: the 2-3 biggest headlines from the pick data. No heading.
-2. "## What it takes to win {family}" - the winning score history, the average,
+STRUCTURE for a Picks Closed report. Follow it exactly:
+
+1. "## The Numbers" - OPEN WITH THIS. No preamble, no scene-setting, no throat
+   clearing. Straight into the figures, in this order, tight and punchy:
+     a. number of entries
+     b. golfers picked out of the field size, and the percentage
+     c. total unique picks (golfers backed by exactly one team)
+     d. the top 5 most picked golfers, with counts
+     e. the most popular combinations of 2, 3, 4 and 5 picks, with counts
+     f. identical teams
+   Use a short list or a compact table. This is the hook: it must be scannable
+   in five seconds. Do not editorialise here, just land the numbers.
+
+2. The analysis. No heading. The 2-3 sharpest findings from "crossovers" and
+   "rankedButIgnored". This is where you get to be cruel.
+
+3. "## What it takes to win {family}" - the winning score history, the average,
    the all-time best and all-time worst records.
-3. "## Welcome to the debutants" - list every debutant team nickname exactly.
-4. "## Fun facts" - quickest entry, last in, most tweaks, last-minute change.
-5. Closing line pointing at the stats page.
+
+4. "## Welcome to the debutants" - list every debutant team nickname exactly.
+
+5. "## Fun facts" - quickest entry, last in, most tweaks, last-minute change.
+
+6. Closing line pointing at the stats page.
 
 WHERE THE STORY IS: the data object contains a "crossovers" section. These are
 pre-computed connections between different statistics and they are the most
@@ -112,6 +129,11 @@ object of records and debutants, and free-text colour notes from the admin.
 Use ONLY numbers present in those objects. Never invent, estimate, or infer a
 statistic. If a number is not given to you, do not state it. The colour notes
 are the only source of real-world context: weave them in, do not just repeat them.
+
+RECORDS: all_time_best and all_time_worst come only from tournaments that have
+finished. The tournament you are writing about has NOT finished, so it can never
+hold a record. Never describe the current event as holding the best or worst
+score. Report the records exactly as given: team, points, tournament and year.
 
 OUTPUT: Return exactly this format and nothing else. No JSON, no code fences,
 no preamble, no commentary:
