@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle, Newspaper, BookOpen } from "lucide-react";
+import { Trophy, Archive, BarChart3, Crown, Shield, LogOut, ChevronDown, AlertTriangle, Newspaper, BookOpen, PenLine } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-teams";
 import { supabase } from "@/integrations/supabase/client";
@@ -150,17 +150,30 @@ export function AppSidebar({ variant = "fixed" }: { variant?: "fixed" | "drawer"
           );
         })}
         {isAdmin && (
-          <Link
-            to="/admin"
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-sm transition-colors mt-4",
-              path.startsWith("/admin") ? "font-bold" : "text-white/60 hover:text-white"
-            )}
-            style={path.startsWith("/admin") ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
-          >
-            <Shield className="size-3.5" />
-            <span className="text-xs tracking-tight uppercase">Admin Panel</span>
-          </Link>
+          <>
+            <Link
+              to="/admin"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-sm transition-colors mt-4",
+                path === "/admin" ? "font-bold" : "text-white/60 hover:text-white"
+              )}
+              style={path === "/admin" ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+            >
+              <Shield className="size-3.5" />
+              <span className="text-xs tracking-tight uppercase">Admin Panel</span>
+            </Link>
+            <Link
+              to="/admin/blog-writer"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-sm transition-colors",
+                path.startsWith("/admin/blog-writer") ? "font-bold" : "text-white/60 hover:text-white"
+              )}
+              style={path.startsWith("/admin/blog-writer") ? { backgroundColor: "var(--gold)", color: "var(--forest-deep)" } : undefined}
+            >
+              <PenLine className="size-3.5" />
+              <span className="text-xs tracking-tight uppercase">Blog Writer</span>
+            </Link>
+          </>
         )}
       </nav>
 
