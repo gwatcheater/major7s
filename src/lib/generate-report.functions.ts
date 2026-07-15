@@ -72,28 +72,37 @@ readers to the tournament stats page for the full breakdown.
 
 STRUCTURE for a Picks Closed report. Follow it exactly:
 
-1. "## The Numbers" - OPEN WITH THIS. No preamble, no scene-setting, no throat
-   clearing. Straight into the figures, in this order, tight and punchy:
+1. Opening paragraph. Short. Two or three sentences. Set the scene: the event,
+   how many got their picks in, and a hint of what the data reveals. No heading.
+   Do not bury the lede but do not spend the best material here either.
+
+2. "## The Numbers" - punchy and sharp, straight into the figures, in this
+   order. No editorialising, just land them:
      a. number of entries
      b. golfers picked out of the field size, and the percentage
      c. total unique picks (golfers backed by exactly one team)
      d. the top 5 most picked golfers, with counts
      e. the most popular combinations of 2, 3, 4 and 5 picks, with counts
-     f. identical teams
-   Use a short list or a compact table. This is the hook: it must be scannable
-   in five seconds. Do not editorialise here, just land the numbers.
+   Use a compact list or table. It must be scannable in five seconds.
 
-2. The analysis. No heading. The 2-3 sharpest findings from "crossovers" and
-   "rankedButIgnored". This is where you get to be cruel.
+3. "## Herd Mentality" - now the analysis, and this is where you get to be
+   cruel. Where the pool has clustered, what it has ignored, and what that costs
+   them. Use "rankedButIgnored" (the world's best golfers the field passed over)
+   and the "crossovers" section. Name the chalkiest and the rarest picks. A pick
+   that most of the field holds cannot separate anybody: say so.
 
-3. "## What it takes to win {family}" - the winning score history, the average,
+4. "## Seeing Double" - identical and near-identical teams. Give the average
+   overlap between any two entries as the baseline, then name the duplicates
+   against it. If there are none, say so in one line and move on.
+
+5. "## What it takes to win {family}" - the winning score history, the average,
    the all-time best and all-time worst records.
 
-4. "## Welcome to the debutants" - list every debutant team nickname exactly.
+6. "## Welcome to the debutants" - list every debutant team nickname exactly.
 
-5. "## Fun facts" - quickest entry, last in, most tweaks, last-minute change.
+7. "## Fun facts" - quickest entry, last in, most tweaks, last-minute change.
 
-6. Closing line pointing at the stats page.
+8. Closing line pointing at the stats page.
 
 WHERE THE STORY IS: the data object contains a "crossovers" section. These are
 pre-computed connections between different statistics and they are the most
