@@ -616,6 +616,7 @@ function TournamentStatsPage() {
           label={`Field picked · ${pct(distinctPicked, fieldSize)}`}
           value={`${distinctPicked}`}
           suffix={`/${fieldSize}`}
+          spark={fieldSize ? (distinctPicked / fieldSize) * 100 : 0}
         />
         <Kpi label="Unique picks" value={String(uniqueTotal)} />
         <Kpi label="Identical teams" value={String(overlap.identical.length)} />
@@ -626,17 +627,17 @@ function TournamentStatsPage() {
         <Card className="p-4">
           <PanelHead n="01" title="Bucket Concentration" icon={Layers} />
           <Definition>
-            <b className="text-foreground">Picked</b> distinct golfers chosen of those
-            available · <b className="text-foreground">Uniques</b> golfers backed by
-            exactly one team
+            <b className="text-foreground">Coverage</b> how much of the bucket the pool
+            explored: distinct golfers picked by at least one team, out of those available
+            · <b className="text-foreground">Uniques</b> golfers backed by exactly one team
           </Definition>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b">
                 <th className="text-left py-1 w-6">B</th>
                 <th className="text-left py-1">Most picked</th>
-                <th className="text-left py-1 w-14">Picked</th>
-                <th className="text-right py-1 w-14">Uniques</th>
+                <th className="text-left py-1 px-2 w-[170px]">Coverage</th>
+                <th className="text-right py-1 pl-2 w-14">Uniques</th>
               </tr>
             </thead>
             <tbody>
@@ -647,16 +648,23 @@ function TournamentStatsPage() {
                     <td className="py-1.5">{r.bucket}</td>
                     <td className="py-1.5">
                       <span className="mr-1.5">{r.topName}</span>
-                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                      <Badge
+                        variant="outline"
+                        className={`text-[9px] px-1.5 py-0 font-bold ${
+                          r.topCount / (entryCount || 1) >= 0.4
+                            ? "bg-amber-50 text-amber-700 border-amber-300"
+                            : "bg-muted/60 text-muted-foreground"
+                        }`}
+                      >
                         {pct(r.topCount, entryCount)}
                       </Badge>
                     </td>
-                    <td
-                      className={`py-1.5 tabular-nums ${
-                        starved ? "text-destructive font-semibold" : "text-muted-foreground"
-                      }`}
-                    >
-                      {r.picked}/{r.available}
+                    <td className="py-1.5">
+                      <BarCell
+                        pct={r.available ? (r.picked / r.available) * 100 : 0}
+                        label={`${r.picked}/${r.available}`}
+                        tone={starved ? "red" : "green"}
+                      />
                     </td>
                     <td className="py-1.5 text-right tabular-nums">{r.uniques}</td>
                   </tr>
@@ -680,8 +688,8 @@ function TournamentStatsPage() {
                 <th className="text-left py-1">Golfer</th>
                 <th className="text-left py-1 w-6">B</th>
                 <th className="text-right py-1 w-12">OWGR</th>
-                <th className="text-right py-1 w-12">Picks</th>
-                <th className="text-left py-1 w-[22%]">Share</th>
+                <th className="text-right py-1 px-2 w-12">Picks</th>
+                <th className="text-left py-1 pl-2 w-[170px] whitespace-nowrap">Share</th>
               </tr>
             </thead>
             <tbody>
@@ -706,19 +714,15 @@ function TournamentStatsPage() {
                       <td className="py-1.5 text-right tabular-nums text-muted-foreground">
                         {r.owgr ?? "—"}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums">{r.count}</td>
-                      <td className="py-1.5">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span
-                            className="h-1 rounded-full bg-primary inline-block"
-                            style={{
-                              width: `${Math.max(4, (r.count / maxPopular) * 60)}px`,
-                            }}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {pct(r.count, entryCount)}
-                          </span>
-                        </span>
+                      <td className="py-1.5 px-2 text-right tabular-nums font-semibold">
+                        {r.count}
+                      </td>
+                      <td className="py-1.5 pl-2">
+                        <BarCell
+                          pct={(r.count / maxPopular) * 100}
+                          label={pct(r.count, entryCount)}
+                          tone={r.count / (entryCount || 1) >= 0.4 ? "gold" : "green"}
+                        />
                       </td>
                     </tr>
                     {open && (
@@ -780,17 +784,26 @@ function TournamentStatsPage() {
               <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b">
                 <th className="text-left py-1 w-6">B</th>
                 <th className="text-left py-1">Most popular</th>
-                <th className="text-right py-1 w-14">Picks</th>
+                <th className="text-left py-1 pl-2 w-[170px]">Picks</th>
               </tr>
             </thead>
             <tbody>
-              {herd.modal.map((m) => (
-                <tr key={m.bucket} className="border-b border-border/50">
-                  <td className="py-1.5">{m.bucket}</td>
-                  <td className="py-1.5">{m.name}</td>
-                  <td className="py-1.5 text-right tabular-nums">{m.count}</td>
-                </tr>
-              ))}
+              {herd.modal.map((m) => {
+                const top = Math.max(...herd.modal.map((x) => x.count), 1);
+                return (
+                  <tr key={m.bucket} className="border-b border-border/50 odd:bg-muted/20">
+                    <td className="py-1.5">{m.bucket}</td>
+                    <td className="py-1.5">{m.name}</td>
+                    <td className="py-1.5 pl-2">
+                      <BarCell
+                        pct={(m.count / top) * 100}
+                        label={String(m.count)}
+                        tone={m.count === top ? "gold" : "green"}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-4 mb-1">
@@ -804,8 +817,13 @@ function TournamentStatsPage() {
                   <td className="py-1.5 text-right tabular-nums font-semibold w-12">
                     {c.matched}/7
                   </td>
-                  <td className="py-1.5 text-right text-xs text-muted-foreground w-24">
-                    {c.deviates.length ? `B${c.deviates.join(", B")}` : "none"}
+                  <td className="py-1.5 text-right w-24">
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] px-1.5 py-0 text-muted-foreground"
+                    >
+                      {c.deviates.length ? `B${c.deviates.join(", B")}` : "none"}
+                    </Badge>
                   </td>
                 </tr>
               ))}
@@ -858,7 +876,45 @@ function TournamentStatsPage() {
               ))}
             </tbody>
           </table>
-          <div className="text-[11px] text-muted-foreground leading-relaxed mt-3 pt-3 border-t space-y-1.5">
+          {/* rarity spread: rarest -> median -> chalkiest */}
+          <div className="mt-6 mb-1 px-1">
+            <div className="relative h-9">
+              <div className="absolute inset-x-0 bottom-0 h-1.5 rounded-full bg-gradient-to-r from-amber-400 via-muted to-rose-500" />
+              {[
+                { pos: 0, label: wolf.min.toFixed(1), cls: "text-amber-600", align: "left-0" },
+                {
+                  pos:
+                    wolf.max > wolf.min
+                      ? ((wolf.median - wolf.min) / (wolf.max - wolf.min)) * 100
+                      : 50,
+                  label: `median ${wolf.median.toFixed(1)}`,
+                  cls: "text-muted-foreground",
+                  align: "-translate-x-1/2",
+                },
+                {
+                  pos: 100,
+                  label: wolf.max.toFixed(1),
+                  cls: "text-rose-600",
+                  align: "-translate-x-full",
+                },
+              ].map((p, i) => (
+                <div
+                  key={i}
+                  className="absolute bottom-0"
+                  style={{ left: `${p.pos}%` }}
+                >
+                  <span className="block h-4 w-0.5 bg-foreground/70 mb-0.5" />
+                  <span
+                    className={`absolute bottom-5 text-[9px] font-bold whitespace-nowrap ${p.cls} ${p.align}`}
+                  >
+                    {p.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-muted-foreground leading-relaxed mt-4 pt-3 border-t space-y-1.5">
             {wolf.rarestTeamId && wolf.chalkiestTeamId && (
               <p>
                 <b className="text-foreground">{teamName(wolf.rarestTeamId)}</b> has the
@@ -896,18 +952,38 @@ function TournamentStatsPage() {
                   </div>
                   {top ? (
                     <>
-                      <div className="text-2xl font-extrabold text-primary leading-none">
-                        {top.teamIds.length}{" "}
-                        <span className="text-[11px] text-muted-foreground font-semibold">
-                          · {pct(top.teamIds.length, entryCount)}
-                        </span>
-                      </div>
-                      <div className="text-xs font-bold mt-1 leading-snug">
-                        {top.names.join(" + ")}
-                      </div>
-                      <div className="mt-2">
-                        <TeamChips teamIds={top.teamIds} nameOf={teamName} limit={5} />
-                      </div>
+                      {(() => {
+                        const key = `${sec.k}-${top.key}`;
+                        const open = openCombo === key;
+                        return (
+                          <div
+                            className="cursor-pointer rounded-lg border bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40 p-2.5 hover:bg-emerald-50 transition-colors"
+                            onClick={() => setOpenCombo(open ? null : key)}
+                          >
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-2xl font-extrabold text-emerald-800 dark:text-emerald-300 leading-none">
+                                {top.teamIds.length}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground font-semibold">
+                                · {pct(top.teamIds.length, entryCount)}
+                              </span>
+                              {open ? (
+                                <ChevronDown className="h-3 w-3 ml-auto text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3 ml-auto text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="text-xs font-bold mt-1 leading-snug">
+                              {top.names.join(" + ")}
+                            </div>
+                            {open && (
+                              <div className="mt-2 pt-2 border-t border-emerald-100">
+                                <TeamChips teamIds={top.teamIds} nameOf={teamName} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <table className="w-full text-xs mt-2">
                         <tbody>
                           {sec.entries.slice(1).map((e) => {
@@ -1196,30 +1272,107 @@ function TournamentStatsPage() {
 // =============================================================
 // Small presentational helpers
 // =============================================================
+type Tone = "green" | "gold" | "red";
+
+const TONE_FILL: Record<Tone, string> = {
+  green: "bg-gradient-to-r from-emerald-500 to-emerald-700",
+  gold: "bg-gradient-to-r from-amber-400 to-amber-600",
+  red: "bg-gradient-to-r from-rose-400 to-rose-600",
+};
+const TONE_TEXT: Record<Tone, string> = {
+  green: "text-emerald-700",
+  gold: "text-amber-600",
+  red: "text-rose-600",
+};
+
+/** Bar with a visible track: length is unreadable without one. */
+function Bar({ pct, tone = "green" }: { pct: number; tone?: Tone }) {
+  return (
+    <span className="block h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <span
+        className={`block h-full rounded-full ${TONE_FILL[tone]}`}
+        style={{ width: `${Math.min(100, Math.max(5, pct))}%` }}
+      />
+    </span>
+  );
+}
+
+/** Fixed-width bar + value so every row justifies to the same grid. */
+function BarCell({
+  pct,
+  label,
+  tone = "green",
+}: {
+  pct: number;
+  label: string;
+  tone?: Tone;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-20 sm:w-28 shrink-0">
+        <Bar pct={pct} tone={tone} />
+      </div>
+      <span
+        className={`text-[11px] font-bold tabular-nums w-9 shrink-0 ${
+          tone === "green" ? "text-muted-foreground" : TONE_TEXT[tone]
+        }`}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function Kpi({
   label,
   value,
   suffix,
   accent,
+  spark,
 }: {
   label: string;
   value: string;
   suffix?: string;
   accent?: boolean;
+  spark?: number;
 }) {
   return (
-    <Card className="p-3">
+    <Card
+      className={`p-3.5 overflow-hidden ${
+        accent ? "bg-gradient-to-br from-emerald-800 to-emerald-950 border-emerald-900" : ""
+      }`}
+    >
       <div
-        className={`text-xl font-extrabold tracking-tight ${accent ? "text-primary" : ""}`}
+        className={`text-2xl font-extrabold tracking-tight leading-none ${
+          accent ? "text-white" : ""
+        }`}
       >
         {value}
         {suffix && (
-          <span className="text-xs text-muted-foreground font-semibold">{suffix}</span>
+          <span
+            className={`text-xs font-semibold ${
+              accent ? "text-white/60" : "text-muted-foreground"
+            }`}
+          >
+            {suffix}
+          </span>
         )}
       </div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+      <div
+        className={`text-[9.5px] uppercase tracking-[.1em] font-bold mt-1.5 ${
+          accent ? "text-white/60" : "text-muted-foreground"
+        }`}
+      >
         {label}
       </div>
+      {spark !== undefined && (
+        <div className="mt-2 h-[3px] rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700"
+            style={{ width: `${spark}%` }}
+          />
+        </div>
+      )}
     </Card>
   );
 }
@@ -1236,10 +1389,12 @@ function PanelHead({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 mb-2.5">
-      <span className="text-[11px] font-extrabold text-primary">{n}</span>
-      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+    <div className="flex items-center gap-2 -mx-4 -mt-4 mb-3 px-4 py-2.5 bg-emerald-50/80 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50">
+      <span className="grid place-items-center h-[18px] w-[18px] rounded-[5px] bg-emerald-900 text-white text-[9.5px] font-black">
+        {n}
+      </span>
+      <Icon className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+      <h2 className="text-[11px] uppercase tracking-[.09em] text-emerald-900 dark:text-emerald-300 font-extrabold">
         {title}
       </h2>
       {children}
@@ -1268,15 +1423,20 @@ function WolfRow({
 }) {
   return (
     <tr className="border-b border-border/50">
-      <td className={`py-1.5 pr-2 ${rare ? "font-bold text-primary" : ""}`}>{name}</td>
-      <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{avg.toFixed(1)}</td>
+      <td className={`py-1.5 pr-2 ${rare ? "font-bold text-amber-700" : "font-medium"}`}>
+        {name}
+      </td>
+      <td
+        className={`py-1.5 px-2 text-right tabular-nums font-bold ${
+          rare ? "text-amber-600" : "text-rose-600"
+        }`}
+      >
+        {avg.toFixed(1)}
+      </td>
       <td className="py-1.5 pl-2">
-        <span className="block h-1.5 w-full max-w-[88px] rounded-full bg-muted overflow-hidden">
-          <span
-            className={`block h-full rounded-full ${rare ? "bg-primary" : "bg-destructive"}`}
-            style={{ width: `${Math.max(6, (avg / (max || 1)) * 100)}%` }}
-          />
-        </span>
+        <div className="max-w-[96px]">
+          <Bar pct={(avg / (max || 1)) * 100} tone={rare ? "gold" : "red"} />
+        </div>
       </td>
     </tr>
   );
