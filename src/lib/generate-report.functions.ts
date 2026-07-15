@@ -100,8 +100,12 @@ Use ONLY numbers present in those objects. Never invent, estimate, or infer a
 statistic. If a number is not given to you, do not state it. The colour notes
 are the only source of real-world context: weave them in, do not just repeat them.
 
-OUTPUT: JSON only: { "title": string, "body": string } where body is Markdown.
-No preamble, no code fences.`;
+OUTPUT: Return exactly this format and nothing else. No JSON, no code fences,
+no preamble, no commentary:
+
+TITLE: <the title on one line>
+BODY:
+<the post in Markdown>`;
 
 /**
  * Trim the StatsPack down to what the model can actually use in a short post.
@@ -300,11 +304,40 @@ export const generateReport = createServerFn({ method: "POST" })
         const raw: string = json?.choices?.[0]?.message?.content ?? "";
         if (!raw) return { ok: false, error: "AI gateway returned an empty response" };
 
-        // The model is told to return bare JSON, but strip fences defensively.
-        const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-        const parsed = JSON.parse(cleaned);
-        title = String(parsed.title ?? "").trim();
-        body = String(parsed.body ?? "").trim();
+        // Deliberately NOT JSON. A markdown body is mostly newlines, and models
+        // routinely emit them unescaped inside JSON strings, which is invalid
+        // and blows up JSON.parse ("Bad control character in string literal").
+        // A delimiter has no escaping rules to get wrong.
+        const cleaned = raw
+          .replace(/^```(?:\w+)?\s*/i, "")
+          .replace(/```\s*$/, "")
+          .trim();
+
+        const titleMatch = cleaned.match(/^\s*TITLE:\s*(.+?)\s*$/m);
+        const bodyIndex = cleaned.search(/^\s*BODY:\s*$/m);
+
+        if (titleMatch && bodyIndex !== -1) {
+          title = titleMatch[1].trim();
+          body = cleaned
+            .slice(bodyIndex)
+            .replace(/^\s*BODY:\s*$/m, "")
+            .trim();
+        } else {
+          // Model ignored the format. Salvage rather than fail and waste the
+          // call: first non-empty line is the title, everything after is body.
+          const lines = cleaned.split("\n");
+          const firstIdx = lines.findIndex((l) => l.trim());
+          title = (lines[firstIdx] ?? "")
+            .replace(/^#+\s*/, "")
+            .replace(/^TITLE:\s*/i, "")
+            .trim();
+          body = lines
+            .slice(firstIdx + 1)
+            .join("\n")
+            .replace(/^\s*BODY:\s*$/m, "")
+            .trim();
+        }
+
         if (!title || !body) return { ok: false, error: "AI returned no title or body" };
       } catch (e: any) {
         return { ok: false, error: `Generation failed: ${e?.message ?? String(e)}` };
