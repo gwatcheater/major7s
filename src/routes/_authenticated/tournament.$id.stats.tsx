@@ -378,11 +378,16 @@ function TournamentStatsPage() {
         ? vals[(vals.length - 1) / 2]
         : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2
       : 0;
+    const min = vals[0] ?? 0;
+    const max = vals[vals.length - 1] ?? 0;
     return {
       rows,
-      min: vals[0] ?? 0,
-      max: vals[vals.length - 1] ?? 0,
+      min,
+      max,
       median,
+      rarestTeamId: rows[0]?.teamId ?? null,
+      chalkiestTeamId: rows[rows.length - 1]?.teamId ?? null,
+      ratio: min > 0 ? max / min : 0,
       under15: vals.filter((v) => v < 15).length,
       over30: vals.filter((v) => v > 30).length,
     };
@@ -823,9 +828,9 @@ function TournamentStatsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b">
-                <th className="text-left py-1">Team</th>
-                <th className="text-right py-1 w-20">Avg shared</th>
-                <th className="text-left py-1 w-[30%]">Rarity</th>
+                <th className="text-left py-1 pr-2">Team</th>
+                <th className="text-right py-1 px-2 w-24 whitespace-nowrap">Avg shared</th>
+                <th className="text-left py-1 pl-2 w-28">Rarity</th>
               </tr>
             </thead>
             <tbody>
@@ -853,8 +858,24 @@ function TournamentStatsPage() {
               ))}
             </tbody>
           </table>
-          <div className="text-xs text-muted-foreground mt-3">
-            {wolf.under15} teams under 15 · {wolf.over30} teams above 30
+          <div className="text-[11px] text-muted-foreground leading-relaxed mt-3 pt-3 border-t space-y-1.5">
+            {wolf.rarestTeamId && wolf.chalkiestTeamId && (
+              <p>
+                <b className="text-foreground">{teamName(wolf.rarestTeamId)}</b> has the
+                rarest picks in this tournament: their seven golfers are shared with{" "}
+                <b className="text-foreground">{wolf.min.toFixed(1)}</b> teams on average,{" "}
+                <b className="text-foreground">{wolf.ratio.toFixed(1)}x</b> rarer than{" "}
+                <b className="text-foreground">{teamName(wolf.chalkiestTeamId)}</b> at{" "}
+                <b className="text-foreground">{wolf.max.toFixed(1)}</b>. The pool median is{" "}
+                <b className="text-foreground">{wolf.median.toFixed(1)}</b>:{" "}
+                <b className="text-foreground">{wolf.under15}</b> teams sit below 15 and{" "}
+                <b className="text-foreground">{wolf.over30}</b> above 30.
+              </p>
+            )}
+            <p>
+              A golfer that everybody holds moves the whole field together, so they cannot
+              separate you. Places are only gained on the picks other teams do not have.
+            </p>
           </div>
         </Card>
 
@@ -1027,13 +1048,18 @@ function TournamentStatsPage() {
                   u.items.map((it) => (
                     <div
                       key={it.golferId}
-                      className="py-1 border-b border-border/40 last:border-0"
+                      className="py-1.5 border-b border-border/40 last:border-0"
                     >
                       <div className="text-[11px] font-bold leading-tight">{it.name}</div>
-                      <div className="text-[10px] text-primary">{teamName(it.teamId)}</div>
-                      <div className="text-[9px] text-muted-foreground">
+                      <div className="text-[9px] text-muted-foreground mt-0.5">
                         OWGR {it.owgr ?? "—"}
                       </div>
+                      <Badge
+                        variant="outline"
+                        className="mt-1 text-[9px] px-1.5 py-0 font-semibold border-primary/40 text-primary"
+                      >
+                        {teamName(it.teamId)}
+                      </Badge>
                     </div>
                   ))
                 )}
@@ -1072,15 +1098,18 @@ function TournamentStatsPage() {
                       {u.items.map((it) => (
                         <div
                           key={it.golferId}
-                          className="flex items-baseline gap-2 py-1.5 border-b border-border/40 last:border-0"
+                          className="flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0"
                         >
                           <span className="text-[11px] font-bold">{it.name}</span>
                           <span className="text-[9px] text-muted-foreground">
-                            {it.owgr ?? "—"}
+                            OWGR {it.owgr ?? "—"}
                           </span>
-                          <span className="text-[10px] text-primary ml-auto">
+                          <Badge
+                            variant="outline"
+                            className="ml-auto text-[9px] px-1.5 py-0 font-semibold border-primary/40 text-primary"
+                          >
                             {teamName(it.teamId)}
-                          </span>
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -1239,33 +1268,40 @@ function WolfRow({
 }) {
   return (
     <tr className="border-b border-border/50">
-      <td className={`py-1.5 ${rare ? "font-bold text-primary" : ""}`}>{name}</td>
-      <td className="py-1.5 text-right tabular-nums font-semibold">{avg.toFixed(1)}</td>
-      <td className="py-1.5">
-        <span
-          className={`h-1 rounded-full inline-block ${rare ? "bg-primary" : "bg-destructive"}`}
-          style={{ width: `${Math.max(4, (avg / (max || 1)) * 60)}px` }}
-        />
+      <td className={`py-1.5 pr-2 ${rare ? "font-bold text-primary" : ""}`}>{name}</td>
+      <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{avg.toFixed(1)}</td>
+      <td className="py-1.5 pl-2">
+        <span className="block h-1.5 w-full max-w-[88px] rounded-full bg-muted overflow-hidden">
+          <span
+            className={`block h-full rounded-full ${rare ? "bg-primary" : "bg-destructive"}`}
+            style={{ width: `${Math.max(6, (avg / (max || 1)) * 100)}%` }}
+          />
+        </span>
       </td>
     </tr>
   );
 }
 
+/**
+ * `limit` caps an always-visible chip list (e.g. the combo summary card).
+ * Inside an expanded drawer pass no limit: the user has already asked to see
+ * the backers, so making them click a second time is friction for nothing.
+ */
 function TeamChips({
   teamIds,
   nameOf,
-  limit = 12,
+  limit,
 }: {
   teamIds: string[];
   nameOf: (id: string) => string;
   limit?: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const names = useMemo(
     () => teamIds.map(nameOf).sort((a, b) => a.localeCompare(b)),
     [teamIds, nameOf],
   );
-  const shown = expanded ? names : names.slice(0, limit);
+  const shown = limit ? names.slice(0, limit) : names;
+  const hidden = limit ? names.length - shown.length : 0;
   return (
     <div className="flex flex-wrap gap-1">
       {shown.map((n) => (
@@ -1276,16 +1312,8 @@ function TeamChips({
           {n}
         </span>
       ))}
-      {names.length > limit && (
-        <button
-          className="text-[10px] text-primary font-bold px-1"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((s) => !s);
-          }}
-        >
-          {expanded ? "show less" : `+${names.length - limit} more`}
-        </button>
+      {hidden > 0 && (
+        <span className="text-[10px] text-muted-foreground px-1 py-0.5">+{hidden}</span>
       )}
     </div>
   );
