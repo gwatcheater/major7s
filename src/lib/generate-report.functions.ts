@@ -19,6 +19,15 @@ import type { Golfer, Pick, StatsPack, Team } from "@/lib/stats/types";
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const AI_MODEL = "google/gemini-2.5-flash";
 
+// Public origin for links inside published posts. There is a getPublicSiteOrigin()
+// helper in src/lib/email/site-origin.ts doing the same job for emails; swap it in
+// here if you want one source of truth. Hardcoded for now because the post must
+// carry an absolute URL (it is read in browsers and in email clients).
+const PUBLIC_SITE_ORIGIN = "https://www.major7s.com";
+
+const STATS_LINK_TEXT =
+  "For the forensic details, the full data breakdown is on the tournament stats page.";
+
 const ReportType = z.enum(["picks_closed", "r1", "r2", "r3", "final"]);
 
 const InputSchema = z.object({
@@ -102,7 +111,10 @@ STRUCTURE for a Picks Closed report. Follow it exactly:
 
 7. "## Fun facts" - quickest entry, last in, most tweaks, last-minute change.
 
-8. Closing line pointing at the stats page.
+8. Closing line. Use the EXACT markdown link supplied in the data object as
+   "statsPageLink". Reproduce it character for character as the final line of
+   the post. Do not reword it, do not rebuild the URL, do not wrap it in a
+   sentence of your own. It is already written for you.
 
 WHERE THE STORY IS: the data object contains a "crossovers" section. These are
 pre-computed connections between different statistics and they are the most
@@ -442,6 +454,10 @@ export const generateReport = createServerFn({ method: "POST" })
       if (rpcErr) return { ok: false, error: `Records failed: ${rpcErr.message}` };
 
       // ---- prompt ----------------------------------------------------
+      // Built here, never by the model: it would invent the uuid.
+      const statsUrl = `${PUBLIC_SITE_ORIGIN}/tournament/${data.tournamentId}/stats`;
+      const statsPageLink = `*[${STATS_LINK_TEXT}](${statsUrl})*`;
+
       const payload = {
         reportType: data.reportType,
         tournament: {
@@ -452,6 +468,7 @@ export const generateReport = createServerFn({ method: "POST" })
         stats: summariseForPrompt(pack, reportContext),
         records: reportContext,
         colourNotes: data.colourNotes || "(none supplied)",
+        statsPageLink,
       };
 
       // ---- generate --------------------------------------------------
@@ -520,6 +537,21 @@ export const generateReport = createServerFn({ method: "POST" })
         }
 
         if (!title || !body) return { ok: false, error: "AI returned no title or body" };
+
+        // Guarantee the closing link. Models paraphrase, drop trailing lines, or
+        // rebuild the URL with a hallucinated uuid. Strip any variant they wrote
+        // and append the real one.
+        body = body
+          .split("\n")
+          .filter((line) => {
+            const l = line.toLowerCase();
+            if (l.includes("/tournament/") && l.includes("/stats")) return false;
+            if (l.includes("stats page") && line.trim().startsWith("*")) return false;
+            return true;
+          })
+          .join("\n")
+          .trim();
+        body = `${body}\n\n${statsPageLink}`;
       } catch (e: any) {
         return { ok: false, error: `Generation failed: ${e?.message ?? String(e)}` };
       }
