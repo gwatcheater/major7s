@@ -1022,6 +1022,10 @@ export type Database = {
         Args: { _event: string; _target: string }
         Returns: undefined
       }
+      major7s_report_context: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
