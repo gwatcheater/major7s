@@ -31,6 +31,7 @@ import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/em
 import { Route as AuthenticatedTournamentIdRouteImport } from './routes/_authenticated/tournament.$id'
 import { Route as AuthenticatedBlogNewRouteImport } from './routes/_authenticated/blog.new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
+import { Route as AuthenticatedAdminBlogWriterRouteImport } from './routes/_authenticated/admin.blog-writer'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
@@ -157,6 +158,12 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const AuthenticatedAdminBlogWriterRoute =
+  AuthenticatedAdminBlogWriterRouteImport.update({
+    id: '/blog-writer',
+    path: '/blog-writer',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
     id: '/lovable/email/transactional/send',
@@ -262,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/admin/blog-writer': typeof AuthenticatedAdminBlogWriterRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -299,6 +307,7 @@ export interface FileRoutesByTo {
   '/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/admin/blog-writer': typeof AuthenticatedAdminBlogWriterRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/blog/new': typeof AuthenticatedBlogNewRoute
   '/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -339,6 +348,7 @@ export interface FileRoutesById {
   '/_authenticated/stats': typeof AuthenticatedStatsRoute
   '/blog/$postId': typeof BlogPostIdRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/_authenticated/admin/blog-writer': typeof AuthenticatedAdminBlogWriterRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/blog/new': typeof AuthenticatedBlogNewRoute
   '/_authenticated/tournament/$id': typeof AuthenticatedTournamentIdRouteWithChildren
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
+    | '/admin/blog-writer'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
@@ -416,6 +427,7 @@ export interface FileRouteTypes {
     | '/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
+    | '/admin/blog-writer'
     | '/admin/users'
     | '/blog/new'
     | '/tournament/$id'
@@ -455,6 +467,7 @@ export interface FileRouteTypes {
     | '/_authenticated/stats'
     | '/blog/$postId'
     | '/email/unsubscribe'
+    | '/_authenticated/admin/blog-writer'
     | '/_authenticated/admin/users'
     | '/_authenticated/blog/new'
     | '/_authenticated/tournament/$id'
@@ -654,6 +667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/blog-writer': {
+      id: '/_authenticated/admin/blog-writer'
+      path: '/blog-writer'
+      fullPath: '/admin/blog-writer'
+      preLoaderRoute: typeof AuthenticatedAdminBlogWriterRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
       path: '/lovable/email/transactional/send'
@@ -763,12 +783,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminBlogWriterRoute: typeof AuthenticatedAdminBlogWriterRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedAdminTournamentIdFieldRoute: typeof AuthenticatedAdminTournamentIdFieldRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminBlogWriterRoute: AuthenticatedAdminBlogWriterRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedAdminTournamentIdFieldRoute:
@@ -860,13 +882,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
