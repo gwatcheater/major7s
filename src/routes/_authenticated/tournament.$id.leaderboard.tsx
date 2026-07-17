@@ -65,21 +65,19 @@ function fmtToPar(v: number | null): { text: string; cls: string } {
 // Shared column widths for ALL Major7s tables (panel, leaderboard, breakdown).
 // Identical widths + tableLayout:fixed guarantee column alignment across them.
 // When showDelta is true a 36px Δ column sits between Pos and Team.
-function MajorCols({ showDelta = false, showPicks = false }: { showDelta?: boolean; showPicks?: boolean }) {
+function MajorCols({ showDelta = false }: { showDelta?: boolean }) {
   return (
     <colgroup>
       <col style={{ width: "52px" }} />
       {showDelta && <col style={{ width: "36px" }} />}
-      <col style={{ width: showPicks ? "140px" : undefined }} />
+      <col />
       <col style={{ width: "64px" }} />
       <col style={{ width: "64px" }} />
       <col style={{ width: "32px" }} />
-      {showPicks && Array.from({ length: 7 }).map((_, i) => (
-        <col key={i} style={{ width: "110px" }} />
-      ))}
     </colgroup>
   );
 }
+
 
 
 /** Shared Δ cell — mirrors the tournament-view rendering exactly. */
