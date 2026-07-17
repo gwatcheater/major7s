@@ -65,18 +65,22 @@ function fmtToPar(v: number | null): { text: string; cls: string } {
 // Shared column widths for ALL Major7s tables (panel, leaderboard, breakdown).
 // Identical widths + tableLayout:fixed guarantee column alignment across them.
 // When showDelta is true a 36px Δ column sits between Pos and Team.
-function MajorCols({ showDelta = false }: { showDelta?: boolean }) {
+function MajorCols({ showDelta = false, showPicks = false }: { showDelta?: boolean; showPicks?: boolean }) {
   return (
     <colgroup>
       <col style={{ width: "52px" }} />
       {showDelta && <col style={{ width: "36px" }} />}
-      <col />
+      <col style={{ width: showPicks ? "140px" : undefined }} />
       <col style={{ width: "64px" }} />
       <col style={{ width: "64px" }} />
       <col style={{ width: "32px" }} />
+      {showPicks && Array.from({ length: 7 }).map((_, i) => (
+        <col key={i} style={{ width: "110px" }} />
+      ))}
     </colgroup>
   );
 }
+
 
 /** Shared Δ cell — mirrors the tournament-view rendering exactly. */
 function Major7sDeltaCell({ delta }: { delta: number | null }) {
@@ -995,7 +999,9 @@ function RoundExpandableTeamRow({
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const rowBg = mine ? "bg-amber-50" : "";
-  const cols = showDelta ? 6 : 5;
+  const cols = (showDelta ? 6 : 5) + 7;
+  const picksByBucket = new Map<number, typeof team.picks[number]>();
+  for (const p of team.picks) picksByBucket.set(p.bucket, p);
   return (
     <>
       <tr
@@ -1020,6 +1026,26 @@ function RoundExpandableTeamRow({
         <td className="px-2 py-2 text-muted-foreground">
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </td>
+        {[1, 2, 3, 4, 5, 6, 7].map((b) => {
+          const p = picksByBucket.get(b);
+          if (!p) {
+            return <td key={b} className="px-2 py-2 text-xs text-muted-foreground">—</td>;
+          }
+          const surname = p.golfer_name.split(" ").slice(-1)[0] || p.golfer_name;
+          const scoreLabel = p.status_label
+            ? `${p.status_label.replace(/[()]/g, "")} · ${p.points}`
+            : String(p.points);
+          return (
+            <td
+              key={b}
+              className={`px-2 py-2 text-xs truncate ${p.counted ? "" : "text-muted-foreground line-through opacity-70"}`}
+              title={`${p.golfer_name} — ${scoreLabel}`}
+            >
+              <span className="font-medium">{surname}</span>{" "}
+              <span className="font-mono text-muted-foreground">({scoreLabel})</span>
+            </td>
+          );
+        })}
       </tr>
       <tr>
         <td colSpan={cols} className="p-0 border-0">
@@ -1035,6 +1061,7 @@ function RoundExpandableTeamRow({
     </>
   );
 }
+
 
 // -- Round-view "Your Team" panel --
 function RoundActiveTeamPanel({
@@ -1235,9 +1262,9 @@ function MajorSevensTable({
         </div>
       )}
 
-      <div className="border border-border bg-card">
-        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-          <MajorCols showDelta={showDelta} />
+      <div className="border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]" style={{ tableLayout: "fixed" }}>
+          <MajorCols showDelta={showDelta} showPicks />
           <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
             <tr>
               <th className="text-center px-3 py-2">Pos</th>
@@ -1246,12 +1273,15 @@ function MajorSevensTable({
               <th className="text-right px-3 py-2">Points</th>
               <th className="text-center px-3 py-2">{showThruCut ? "Thru Cut" : ""}</th>
               <th />
+              {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                <th key={b} className="text-left px-2 py-2">B{b}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {visibleTeams.length === 0 ? (
               <tr>
-                <td colSpan={showDelta ? 6 : 5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                <td colSpan={(showDelta ? 6 : 5) + 7} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
                   No teams in this competition yet.
                 </td>
               </tr>
@@ -1270,6 +1300,7 @@ function MajorSevensTable({
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }
