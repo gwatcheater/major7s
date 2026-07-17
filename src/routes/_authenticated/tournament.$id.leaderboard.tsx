@@ -1239,9 +1239,9 @@ function MajorSevensTable({
         </div>
       )}
 
-      <div className="border border-border bg-card">
-        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-          <MajorCols showDelta={showDelta} />
+      <div className="border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]" style={{ tableLayout: "fixed" }}>
+          <MajorCols showDelta={showDelta} showPicks />
           <thead className="sticky top-16 z-10 bg-card text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border shadow-sm">
             <tr>
               <th className="text-center px-3 py-2">Pos</th>
@@ -1250,12 +1250,15 @@ function MajorSevensTable({
               <th className="text-right px-3 py-2">Points</th>
               <th className="text-center px-3 py-2">{showThruCut ? "Thru Cut" : ""}</th>
               <th />
+              {[1, 2, 3, 4, 5, 6, 7].map((b) => (
+                <th key={b} className="text-left px-2 py-2">B{b}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {visibleTeams.length === 0 ? (
               <tr>
-                <td colSpan={showDelta ? 6 : 5} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                <td colSpan={(showDelta ? 6 : 5) + 7} className="px-3 py-6 text-center text-xs text-muted-foreground italic">
                   No teams in this competition yet.
                 </td>
               </tr>
@@ -1274,6 +1277,7 @@ function MajorSevensTable({
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }
