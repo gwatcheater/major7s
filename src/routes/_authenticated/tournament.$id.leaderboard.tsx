@@ -997,9 +997,7 @@ function RoundExpandableTeamRow({
   const [open, setOpen] = useState(false);
   const posDisplay = `${team.is_tie ? "T" : ""}${team.position}`;
   const rowBg = mine ? "bg-amber-50" : "";
-  const cols = (showDelta ? 6 : 5) + 7;
-  const picksByBucket = new Map<number, typeof team.picks[number]>();
-  for (const p of team.picks) picksByBucket.set(p.bucket, p);
+  const cols = showDelta ? 6 : 5;
   return (
     <>
       <tr
@@ -1024,27 +1022,8 @@ function RoundExpandableTeamRow({
         <td className="px-2 py-2 text-muted-foreground">
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </td>
-        {[1, 2, 3, 4, 5, 6, 7].map((b) => {
-          const p = picksByBucket.get(b);
-          if (!p) {
-            return <td key={b} className="px-2 py-2 text-xs text-muted-foreground">—</td>;
-          }
-          const surname = p.golfer_name.split(" ").slice(-1)[0] || p.golfer_name;
-          const scoreLabel = p.status_label
-            ? `${p.status_label.replace(/[()]/g, "")} · ${p.points}`
-            : String(p.points);
-          return (
-            <td
-              key={b}
-              className={`px-2 py-2 text-xs truncate ${p.counted ? "" : "text-muted-foreground line-through opacity-70"}`}
-              title={`${p.golfer_name} — ${scoreLabel}`}
-            >
-              <span className="font-medium">{surname}</span>{" "}
-              <span className="font-mono text-muted-foreground">({scoreLabel})</span>
-            </td>
-          );
-        })}
       </tr>
+
       <tr>
         <td colSpan={cols} className="p-0 border-0">
           <div
