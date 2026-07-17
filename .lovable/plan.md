@@ -1,30 +1,19 @@
-## Add B1–B7 pick columns to Major7s leaderboard rows
+## Goal
+Deliver the current Major7s leaderboard for The Open Championship as a **Markdown table only**, with 7 extra columns showing each team's B1–B7 golfer picks and their current Major7s points. No code changes.
 
-Extend each team row in the Major7s leaderboard table (`src/routes/_authenticated/tournament.$id.leaderboard.tsx`) with 7 additional columns, one per bucket, showing the golfer's name and their current Major7s points/position in parentheses.
+## Steps
+1. Revert the code edits made last turn to `src/routes/_authenticated/tournament.$id.leaderboard.tsx` (restore original `MajorCols`, `RoundExpandableTeamRow`, and main table markup — no B1–B7 columns in the UI).
+2. Query the DB for the active tournament (`e101de0e-...`, The Open):
+   - All teams + nicknames
+   - Each team's 7 picks (bucket, golfer_name)
+   - Current Major7s points per golfer (from `tournament_leaderboard` / same logic used by `useMajor7sRoundScores`: real finish → points, CUT/WD → 100)
+3. Recompute each team's total using best-5-of-7 (matching the live leaderboard) and rank with ties.
+4. Output a single Markdown table:
 
-### What each cell shows
+   | Pos | Team | Total | B1 | B2 | B3 | B4 | B5 | B6 | B7 |
 
-Data is already computed per team in `team.picks: RoundPickScore[]` (bucket, golfer_name, points, status_label, counted).
+   Each pick cell: `Surname (pts)`. Non-counted picks (worst 2 of 7) marked with `~~strikethrough~~`. CUT/WD shown as `Surname (CUT·100)`.
+5. Return the full table (all ~148 teams) in chat. No files written, no code deployed.
 
-Format per cell — bucket picks sorted by `bucket` 1→7:
-- Normal: `Rahm (12)` — where `12` is `points` (= current Major7s position after SCR).
-- CUT / WD: `Lowry (CUT · 100)` / `(WD · 100)`.
-- Not-counted picks (worst 2 of 7): dimmed / struck-through so the "best 5" are visually clear.
-
-### Table changes
-
-1. `MajorCols` — append 7 `<col style={{ width: "88px" }} />` entries (only in the main table, not in the "my team" panel).
-2. Header row — add `B1 … B7` `<th>`s.
-3. `RoundExpandableTeamRow` (visible expanded row body already exists) — add 7 `<td>`s rendering the picks. Keep the existing expand affordance for the full breakdown.
-4. Increase table container to allow horizontal scroll on narrow screens: wrap the `<table>` in `<div className="overflow-x-auto">` and drop `tableLayout: fixed` OR keep fixed and rely on horizontal scroll. Mobile (440px) will scroll horizontally — a 7-team-column view can't fit natively.
-5. Update `colSpan` on the "No teams" empty row from `showDelta ? 6 : 5` to include the 7 new columns.
-
-### Out of scope
-
-- No DB/schema changes; all data already in memory.
-- Panel for "my team" (`RoundActiveTeamPanel`) — leave unchanged unless you want it too.
-- Tournament view — unchanged.
-
-### Open question
-
-At 440px viewport, 7 extra columns will require horizontal scrolling. Acceptable, or do you want a compact variant (e.g. surname only + points, ~56px per column)?
+## Confirm before I run
+- Round to use: **latest completed round** (R1 so far), same as the live leaderboard default? Or a specific round?
