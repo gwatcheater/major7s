@@ -50,6 +50,9 @@ export function buildFinalPack(
     { points: number; positionDisplay: string; cut: boolean; name: string }
   >();
   leaderboard.forEach((r) => {
+    // Skip ESPN players not matched to a local golfer: golfer_id is null and
+    // nobody could have picked them, so they cannot appear on any team's card.
+    if (!r.golfer_id) return;
     const cut = r.status_type === "STATUS_CUT" || r.status_type === "STATUS_WD";
     const points = cut ? CUT_POINTS : (r.position_numeric ?? CUT_POINTS);
     result.set(r.golfer_id, {
