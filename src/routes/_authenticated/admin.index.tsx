@@ -1869,11 +1869,20 @@ function scoreToBeatSection(current: LiveSnapshot): string {
   return `*Score to beat:* ${leaderNames} on ${leaderTotal}${gapText}.`;
 }
 
+/**
+ * strokesSign forces a "-" or "+" onto a FINISHED golfer's raw-strokes
+ * label specifically for the risers/fallers context - e.g. "(-67)" in
+ * Biggest risers, "(+77)" in Biggest fallers - to visually match the
+ * section's direction. This is cosmetic, not a real to-par figure (the
+ * number is still raw strokes shot, not score relative to par); leave it
+ * null for contexts where golferTodayLabel's unsigned "(67)" is correct.
+ */
 function pickDriverLine(
   team: SnapshotTeam,
   prevTeam: SnapshotTeam,
   currTies: Set<number>,
   prevTies: Set<number>,
+  strokesSign?: "+" | "-",
 ): string {
   const swings: {
     name: string;
@@ -1902,7 +1911,10 @@ function pickDriverLine(
   swings.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   const top = swings[0];
   if (!top) return "";
-  const todayLabel = golferTodayLabel(top.roundStatus, top.todayDetail, top.todayStrokes);
+  const todayLabel =
+    strokesSign && top.roundStatus === "FINISHED" && top.todayStrokes != null
+      ? ` (${strokesSign}${top.todayStrokes})`
+      : golferTodayLabel(top.roundStatus, top.todayDetail, top.todayStrokes);
   return `${top.name}${todayLabel} now ${golferPosLabel(top.pos, currTies)} (was ${golferPosLabel(top.prevPos, prevTies)})`;
 }
 
@@ -1934,10 +1946,11 @@ function riserFallerSections(
     risers.length > 0
       ? `📈 *Biggest risers*\n\n${risers
           .map((r) => {
-            const driver = pickDriverLine(r.team, r.prevTeam, currTies, prevTies);
+            const driver = pickDriverLine(r.team, r.prevTeam, currTies, prevTies, "-");
+            const posArrow = moveArrow(r.prevTeam.position - r.team.position);
             const posNote =
               r.team.position !== r.prevTeam.position
-                ? `${teamPosLabel(r.team)} (was ${teamPosLabel(r.prevTeam)})`
+                ? `${posArrow} ${teamPosLabel(r.team)} (was ${teamPosLabel(r.prevTeam)})`
                 : teamPosLabel(r.team);
             return `- ${r.team.nickname}: ${posNote}, ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` - ${driver}` : ""}`;
           })
@@ -1948,10 +1961,11 @@ function riserFallerSections(
     fallers.length > 0
       ? `📉 *Biggest fallers*\n\n${fallers
           .map((f) => {
-            const driver = pickDriverLine(f.team, f.prevTeam, currTies, prevTies);
+            const driver = pickDriverLine(f.team, f.prevTeam, currTies, prevTies, "+");
+            const posArrow = moveArrow(f.prevTeam.position - f.team.position);
             const posNote =
               f.team.position !== f.prevTeam.position
-                ? `${teamPosLabel(f.team)} (was ${teamPosLabel(f.prevTeam)})`
+                ? `${posArrow} ${teamPosLabel(f.team)} (was ${teamPosLabel(f.prevTeam)})`
                 : teamPosLabel(f.team);
             return `- ${f.team.nickname}: ${posNote}, ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` - ${driver}` : ""}`;
           })
