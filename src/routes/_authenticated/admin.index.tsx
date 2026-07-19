@@ -2144,33 +2144,23 @@ function scoreToParLabel(scoreToPar: number): string {
 /**
  * Today's best live/finished rounds across the whole field.
  *
- * ESPN's today_detail field (score-to-par for the round) only exists while
- * a golfer's round is STATUS_IN_PROGRESS — the moment they finish, ESPN
- * drops that key from the payload entirely (confirmed against the raw
- * leaderboard JSON), so a naive today_detail-only read silently loses
- * exactly the golfers most likely to be posting the best scores of the
- * day. Finished golfers are included here too, using their raw round
- * strokes (todayStrokes, already persisted) minus roundPar — there's no
- * course-par field anywhere in ESPN's leaderboard payload, so this has to
- * be entered once per round by whoever's running the update. Without a
- * par entered, finished golfers are omitted (same as before) and only
- * still-live golfers show, since their score-to-par is already live data.
+ * today_detail is populated for finished golfers too, not just those still
+ * STATUS_IN_PROGRESS — the ingest function (espn-leaderboard.functions.ts)
+ * falls back to that round's linescores[period].displayValue when ESPN
+ * drops status.todayDetail on finish, which it always does. That's ESPN's
+ * own score-to-par for the round, so no par lookup or calculation happens
+ * here; this just reads today_detail uniformly for every golfer regardless
+ * of round status.
  */
-function todayLowScoresSection(
-  current: LiveSnapshot,
-  picksRows: PicksRowForScoring[],
-  roundPar: number | null,
-): string | null {
+function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScoring[]): string | null {
   type Entry = { g: SnapshotGolfer; scoreToPar: number; liveNote: string | null };
   const entries: Entry[] = [];
 
   for (const g of current.golfers) {
-    if (g.roundStatus === "IN_PROGRESS") {
-      const parsed = parseTodayDetail(g.todayDetail);
-      if (parsed) entries.push({ g, scoreToPar: parsed.scoreToPar, liveNote: `thru ${parsed.thru}` });
-    } else if (g.roundStatus === "FINISHED" && roundPar != null && g.todayStrokes != null) {
-      entries.push({ g, scoreToPar: g.todayStrokes - roundPar, liveNote: null });
-    }
+    const parsed = parseTodayDetail(g.todayDetail);
+    if (!parsed) continue;
+    const liveNote = g.roundStatus === "IN_PROGRESS" ? `thru ${parsed.thru}` : null;
+    entries.push({ g, scoreToPar: parsed.scoreToPar, liveNote });
   }
   if (entries.length === 0) return null;
 
@@ -2340,7 +2330,6 @@ function generateLiveUpdateText(
   current: LiveSnapshot,
   previous: LiveSnapshot | null,
   picksRows: PicksRowForScoring[],
-  roundPar: number | null,
 ): string {
   const timeLabel = new Date(current.captured_at).toLocaleTimeString("en-GB", {
     hour: "numeric",
@@ -2352,7 +2341,7 @@ function generateLiveUpdateText(
   if (!previous) {
     sections.push(`_Baseline captured. Run again once golfers move for the next update._`);
     sections.push(scoreToBeatSection(current));
-    const lowScores = todayLowScoresSection(current, picksRows, roundPar);
+    const lowScores = todayLowScoresSection(current, picksRows);
     if (lowScores) sections.push(lowScores);
     const locked = lockedInSection(current);
     if (locked) sections.push(locked);
@@ -2387,7 +2376,7 @@ function generateLiveUpdateText(
   const heat = golferHeatCheckSection(current, previous, picksRows, currTies, prevTies);
   if (heat) sections.push(heat);
 
-  const lowScores = todayLowScoresSection(current, picksRows, roundPar);
+  const lowScores = todayLowScoresSection(current, picksRows);
   if (lowScores) sections.push(lowScores);
 
   const locked = lockedInSection(current);
@@ -2578,17 +2567,6 @@ function InProgressUpdatePanel({
   const [teamBusy, setTeamBusy] = useState(false);
   const [teamBaselineRound, setTeamBaselineRound] = useState<Round | null>(null);
 
-  // Course par for today's round — needed to include finished golfers in
-  // "Best scores today". ESPN's live feed drops the today-score field the
-  // moment a golfer finishes (confirmed against the raw payload), so
-  // finished golfers can only be scored today via round strokes minus par,
-  // and par isn't exposed anywhere in ESPN's leaderboard API. Not
-  // persisted — re-enter it each session if it's blank; it's the same
-  // value for the whole field on a given day so one lookup covers everyone.
-  const [roundParInput, setRoundParInput] = useState("");
-  const roundParParsed = Number(roundParInput);
-  const roundPar = roundParInput.trim() !== "" && Number.isFinite(roundParParsed) ? roundParParsed : null;
-
   // Live standings for the team picker (names, current position, current
   // total) and the Top N presets. Recomputed only when the underlying
   // scoring data changes — separate from the "current" snapshot built
@@ -2631,7 +2609,7 @@ function InProgressUpdatePanel({
       // you skip a run, so every generate during a round compares against
       // the same fixed start-of-round point.
       const baseline = buildEndOfPreviousRoundBaseline(leaderboardRows, picksRows, teamsForScoring, current.round);
-      const text = generateLiveUpdateText(current, baseline, picksRows, roundPar);
+      const text = generateLiveUpdateText(current, baseline, picksRows);
       setOutputText(text);
       setBaselineRound(baseline?.round ?? null);
       // Still logged for history/audit, even though it's no longer read
@@ -2699,23 +2677,6 @@ function InProgressUpdatePanel({
           update — so every run shows the full picture of this round so far, no matter how many times you've
           already generated one today.
         </p>
-
-        <div className="flex items-end gap-2 flex-wrap">
-          <div>
-            <Label htmlFor="round-par-input" className="text-xs text-muted-foreground">
-              Round par (for finished golfers in Best scores today)
-            </Label>
-            <Input
-              id="round-par-input"
-              type="number"
-              inputMode="numeric"
-              value={roundParInput}
-              onChange={(e) => setRoundParInput(e.target.value)}
-              placeholder="e.g. 72"
-              className="h-8 w-28 text-sm"
-            />
-          </div>
-        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" onClick={handleGenerate} disabled={busy}>
