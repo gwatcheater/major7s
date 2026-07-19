@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { buildStatsPack } from "@/lib/stats/buildStatsPack";
 import type { Golfer, Pick, Team } from "@/lib/stats/types";
 import { generateReport } from "@/lib/generate-report.functions";
+import { generateFinalReport } from "@/lib/generate-final-report.functions";
 
 // Gate is inherited from the parent admin.tsx beforeLoad. No new auth here.
 export const Route = createFileRoute("/_authenticated/admin/blog-writer")({
@@ -79,6 +80,7 @@ function BlogWriterPage() {
   const [publishing, setPublishing] = useState(false);
 
   const callGenerate = useServerFn(generateReport);
+  const callGenerateFinal = useServerFn(generateFinalReport);
 
   // ---- tournaments that actually have picks --------------------------
   const tournamentsQ = useQuery({
@@ -162,19 +164,39 @@ function BlogWriterPage() {
   const pack = statsQ.data;
   const ctx = contextQ.data;
 
+  // Max rounds completed across the field: gates the Final report (needs R4).
+  const roundsQ = useQuery({
+    queryKey: ["bw", "rounds", activeId],
+    enabled: !!activeId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_leaderboard")
+        .select("rounds_completed")
+        .eq("tournament_id", activeId)
+        .order("rounds_completed", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return data?.[0]?.rounds_completed ?? 0;
+    },
+  });
+  const roundsCompleted = roundsQ.data ?? 0;
+
   const deadlinePassed = selected?.submission_deadline
     ? new Date(selected.submission_deadline).getTime() < Date.now()
     : true;
   const picksClosedBlocked = reportType === "picks_closed" && !deadlinePassed;
+  const finalBlocked = reportType === "final" && roundsCompleted < 4;
+  const generateBlocked = picksClosedBlocked || finalBlocked;
 
   async function onGenerate() {
     if (!activeId) return;
     if (body.trim() && !confirm("This will overwrite the current draft. Continue?")) return;
     setGenerating(true);
     try {
-      const res = await callGenerate({
-        data: { tournamentId: activeId, reportType, colourNotes },
-      });
+      const res =
+        reportType === "final"
+          ? await callGenerateFinal({ data: { tournamentId: activeId, colourNotes } })
+          : await callGenerate({ data: { tournamentId: activeId, reportType, colourNotes } });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -276,7 +298,12 @@ function BlogWriterPage() {
             </label>
             <div className="flex flex-wrap gap-1.5">
               {REPORTS.map((r) => {
-                const locked = r.key !== "picks_closed";
+                // picks_closed always available; final unlocks once R4 is in;
+                // R1-R3 round reports are built in a separate workstream.
+                const locked =
+                  r.key === "final"
+                    ? roundsCompleted < 4
+                    : r.key !== "picks_closed";
                 return (
                   <button
                     key={r.key}
@@ -436,7 +463,7 @@ function BlogWriterPage() {
           className="w-full px-3 py-2.5 border border-input bg-white text-sm rounded-sm focus:outline-none focus:border-primary resize-y"
         />
         <div className="flex items-center gap-3 mt-3 flex-wrap">
-          <Button onClick={onGenerate} disabled={generating || !activeId || picksClosedBlocked}>
+          <Button onClick={onGenerate} disabled={generating || !activeId || generateBlocked}>
             {generating ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
@@ -457,6 +484,12 @@ function BlogWriterPage() {
             <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--alert)" }}>
               <AlertTriangle className="w-3.5 h-3.5" />
               Picks close {fmt(selected?.submission_deadline ?? null)} · numbers will still move
+            </span>
+          )}
+          {finalBlocked && (
+            <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--alert)" }}>
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Final needs all four rounds scored · currently {roundsCompleted} complete
             </span>
           )}
         </div>
