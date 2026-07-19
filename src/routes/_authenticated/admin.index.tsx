@@ -1935,7 +1935,7 @@ function riserFallerSections(
       ? `📈 *Biggest risers*\n\n${risers
           .map((r) => {
             const driver = pickDriverLine(r.team, r.prevTeam, currTies, prevTies);
-            return `- ${r.team.nickname}: ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` — ${driver}` : ""}`;
+            return `- ${r.team.nickname}: ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` - ${driver}` : ""}`;
           })
           .join("\n")}`
       : null;
@@ -1945,7 +1945,7 @@ function riserFallerSections(
       ? `📉 *Biggest fallers*\n\n${fallers
           .map((f) => {
             const driver = pickDriverLine(f.team, f.prevTeam, currTies, prevTies);
-            return `- ${f.team.nickname}: ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` — ${driver}` : ""}`;
+            return `- ${f.team.nickname}: ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` - ${driver}` : ""}`;
           })
           .join("\n")}`
       : null;
@@ -2072,7 +2072,7 @@ function golferHeatCheckSection(
   ).size;
 
   const todayLabel = golferTodayLabel(best.roundStatus, best.todayDetail, best.todayStrokes);
-  return `🔥 *Golfer heat check:* ${best.name}${todayLabel} up to ${golferPosLabel(best.pos, currTies)} from ${golferPosLabel(best.prevPos, prevTies)} — in ${teamCount} Major7s team${teamCount === 1 ? "" : "s"}.`;
+  return `🔥 *Golfer heat check:* ${best.name}${todayLabel} up to ${golferPosLabel(best.pos, currTies)} from ${golferPosLabel(best.prevPos, prevTies)} - in ${teamCount} Major7s team${teamCount === 1 ? "" : "s"}.`;
 }
 
 /**
@@ -2118,6 +2118,26 @@ function golferTodayLabel(
 }
 
 /**
+ * Same data as golferTodayLabel, without the wrapping space/parens — for
+ * contexts (Team Focus report) that put the position first and want a bare
+ * "-3 thru 8" / "68" token rather than a parenthetical aside.
+ */
+function golferTodayBareLabel(
+  roundStatus: GolferRoundStatus,
+  todayDetail: string | null,
+  todayStrokes: number | null,
+): string {
+  if (roundStatus === "IN_PROGRESS") {
+    const parsed = parseTodayDetail(todayDetail);
+    return parsed ? `${parsed.label} thru ${parsed.thru}` : "";
+  }
+  if (roundStatus === "FINISHED") {
+    return todayStrokes != null ? `${todayStrokes}` : "";
+  }
+  return "";
+}
+
+/**
  * Today's best live/finished rounds across the whole field, sourced from
  * today_detail (see the migration + espn-leaderboard.functions.ts patch).
  * Includes anyone ESPN is currently reporting a today score for, whether
@@ -2141,7 +2161,7 @@ function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScor
         : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
           ? `picked by ${owners.length} teams`
           : `picked by ${owners.join(", ")}`;
-    return `- ${g.name}: ${detail.label} thru ${detail.thru} — ${ownerText}`;
+    return `- ${g.name}: ${detail.label} thru ${detail.thru} - ${ownerText}`;
   });
 
   return `🏌️ *Best scores today*\n\n${lines.join("\n")}`;
@@ -2176,7 +2196,7 @@ function lockedInSection(current: LiveSnapshot): string | null {
     const notStarted = team.picks.filter((p) => p.roundStatus === "NOT_STARTED");
 
     if (inProgress.length === 0 && notStarted.length === 0) {
-      lockedLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — all 7 golfers finished`);
+      lockedLines.push(`- ${team.nickname} (${teamPosLabel(team)}) - all 7 golfers finished`);
       continue;
     }
 
@@ -2192,7 +2212,7 @@ function lockedInSection(current: LiveSnapshot): string | null {
       const rest = inProgress.length - named.length;
       const restNote = rest > 0 ? `. Plus ${rest} more golfer${rest === 1 ? "" : "s"} still on course` : "";
       multipleLiveLines.push(
-        `- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress.length} live: ${named.join(", ")}${restNote}`,
+        `- ${team.nickname} (${teamPosLabel(team)}) - ${inProgress.length} live: ${named.join(", ")}${restNote}`,
       );
       continue;
     }
@@ -2201,19 +2221,19 @@ function lockedInSection(current: LiveSnapshot): string | null {
       const detail = formatTodayDetail(inProgress[0].todayDetail);
       const teeNote = notStarted.length > 0 ? `, plus ${notStarted.length} more golfer${notStarted.length === 1 ? "" : "s"} yet to tee off` : "";
       oneToWatchLines.push(
-        `- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress[0].golfer_name} still out${detail ? `, ${detail}` : ""}${teeNote}`,
+        `- ${team.nickname} (${teamPosLabel(team)}) - ${inProgress[0].golfer_name} still out${detail ? `, ${detail}` : ""}${teeNote}`,
       );
       continue;
     }
 
     oneToWatchLines.push(
-      `- ${team.nickname} (${teamPosLabel(team)}) — ${notStarted.length} golfer${notStarted.length === 1 ? "" : "s"} yet to tee off`,
+      `- ${team.nickname} (${teamPosLabel(team)}) - ${notStarted.length} golfer${notStarted.length === 1 ? "" : "s"} yet to tee off`,
     );
   }
 
   const sections: string[] = [];
   if (lockedLines.length > 0) {
-    sections.push(`🔒 *Locked in — score is final unless overtaken*\n\n${lockedLines.join("\n")}`);
+    sections.push(`🔒 *Locked in - score is final unless overtaken*\n\n${lockedLines.join("\n")}`);
   }
   if (multipleLiveLines.length > 0) {
     sections.push(`🔴 *Golfers still on course*\n\n${multipleLiveLines.join("\n")}`);
@@ -2285,7 +2305,7 @@ function golferMoversSection(
           ? `picked by ${owners.length} teams`
           : `picked by ${owners.join(", ")}`;
     const todayLabel = golferTodayLabel(m.roundStatus, m.todayDetail, m.todayStrokes);
-    return `- ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} — ${ownerText}`;
+    return `- ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} - ${ownerText}`;
   });
 
   return `⛳ *Golfer movers*\n\n${lines.join("\n")}`;
@@ -2300,7 +2320,7 @@ function generateLiveUpdateText(
     hour: "numeric",
     minute: "2-digit",
   });
-  const sections: string[] = [`🔴 *LIVE MAJOR7S UPDATE — ${timeLabel}*`];
+  const sections: string[] = [`🔴 *LIVE MAJOR7S UPDATE - ${timeLabel}*`];
   const currTies = buildTieSet(current.golfers.map((g) => g.position));
 
   if (!previous) {
@@ -2354,13 +2374,28 @@ function generateLiveUpdateText(
 }
 
 /**
- * Team Focus report — a WhatsApp-ready update scoped to a hand-picked set
- * of teams only, showing each team's picks and their today/overall
- * performance. Complements generateLiveUpdateText (the league-wide report)
- * rather than replacing it — same baseline (end of previous round), same
- * golf-notation rules (no bare +N used as a count), same golferTodayLabel
- * suffix convention.
+ * Team Focus report - a WhatsApp-ready update scoped to a hand-picked set
+ * of teams only, showing each team's full 7-pick roster and their
+ * today/overall performance. Complements generateLiveUpdateText (the
+ * league-wide report) rather than replacing it - same baseline (end of
+ * previous round), same golf-notation rules (no bare +N used as a count).
+ *
+ * Format, position-first per request:
+ *   1st *Terry Chapman* 32 pts
+ *   - T5 Tommy Fleetwood -3 thru 8 ⬆️ was T12
+ *   - T9 Sam Burns +1 thru 5
+ *   - ~T58 Robert MacIntyre~
+ * All 7 picks are listed, sorted best-to-worst by points. The 2 that don't
+ * count toward the team's best-5 total (the "counted" flag from the
+ * scoring engine, not just "last 2 in the list" - CUT/WD carry-forward can
+ * make that differ) are wrapped in WhatsApp's single-tilde strikethrough.
  */
+function moveArrow(delta: number): string {
+  if (delta > 0) return "⬆️"; // lower points = better, so a positive delta means climbed
+  if (delta < 0) return "🔻";
+  return "";
+}
+
 function teamFocusReport(
   current: LiveSnapshot,
   previous: LiveSnapshot | null,
@@ -2380,30 +2415,35 @@ function teamFocusReport(
   });
 
   if (teams.length === 0) {
-    return `🔴 *TEAM FOCUS — ${timeLabel}*\n\n_No teams selected._`;
+    return `🔴 *TEAM FOCUS - ${timeLabel}*\n\n_No teams selected._`;
   }
 
-  const blocks: string[] = [`🔴 *TEAM FOCUS — ${timeLabel}*`];
+  const blocks: string[] = [`🔴 *TEAM FOCUS - ${timeLabel}*`];
 
   for (const team of teams) {
     const prevTeam = prevTeamsById.get(team.team_id);
-    const moveNote = prevTeam && prevTeam.position !== team.position ? ` (was ${teamPosLabel(prevTeam)})` : "";
+    const teamMoveArrow =
+      prevTeam && prevTeam.position !== team.position ? ` ${moveArrow(prevTeam.position - team.position)}` : "";
+    const teamMoveNote = prevTeam && prevTeam.position !== team.position ? ` was ${teamPosLabel(prevTeam)}` : "";
 
     const pickLines = [...team.picks]
       .sort((a, b) => a.points - b.points)
       .map((p) => {
-        const todayLabel = golferTodayLabel(p.roundStatus, p.todayDetail, p.todayStrokes);
-        const statusNote = p.roundStatus === "CUT" ? " (CUT)" : p.roundStatus === "WD" ? " (WD)" : "";
         const posLabel = golferPosLabel(p.points, currTies);
+        const todayBare = golferTodayBareLabel(p.roundStatus, p.todayDetail, p.todayStrokes);
+        const statusNote = p.roundStatus === "CUT" ? " (CUT)" : p.roundStatus === "WD" ? " (WD)" : "";
         const prevPick = prevTeam?.picks.find((pp) => pp.golfer_id === p.golfer_id);
-        const golferMoveNote =
-          prevPick && prevPick.points !== p.points ? ` (was ${golferPosLabel(prevPick.points, prevTies)})` : "";
-        const countedNote = p.counted ? "" : " — dropped, not in best 5";
-        return `- ${p.golfer_name}${todayLabel}${statusNote}: ${posLabel}${golferMoveNote}${countedNote}`;
+        const golferDelta = prevPick ? prevPick.points - p.points : 0;
+        const moveSuffix =
+          prevPick && golferDelta !== 0
+            ? ` ${moveArrow(golferDelta)} was ${golferPosLabel(prevPick.points, prevTies)}`
+            : "";
+        const line = `${posLabel} ${p.golfer_name}${todayBare ? ` ${todayBare}` : ""}${statusNote}${moveSuffix}`;
+        return p.counted ? `- ${line}` : `- ~${line}~`;
       });
 
     blocks.push(
-      `*${team.nickname}* — ${teamPosLabel(team)}${moveNote}, ${team.total} pts\n${pickLines.join("\n")}`,
+      `${teamPosLabel(team)} *${team.nickname}*${teamMoveArrow} ${team.total} pts${teamMoveNote}\n${pickLines.join("\n")}`,
     );
   }
 
