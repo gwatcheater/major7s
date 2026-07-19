@@ -2137,23 +2137,47 @@ function golferTodayBareLabel(
   return "";
 }
 
+function scoreToParLabel(scoreToPar: number): string {
+  return scoreToPar === 0 ? "E" : scoreToPar > 0 ? `+${scoreToPar}` : `${scoreToPar}`;
+}
+
 /**
- * Today's best live/finished rounds across the whole field, sourced from
- * today_detail (see the migration + espn-leaderboard.functions.ts patch).
- * Includes anyone ESPN is currently reporting a today score for, whether
- * their round is finished or still in progress — "today" means today's
- * round, not "right now." Current-state only, no previous snapshot needed.
+ * Today's best live/finished rounds across the whole field.
+ *
+ * ESPN's today_detail field (score-to-par for the round) only exists while
+ * a golfer's round is STATUS_IN_PROGRESS — the moment they finish, ESPN
+ * drops that key from the payload entirely (confirmed against the raw
+ * leaderboard JSON), so a naive today_detail-only read silently loses
+ * exactly the golfers most likely to be posting the best scores of the
+ * day. Finished golfers are included here too, using their raw round
+ * strokes (todayStrokes, already persisted) minus roundPar — there's no
+ * course-par field anywhere in ESPN's leaderboard payload, so this has to
+ * be entered once per round by whoever's running the update. Without a
+ * par entered, finished golfers are omitted (same as before) and only
+ * still-live golfers show, since their score-to-par is already live data.
  */
-function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScoring[]): string | null {
-  const parsed = current.golfers
-    .map((g) => ({ g, detail: parseTodayDetail(g.todayDetail) }))
-    .filter((x): x is { g: SnapshotGolfer; detail: { label: string; thru: number; scoreToPar: number } } => x.detail !== null);
-  if (parsed.length === 0) return null;
+function todayLowScoresSection(
+  current: LiveSnapshot,
+  picksRows: PicksRowForScoring[],
+  roundPar: number | null,
+): string | null {
+  type Entry = { g: SnapshotGolfer; scoreToPar: number; liveNote: string | null };
+  const entries: Entry[] = [];
 
-  parsed.sort((a, b) => a.detail.scoreToPar - b.detail.scoreToPar);
-  const top = parsed.slice(0, 5);
+  for (const g of current.golfers) {
+    if (g.roundStatus === "IN_PROGRESS") {
+      const parsed = parseTodayDetail(g.todayDetail);
+      if (parsed) entries.push({ g, scoreToPar: parsed.scoreToPar, liveNote: `thru ${parsed.thru}` });
+    } else if (g.roundStatus === "FINISHED" && roundPar != null && g.todayStrokes != null) {
+      entries.push({ g, scoreToPar: g.todayStrokes - roundPar, liveNote: null });
+    }
+  }
+  if (entries.length === 0) return null;
 
-  const lines = top.map(({ g, detail }) => {
+  entries.sort((a, b) => a.scoreToPar - b.scoreToPar);
+  const top = entries.slice(0, 5);
+
+  const lines = top.map(({ g, scoreToPar, liveNote }) => {
     const owners = [...new Set(picksRows.filter((p) => p.golfer_id === g.key && p.teams).map((p) => p.teams!.nickname))];
     const ownerText =
       owners.length === 0
@@ -2161,7 +2185,8 @@ function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScor
         : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
           ? `picked by ${owners.length} teams`
           : `picked by ${owners.join(", ")}`;
-    return `- ${g.name}: ${detail.label} thru ${detail.thru} - ${ownerText}`;
+    const label = `${scoreToParLabel(scoreToPar)}${liveNote ? ` ${liveNote}` : ""}`;
+    return `- ${g.name}: ${label} - ${ownerText}`;
   });
 
   return `🏌️ *Best scores today*\n\n${lines.join("\n")}`;
@@ -2315,6 +2340,7 @@ function generateLiveUpdateText(
   current: LiveSnapshot,
   previous: LiveSnapshot | null,
   picksRows: PicksRowForScoring[],
+  roundPar: number | null,
 ): string {
   const timeLabel = new Date(current.captured_at).toLocaleTimeString("en-GB", {
     hour: "numeric",
@@ -2326,7 +2352,7 @@ function generateLiveUpdateText(
   if (!previous) {
     sections.push(`_Baseline captured. Run again once golfers move for the next update._`);
     sections.push(scoreToBeatSection(current));
-    const lowScores = todayLowScoresSection(current, picksRows);
+    const lowScores = todayLowScoresSection(current, picksRows, roundPar);
     if (lowScores) sections.push(lowScores);
     const locked = lockedInSection(current);
     if (locked) sections.push(locked);
@@ -2361,7 +2387,7 @@ function generateLiveUpdateText(
   const heat = golferHeatCheckSection(current, previous, picksRows, currTies, prevTies);
   if (heat) sections.push(heat);
 
-  const lowScores = todayLowScoresSection(current, picksRows);
+  const lowScores = todayLowScoresSection(current, picksRows, roundPar);
   if (lowScores) sections.push(lowScores);
 
   const locked = lockedInSection(current);
@@ -2552,6 +2578,17 @@ function InProgressUpdatePanel({
   const [teamBusy, setTeamBusy] = useState(false);
   const [teamBaselineRound, setTeamBaselineRound] = useState<Round | null>(null);
 
+  // Course par for today's round — needed to include finished golfers in
+  // "Best scores today". ESPN's live feed drops the today-score field the
+  // moment a golfer finishes (confirmed against the raw payload), so
+  // finished golfers can only be scored today via round strokes minus par,
+  // and par isn't exposed anywhere in ESPN's leaderboard API. Not
+  // persisted — re-enter it each session if it's blank; it's the same
+  // value for the whole field on a given day so one lookup covers everyone.
+  const [roundParInput, setRoundParInput] = useState("");
+  const roundParParsed = Number(roundParInput);
+  const roundPar = roundParInput.trim() !== "" && Number.isFinite(roundParParsed) ? roundParParsed : null;
+
   // Live standings for the team picker (names, current position, current
   // total) and the Top N presets. Recomputed only when the underlying
   // scoring data changes — separate from the "current" snapshot built
@@ -2594,7 +2631,7 @@ function InProgressUpdatePanel({
       // you skip a run, so every generate during a round compares against
       // the same fixed start-of-round point.
       const baseline = buildEndOfPreviousRoundBaseline(leaderboardRows, picksRows, teamsForScoring, current.round);
-      const text = generateLiveUpdateText(current, baseline, picksRows);
+      const text = generateLiveUpdateText(current, baseline, picksRows, roundPar);
       setOutputText(text);
       setBaselineRound(baseline?.round ?? null);
       // Still logged for history/audit, even though it's no longer read
@@ -2662,6 +2699,23 @@ function InProgressUpdatePanel({
           update — so every run shows the full picture of this round so far, no matter how many times you've
           already generated one today.
         </p>
+
+        <div className="flex items-end gap-2 flex-wrap">
+          <div>
+            <Label htmlFor="round-par-input" className="text-xs text-muted-foreground">
+              Round par (for finished golfers in Best scores today)
+            </Label>
+            <Input
+              id="round-par-input"
+              type="number"
+              inputMode="numeric"
+              value={roundParInput}
+              onChange={(e) => setRoundParInput(e.target.value)}
+              placeholder="e.g. 72"
+              className="h-8 w-28 text-sm"
+            />
+          </div>
+        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" onClick={handleGenerate} disabled={busy}>
