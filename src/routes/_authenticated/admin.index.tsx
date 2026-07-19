@@ -1915,62 +1915,118 @@ function golferHeatCheckSection(
 }
 
 /**
- * Locked in vs still in control — scoped to the current top 5 (same
- * boundary as Top 5 Watch), since that's the actionable "who can still be
- * caught" view. Doesn't need a previous snapshot; it's current-state only.
- *
- * Live "currently -3 thru 14" detail requires today_thru/today_detail on
- * tournament_leaderboard (see the migration + espn-leaderboard.functions.ts
- * patch) — only shown when exactly one golfer is still out for a team AND
- * that data is present; older snapshots or teams with multiple golfers out
- * fall back to name-only "still out", same as before this data existed.
+ * Parses ESPN's "-5(17)" / "E(4)" / "+2(17)" today_detail format into its
+ * parts. The leading token is a score-to-par notation ("-5", "E", "+2") —
+ * never reused as a plain count elsewhere in this file, since a bare "+3"
+ * in golf output reads as "3 over par", not "3 more of something".
  */
-function formatTodayDetail(raw: string | null | undefined): string | null {
+function parseTodayDetail(raw: string | null | undefined): { label: string; thru: number; scoreToPar: number } | null {
   if (!raw) return null;
-  const m = raw.match(/^(.+)\((\d+)\)$/);
+  const m = raw.match(/^([+-]?\d+|E)\((\d+)\)$/);
   if (!m) return null;
-  return `currently ${m[1]} thru ${m[2]}`;
+  return { label: m[1], thru: parseInt(m[2], 10), scoreToPar: m[1] === "E" ? 0 : parseInt(m[1], 10) };
 }
 
+function formatTodayDetail(raw: string | null | undefined): string | null {
+  const parsed = parseTodayDetail(raw);
+  return parsed ? `currently ${parsed.label} thru ${parsed.thru}` : null;
+}
+
+/**
+ * Today's best live/finished rounds across the whole field, sourced from
+ * today_detail (see the migration + espn-leaderboard.functions.ts patch).
+ * Includes anyone ESPN is currently reporting a today score for, whether
+ * their round is finished or still in progress — "today" means today's
+ * round, not "right now." Current-state only, no previous snapshot needed.
+ */
+function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScoring[]): string | null {
+  const parsed = current.golfers
+    .map((g) => ({ g, detail: parseTodayDetail(g.todayDetail) }))
+    .filter((x): x is { g: SnapshotGolfer; detail: { label: string; thru: number; scoreToPar: number } } => x.detail !== null);
+  if (parsed.length === 0) return null;
+
+  parsed.sort((a, b) => a.detail.scoreToPar - b.detail.scoreToPar);
+  const top = parsed.slice(0, 5);
+
+  const lines = top.map(({ g, detail }) => {
+    const owners = [...new Set(picksRows.filter((p) => p.golfer_id === g.key && p.teams).map((p) => p.teams!.nickname))];
+    const ownerText =
+      owners.length === 0
+        ? "not owned"
+        : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
+          ? `owned by ${owners.length} teams`
+          : `owned by ${owners.join(", ")}`;
+    return `- ${g.name}: ${detail.label} thru ${detail.thru} — ${ownerText}`;
+  });
+
+  return `🏌️ *Best scores today*\n\n${lines.join("\n")}`;
+}
+
+/**
+ * Locked in / multiple live / one to watch — scoped to the current top 10.
+ * Doesn't need a previous snapshot; it's current-state only.
+ *
+ * Three distinct buckets rather than one blended "still out" list:
+ * - Locked in: nobody left to play — score for today is final regardless
+ *   of what anyone else does.
+ * - Multiple golfers live: 2+ picks actively STATUS_IN_PROGRESS right now —
+ *   the volatile case, score could move at any moment.
+ * - One to watch: exactly one golfer in progress (shown with live detail
+ *   when today_detail is available), or only not-yet-started picks remain.
+ */
+const STATUS_SECTION_SCOPE = 10;
+
 function lockedInSection(current: LiveSnapshot): string | null {
-  const scope = [...current.teams].filter((t) => t.position <= 5).sort((a, b) => a.position - b.position);
+  const scope = [...current.teams]
+    .filter((t) => t.position <= STATUS_SECTION_SCOPE)
+    .sort((a, b) => a.position - b.position);
   if (scope.length === 0) return null;
 
-  const stillOutCounts = scope.map(
-    (t) => t.picks.filter((p) => STILL_OUT_STATUSES.includes(p.roundStatus)).length,
-  );
-  const maxStillOut = Math.max(0, ...stillOutCounts);
-
   const lockedLines: string[] = [];
-  const inControlLines: string[] = [];
+  const multipleLiveLines: string[] = [];
+  const oneToWatchLines: string[] = [];
 
-  scope.forEach((team, i) => {
-    const stillOut = team.picks.filter((p) => STILL_OUT_STATUSES.includes(p.roundStatus));
-    if (stillOut.length === 0) {
+  for (const team of scope) {
+    const inProgress = team.picks.filter((p) => p.roundStatus === "IN_PROGRESS");
+    const notStarted = team.picks.filter((p) => p.roundStatus === "NOT_STARTED");
+
+    if (inProgress.length === 0 && notStarted.length === 0) {
       lockedLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — all 7 golfers finished`);
-      return;
+      continue;
     }
-    const mostFlag =
-      stillOutCounts[i] === maxStillOut && maxStillOut > 1 ? ", most golfers left of anyone in the top 5" : "";
 
-    if (stillOut.length === 1) {
-      const detail = formatTodayDetail(stillOut[0].todayDetail);
-      inControlLines.push(
-        `- ${team.nickname} (${teamPosLabel(team)}) — ${stillOut[0].golfer_name} still out${detail ? `, ${detail}` : ""}${mostFlag}`,
-      );
-    } else {
-      const names = stillOut.slice(0, 2).map((p) => p.golfer_name);
-      const extra = stillOut.length > 2 ? ` +${stillOut.length - 2} more` : "";
-      inControlLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${names.join(" and ")}${extra} still out${mostFlag}`);
+    if (inProgress.length >= 2) {
+      const names = inProgress.map((p) => {
+        const detail = parseTodayDetail(p.todayDetail);
+        return detail ? `${p.golfer_name} (${detail.label} thru ${detail.thru})` : p.golfer_name;
+      });
+      multipleLiveLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress.length} live: ${names.join(", ")}`);
+      continue;
     }
-  });
+
+    if (inProgress.length === 1) {
+      const detail = formatTodayDetail(inProgress[0].todayDetail);
+      const teeNote = notStarted.length > 0 ? `, ${notStarted.length} more to tee off` : "";
+      oneToWatchLines.push(
+        `- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress[0].golfer_name} still out${detail ? `, ${detail}` : ""}${teeNote}`,
+      );
+      continue;
+    }
+
+    oneToWatchLines.push(
+      `- ${team.nickname} (${teamPosLabel(team)}) — ${notStarted.length} golfer${notStarted.length === 1 ? "" : "s"} yet to tee off`,
+    );
+  }
 
   const sections: string[] = [];
   if (lockedLines.length > 0) {
     sections.push(`🔒 *Locked in — score is final unless overtaken*\n\n${lockedLines.join("\n")}`);
   }
-  if (inControlLines.length > 0) {
-    sections.push(`⛳ *Still in control*\n\n${inControlLines.join("\n")}`);
+  if (multipleLiveLines.length > 0) {
+    sections.push(`🔴 *Multiple golfers live*\n\n${multipleLiveLines.join("\n")}`);
+  }
+  if (oneToWatchLines.length > 0) {
+    sections.push(`⛳ *Still in control*\n\n${oneToWatchLines.join("\n")}`);
   }
   return sections.length > 0 ? sections.join("\n\n") : null;
 }
@@ -2038,6 +2094,8 @@ function generateLiveUpdateText(
   if (!previous) {
     sections.push(`_Baseline captured. Run again once golfers move for the next update._`);
     sections.push(scoreToBeatSection(current));
+    const lowScores = todayLowScoresSection(current, picksRows);
+    if (lowScores) sections.push(lowScores);
     const locked = lockedInSection(current);
     if (locked) sections.push(locked);
     sections.push(prizeLineSection(current));
@@ -2065,6 +2123,9 @@ function generateLiveUpdateText(
 
   const heat = golferHeatCheckSection(current, previous, picksRows, currTies, prevTies);
   if (heat) sections.push(heat);
+
+  const lowScores = todayLowScoresSection(current, picksRows);
+  if (lowScores) sections.push(lowScores);
 
   const locked = lockedInSection(current);
   if (locked) sections.push(locked);
