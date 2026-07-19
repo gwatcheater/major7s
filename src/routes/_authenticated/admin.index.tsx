@@ -1247,7 +1247,7 @@ function EndOfRoundExportPanel({
         const { data, error } = await supabase
           .from("tournament_leaderboard")
           .select(
-            "golfer_id, espn_display_name, country, status_type, status_short_detail, position_r1, position_r2, position_r3, position_r4, round_1, round_2, round_3, round_4",
+            "id, golfer_id, espn_display_name, country, status_type, status_short_detail, position_r1, position_r2, position_r3, position_r4, round_1, round_2, round_3, round_4",
           )
           .eq("tournament_id", tournamentId)
           .range(from, from + PAGE - 1);
@@ -1369,7 +1369,7 @@ function EndOfRoundExportPanel({
         row.country ?? "",
         status,
         ...roundCols.flatMap((r, i) => {
-          const pos = row.golfer_id ? (posMapsByRound.get(r)!.get(row.golfer_id) ?? "") : "";
+          const pos = posMapsByRound.get(r)!.get(row.golfer_id ?? row.id) ?? "";
           return [pos, strokes[i] ?? ""];
         }),
       ];
