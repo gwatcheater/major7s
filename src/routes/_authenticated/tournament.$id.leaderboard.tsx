@@ -6,16 +6,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useImpersonation } from "@/context/impersonation-context";
 import { useTeams } from "@/hooks/use-teams";
+import {
+  buildRoundPositionMap,
+  computeRoundScores,
+  getInProgressRound,
+  isCutOrWithdrawn,
+  isWithdrawn,
+  NON_FINISHER_POINTS,
+  type Round,
+  type RoundPickScore,
+  type RoundTeamScore,
+} from "@/lib/major7s-round-scoring";
 
-// VERSION MARKER: leaderboard v5.0 — R4 on-the-fly scoring + multi-column pick breakdown
-// If you see this comment in the deployed bundle, you're on the right version.
+// VERSION MARKER: leaderboard v5.1 — Tournament view round positions now
+// recomputed via buildRoundPositionMap (shared with Major7s scoring and the
+// admin export panel) instead of raw ESPN position_rN snapshots, which
+// don't merge ties correctly. If you see this comment in the deployed
+// bundle, you're on the right version.
 
 export const Route = createFileRoute("/_authenticated/tournament/$id/leaderboard")({
   component: LeaderboardView,
 });
 
 type View = "tournament" | "major7s";
-type Round = "r1" | "r2" | "r3" | "r4";
 
 interface LbRow {
   id: string;
@@ -40,19 +53,6 @@ interface LbRow {
   position_r2: number | null;
   position_r3: number | null;
   position_r4: number | null;
-}
-
-const NON_FINISHER_POINTS = 100;
-
-function isCutOrWithdrawn(status: string | null) {
-  return status === "STATUS_CUT" || status === "STATUS_WITHDRAWN";
-}
-
-/** WD specifically — ESPN maps both CUT and WD under STATUS_CUT, distinguished by shortDetail. */
-function isWithdrawn(row: { status_type: string | null; status_short_detail: string | null }): boolean {
-  if (row.status_type === "STATUS_WITHDRAWN") return true;
-  if (isCutOrWithdrawn(row.status_type) && row.status_short_detail?.toUpperCase().includes("WD")) return true;
-  return false;
 }
 
 function fmtToPar(v: number | null): { text: string; cls: string } {
@@ -176,9 +176,34 @@ function LeaderboardView() {
     }
   }, [maxRound]);
 
+  // Which round (if any) is currently live — governs whether
+  // buildRoundPositionMap trusts ESPN's live position_rN or recomputes
+  // from cumulative strokes. Shared across grouping, tie detection, and Δ.
+  const inProgressRound = useMemo(() => getInProgressRound(rows), [rows]);
+
+  // Recomputed Standard Competition Ranking positions for the round on
+  // screen, and for the previous round (needed for Δ, and for R4's Δ which
+  // compares against R3). NOT the raw position_rN column — see
+  // buildRoundPositionMap's docstring: ESPN's per-round snapshot is taken
+  // as each golfer finishes and never corrected for ties afterwards, so
+  // trusting it directly produces wrong positions once a round settles.
+  const roundPosMap = useMemo(() => {
+    if (round === "r4") return null; // R4 Tournament view uses ESPN's final, already-settled position_numeric/is_tie
+    return buildRoundPositionMap(rows, round, inProgressRound);
+  }, [rows, round, inProgressRound]);
+
+  const prevRoundPosMap = useMemo(() => {
+    const prevRound: Round | null =
+      round === "r2" ? "r1" : round === "r3" ? "r2" : round === "r4" ? "r3" : null;
+    if (!prevRound) return null;
+    return buildRoundPositionMap(rows, prevRound, inProgressRound);
+  }, [rows, round, inProgressRound]);
+
   // Round-aware grouping + sorting of leaderboard rows.
   const { active, cut } = useMemo(() => {
-    // R4 view: CUT/WD in their own bottom group.
+    // R4 view: CUT/WD in their own bottom group. Uses ESPN's final settled
+    // position_numeric/is_tie — those ARE corrected for ties at close, unlike
+    // the per-round position_rN snapshots.
     if (round === "r4") {
       const a: LbRow[] = [];
       const c: LbRow[] = [];
@@ -207,24 +232,23 @@ function LeaderboardView() {
       return { active: a, cut: c };
     }
 
-    // Round view (r1 / r2 / r3): filter to rows with that round's position
-    // populated, sort by it. No "cut" bucket — players outside this set
-    // simply hadn't played this round (or had already left the field).
-    const roundKey = round === "r1" ? "position_r1"
-                  : round === "r2" ? "position_r2"
-                  : "position_r3";
+    // Round view (r1 / r2 / r3): filter to rows present in the recomputed
+    // position map for this round, sort by that recomputed position. No
+    // "cut" bucket — players outside this set simply hadn't played this
+    // round (or had already left the field).
+    const posMap = roundPosMap!;
     const a: LbRow[] = [];
     for (const r of rows) {
-      if (r[roundKey] !== null) a.push(r);
+      if (posMap.has(r.golfer_id ?? r.id)) a.push(r);
     }
     a.sort((x, y) => {
-      const xp = (x[roundKey] ?? 9999) as number;
-      const yp = (y[roundKey] ?? 9999) as number;
+      const xp = posMap.get(x.golfer_id ?? x.id) ?? 9999;
+      const yp = posMap.get(y.golfer_id ?? y.id) ?? 9999;
       if (xp !== yp) return xp - yp;
       return x.espn_display_name.localeCompare(y.espn_display_name);
     });
     return { active: a, cut: [] };
-  }, [rows, round]);
+  }, [rows, round, roundPosMap]);
 
   return (
     <div className="p-4 md:p-12 max-w-5xl mx-auto">
@@ -288,7 +312,14 @@ function LeaderboardView() {
           No leaderboard data yet. An admin can import the final results from the tournament admin page.
         </p>
       ) : (
-        <TournamentTable active={active} cut={cut} myPickGolferIds={myPickGolferIds} round={round} />
+        <TournamentTable
+          active={active}
+          cut={cut}
+          myPickGolferIds={myPickGolferIds}
+          round={round}
+          roundPosMap={roundPosMap}
+          prevRoundPosMap={prevRoundPosMap}
+        />
       )}
     </div>
   );
@@ -360,12 +391,14 @@ function TourneyCols({
 }
 
 function TournamentTable({
-  active, cut, myPickGolferIds, round,
+  active, cut, myPickGolferIds, round, roundPosMap, prevRoundPosMap,
 }: {
   active: LbRow[];
   cut: LbRow[];
   myPickGolferIds: Set<string>;
   round: Round;
+  roundPosMap: Map<string, number> | null;
+  prevRoundPosMap: Map<string, number> | null;
 }) {
   const showR1 = true;
   const showR2 = round === "r2" || round === "r3" || round === "r4";
@@ -376,24 +409,21 @@ function TournamentTable({
   const showDelta = round !== "r1";
 
   // Tie detection for round views. Final view uses the row's `is_tie` flag
-  // directly (computed by ESPN). For r1/r2/r3 we have no flag, so derive it
-  // by counting how many rows share the same position_r{n} value across the
-  // full active+cut list. Built once per round-switch, O(N).
+  // directly (computed by ESPN). For r1/r2/r3, roundPosMap already assigns
+  // the same recomputed SCR position to tied golfers, so a tie is just any
+  // position value that appears more than once in the map.
   const tiedPositions = useMemo<Set<number>>(() => {
-    if (round === "r4") return new Set();
-    const posKey: "position_r1" | "position_r2" | "position_r3" =
-      round === "r1" ? "position_r1" : round === "r2" ? "position_r2" : "position_r3";
+    if (round === "r4" || !roundPosMap) return new Set();
     const counts = new Map<number, number>();
-    for (const r of active) {
-      const v = r[posKey];
-      if (v !== null) counts.set(v, (counts.get(v) ?? 0) + 1);
+    for (const pos of roundPosMap.values()) {
+      counts.set(pos, (counts.get(pos) ?? 0) + 1);
     }
     const ties = new Set<number>();
     for (const [pos, count] of counts) {
       if (count > 1) ties.add(pos);
     }
     return ties;
-  }, [active, round]);
+  }, [roundPosMap, round]);
 
   const colCount = 2
     + (showDelta ? 1 : 0)
@@ -434,6 +464,8 @@ function TournamentTable({
               mine={!!r.golfer_id && myPickGolferIds.has(r.golfer_id)}
               round={round}
               tiedPositions={tiedPositions}
+              roundPosMap={roundPosMap}
+              prevRoundPosMap={prevRoundPosMap}
               showDelta={showDelta}
               showToPar={showToPar}
               showR1={showR1}
@@ -457,6 +489,8 @@ function TournamentTable({
                   dim
                   round={round}
                   tiedPositions={tiedPositions}
+                  roundPosMap={roundPosMap}
+                  prevRoundPosMap={prevRoundPosMap}
                   showDelta={showDelta}
                   showToPar={showToPar}
                   showR1={showR1}
@@ -474,13 +508,15 @@ function TournamentTable({
 }
 
 function TourneyRow({
-  r, mine, dim, round, tiedPositions, showDelta, showToPar, showR1, showR2, showR3, showR4,
+  r, mine, dim, round, tiedPositions, roundPosMap, prevRoundPosMap, showDelta, showToPar, showR1, showR2, showR3, showR4,
 }: {
   r: LbRow;
   mine: boolean;
   dim?: boolean;
   round: Round;
   tiedPositions: Set<number>;
+  roundPosMap: Map<string, number> | null;
+  prevRoundPosMap: Map<string, number> | null;
   showDelta: boolean;
   showToPar: boolean;
   showR1: boolean;
@@ -489,11 +525,14 @@ function TourneyRow({
   showR4: boolean;
 }) {
   const par = fmtToPar(r.score_to_par);
+  const rowKey = r.golfer_id ?? r.id;
 
   // Position label.
-  // - Final view: use the row's own is_tie flag (set by ESPN).
-  // - R1/R2/R3 views: tied iff this row's position_r{n} appears more than
-  //   once across the table (tiedPositions set, built once by the parent).
+  // - Final view: use the row's own is_tie flag (set by ESPN) — the final
+  //   position_numeric IS corrected for ties at settlement.
+  // - R1/R2/R3 views: recomputed SCR position from roundPosMap (NOT the raw
+  //   position_r{n} snapshot, which doesn't merge ties). tiedPositions is
+  //   derived from the same map by the parent, so they always agree.
   let posLabel: string;
   if (round === "r4") {
     if (r.position_numeric === null) {
@@ -504,10 +543,7 @@ function TourneyRow({
       posLabel = r.position_display ?? String(r.position_numeric);
     }
   } else {
-    const posKey = round === "r1" ? "position_r1"
-                : round === "r2" ? "position_r2"
-                : "position_r3";
-    const v = r[posKey];
+    const v = roundPosMap?.get(rowKey) ?? null;
     if (v === null) {
       posLabel = "—";
     } else if (tiedPositions.has(v)) {
@@ -518,18 +554,17 @@ function TourneyRow({
   }
 
   // Δ movement: prevPos - currPos. Positive = climbed, negative = dropped.
+  // Both sides come from the recomputed maps (R4's "curr" is the exception —
+  // position_numeric is ESPN's final settled value, already tie-correct).
   let deltaCell: React.ReactNode = null;
   if (showDelta) {
     let prev: number | null = null;
     let curr: number | null = null;
-    if (round === "r2") {
-      prev = r.position_r1;
-      curr = r.position_r2;
-    } else if (round === "r3") {
-      prev = r.position_r2;
-      curr = r.position_r3;
+    if (round === "r2" || round === "r3") {
+      prev = prevRoundPosMap?.get(rowKey) ?? null;
+      curr = roundPosMap?.get(rowKey) ?? null;
     } else if (round === "r4") {
-      prev = r.position_r3;
+      prev = prevRoundPosMap?.get(rowKey) ?? null;
       curr = r.position_numeric;
     }
     if (prev !== null && curr !== null) {
@@ -574,257 +609,11 @@ function TourneyRow({
 // =============================================================
 type MajorView = "all" | "botr";
 
-// -- Round-view scoring types --
-interface RoundTeamScore {
-  team_id: string;
-  nickname: string;
-  owner_user_id: string;
-  total: number;
-  position: number;
-  is_tie: boolean;
-  picks: RoundPickScore[];
-  thru_cut: number | null; // null on R1/R2 (meaningless pre-cut)
-  delta: number | null;    // movement from previous round (positive = climbed)
-}
-
-interface RoundPickScore {
-  golfer_id: string;
-  golfer_name: string;
-  bucket: number;
-  round_positions: (number | null)[]; // positions for each round up to current (length = round index + 1)
-  is_latest_carryforward: boolean;
-  points: number;
-  counted: boolean;
-  status_label: string | null; // "(CUT)" or "(WD)" appended to name in breakdown
-}
-
-// -- Round-view scoring computation --
-
-/** Return the ESPN-stored position for a specific round. */
-function espnPositionForRound(row: LbRow, round: Round): number | null {
-  switch (round) {
-    case "r1": return row.position_r1;
-    case "r2": return row.position_r2;
-    case "r3": return row.position_r3;
-    case "r4": return row.position_r4;
-  }
-}
-
-/**
- * Detect which round (if any) is currently in progress.
- * A round is in-progress when at least one golfer has STATUS_IN_PROGRESS
- * and that round is the latest one they have stroke data for.
- */
-function getInProgressRound(lbRows: LbRow[]): Round | null {
-  const ipRows = lbRows.filter((r) => r.status_type === "STATUS_IN_PROGRESS");
-  if (ipRows.length === 0) return null;
-  if (ipRows.some((r) => r.round_4 != null)) return "r4";
-  if (ipRows.some((r) => r.round_3 != null)) return "r3";
-  if (ipRows.some((r) => r.round_2 != null)) return "r2";
-  if (ipRows.some((r) => r.round_1 != null)) return "r1";
-  return null;
-}
-
-/**
- * Build correct golfer positions for a round.
- *
- * For COMPLETED rounds: recompute from cumulative stroke totals using
- * Standard Competition Ranking. ESPN's linescores.currentPosition is a
- * snapshot taken when each golfer finishes and is not recalculated after
- * all golfers complete, so we recompute for accuracy.
- *
- * For IN-PROGRESS rounds: use ESPN's live position_rX directly. In-progress
- * golfers have partial stroke totals (e.g. 66 through 17 holes) that pass
- * the MIN_COMPLETE filter and corrupt cumulative-based rankings.
- */
-function buildRoundPositionMap(
-  lbRows: LbRow[],
-  round: Round,
-  inProgressRound: Round | null,
-): Map<string, number> {
-  // In-progress round: use ESPN's live positions instead of computing
-  if (round === inProgressRound) {
-    const posMap = new Map<string, number>();
-    for (const row of lbRows) {
-      if (!row.golfer_id) continue;
-      const pos = espnPositionForRound(row, round);
-      if (pos != null) posMap.set(row.golfer_id, pos);
-    }
-    return posMap;
-  }
-
-  // Completed round: recompute from cumulative strokes
-  const MIN_COMPLETE = 58; // no completed major round has ever been below 61
-  const entries: { golfer_id: string; cumulative: number }[] = [];
-
-  for (const row of lbRows) {
-    if (!row.golfer_id) continue;
-    const r1 = row.round_1;
-    const r2 = row.round_2;
-    const r3 = row.round_3;
-    const r4 = row.round_4;
-
-    let cum: number | null = null;
-    if (round === "r1" && r1 != null && r1 >= MIN_COMPLETE) {
-      cum = r1;
-    } else if (round === "r2" && r1 != null && r2 != null && r1 >= MIN_COMPLETE && r2 >= MIN_COMPLETE) {
-      cum = r1 + r2;
-    } else if (round === "r3" && r1 != null && r2 != null && r3 != null
-               && r1 >= MIN_COMPLETE && r2 >= MIN_COMPLETE && r3 >= MIN_COMPLETE) {
-      cum = r1 + r2 + r3;
-    } else if (round === "r4" && r1 != null && r2 != null && r3 != null && r4 != null
-               && r1 >= MIN_COMPLETE && r2 >= MIN_COMPLETE && r3 >= MIN_COMPLETE && r4 >= MIN_COMPLETE) {
-      cum = r1 + r2 + r3 + r4;
-    }
-    if (cum != null) entries.push({ golfer_id: row.golfer_id, cumulative: cum });
-  }
-
-  entries.sort((a, b) => a.cumulative - b.cumulative);
-
-  const posMap = new Map<string, number>();
-  let rank = 1;
-  for (let i = 0; i < entries.length; i++) {
-    if (i > 0 && entries[i].cumulative !== entries[i - 1].cumulative) rank = i + 1;
-    posMap.set(entries[i].golfer_id, rank);
-  }
-  return posMap;
-}
-
-/**
- * Compute Major7s team scores on the fly for any round (R1–R4).
- * Positions are recomputed from round scores (not ESPN snapshots).
- * Best 5 of 7 count. Standard Competition Ranking for ties.
- */
-function computeRoundScores(
-  teams: { id: string; nickname: string; owner_user_id: string }[],
-  picks: { team_id: string; bucket: number; golfer_id: string }[],
-  lbRows: LbRow[],
-  round: Round,
-): RoundTeamScore[] {
-  // Build position maps for all rounds up to the current one
-  const roundIndex = round === "r1" ? 0 : round === "r2" ? 1 : round === "r3" ? 2 : 3;
-  const allRounds: Round[] = (["r1", "r2", "r3", "r4"] as Round[]).slice(0, roundIndex + 1);
-  const inProgressRound = getInProgressRound(lbRows);
-  const posMaps = allRounds.map((r) => buildRoundPositionMap(lbRows, r, inProgressRound));
-
-  const lbByGolfer = new Map<string, LbRow>();
-  for (const row of lbRows) {
-    if (row.golfer_id) lbByGolfer.set(row.golfer_id, row);
-  }
-
-  const scored: RoundTeamScore[] = teams.map((team) => {
-    const teamPicks = picks.filter((p) => p.team_id === team.id);
-    const pickScores: RoundPickScore[] = teamPicks.map((pick) => {
-      const lb = lbByGolfer.get(pick.golfer_id);
-
-      // --- WD: always 100, every round ---
-      if (lb && isWithdrawn(lb)) {
-        return {
-          golfer_id: pick.golfer_id,
-          golfer_name: lb.espn_display_name || "Unknown",
-          bucket: pick.bucket,
-          round_positions: allRounds.map(() => null),
-          is_latest_carryforward: false,
-          points: NON_FINISHER_POINTS,
-          counted: false,
-          status_label: "(WD)",
-        };
-      }
-
-      // --- CUT: actual position in R1, 100 from R2 onwards ---
-      if (lb && isCutOrWithdrawn(lb.status_type) && round !== "r1") {
-        const r1Pos = posMaps[0].get(pick.golfer_id) ?? null;
-        return {
-          golfer_id: pick.golfer_id,
-          golfer_name: lb.espn_display_name || "Unknown",
-          bucket: pick.bucket,
-          round_positions: allRounds.map((_r, i) => (i === 0 ? r1Pos : null)),
-          is_latest_carryforward: false,
-          points: NON_FINISHER_POINTS,
-          counted: false,
-          status_label: "(CUT)",
-        };
-      }
-
-      // --- Normal scoring ---
-      const positions = allRounds.map((_r, i) => posMaps[i].get(pick.golfer_id) ?? null);
-      const posVal = positions[positions.length - 1];
-
-      // Mid-round fallback: carry forward previous round's position
-      let effectivePos: number | null = posVal;
-      let isCarryforward = false;
-      if (effectivePos === null && round !== "r1" && lb && !isCutOrWithdrawn(lb.status_type)) {
-        const prevPos = positions.length > 1 ? positions[positions.length - 2] : null;
-        effectivePos = prevPos;
-        isCarryforward = effectivePos !== null;
-        positions[positions.length - 1] = effectivePos;
-      }
-
-      return {
-        golfer_id: pick.golfer_id,
-        golfer_name: lb?.espn_display_name || "Unknown",
-        bucket: pick.bucket,
-        round_positions: positions,
-        is_latest_carryforward: isCarryforward,
-        points: effectivePos ?? NON_FINISHER_POINTS,
-        counted: false,
-        status_label: null,
-      };
-    });
-
-    // Mark best 5 as counted
-    const sorted = [...pickScores].sort((a, b) => a.points - b.points);
-    const countedIds = new Set<string>();
-    for (let i = 0; i < Math.min(5, sorted.length); i++) {
-      countedIds.add(sorted[i].golfer_id);
-    }
-    for (const ps of pickScores) {
-      ps.counted = countedIds.has(ps.golfer_id);
-    }
-
-    const total = sorted
-      .slice(0, Math.min(5, sorted.length))
-      .reduce((sum, p) => sum + p.points, 0);
-
-    // thru_cut meaningful on R3 and R4 (post-cut rounds)
-    let thruCut: number | null = null;
-    if (round === "r3" || round === "r4") {
-      thruCut = pickScores.filter((p) => {
-        const lastPos = p.round_positions[p.round_positions.length - 1];
-        return lastPos !== null;
-      }).length;
-    }
-
-    return {
-      team_id: team.id,
-      nickname: team.nickname,
-      owner_user_id: team.owner_user_id,
-      total,
-      position: 0,
-      is_tie: false,
-      picks: pickScores,
-      thru_cut: thruCut,
-      delta: null,
-    };
-  });
-
-  scored.sort((a, b) => a.total - b.total);
-
-  // Standard Competition Ranking
-  let rank = 1;
-  for (let i = 0; i < scored.length; i++) {
-    if (i > 0 && scored[i].total === scored[i - 1].total) {
-      scored[i].position = scored[i - 1].position;
-      scored[i].is_tie = true;
-      scored[i - 1].is_tie = true;
-    } else {
-      scored[i].position = rank;
-    }
-    rank++;
-  }
-
-  return scored;
-}
+// Round-view scoring types (RoundTeamScore, RoundPickScore) and scoring
+// functions (getInProgressRound, buildRoundPositionMap, computeRoundScores)
+// now live in src/lib/major7s-round-scoring.ts — imported at the top of this
+// file — so the Major7s view here and the admin end-of-round export always
+// score identically. LbRow satisfies ScoringLbRow structurally (superset).
 
 // -- Hook: fetch picks + teams and compute round scores --
 function useMajor7sRoundScores(
