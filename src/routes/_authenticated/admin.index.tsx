@@ -46,6 +46,13 @@ import { EspnLeaderboardSection } from "@/components/admin/espn-leaderboard-sect
 import { BulkPickUpload } from "@/components/admin/bulk-pick-upload";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
+import {
+  computeRoundScores,
+  isWithdrawn,
+  type Round,
+  type RoundTeamScore,
+  type ScoringLbRow,
+} from "@/lib/major7s-round-scoring";
 
 
 export const Route = createFileRoute("/_authenticated/admin/")({
@@ -526,25 +533,33 @@ function TournamentTab() {
                 tournamentId={selected.id}
                 currentStatus={selected.status as TournamentStatus}
               />
-              <EditTournamentDetailsForm key={`edit-${selected.id}`} tournament={selected} />
-              <BucketSizesEditor
-                key={`buckets-${selected.id}`}
-                tournamentId={selected.id}
-                rawSizes={(selected as any).bucket_sizes}
-              />
-              <AdvancedFieldPortal
-                tournamentId={selected.id}
-                tournamentName={selected.name}
-                bucketSizes={normalizeBucketSizes((selected as any).bucket_sizes)}
-              />
               <EspnLeaderboardSection
                 key={`espn-${selected.id}`}
                 tournamentId={selected.id}
                 initialEspnEventId={(selected as any).espn_event_id ?? ""}
                 onSaved={() => qc.invalidateQueries({ queryKey: ["admin-tournaments-list"] })}
               />
+              <EndOfRoundExportPanel
+                key={`export-${selected.id}`}
+                tournamentId={selected.id}
+                tournamentName={selected.name}
+              />
+              <CollapsibleBlock label="Edit Tournament Details" icon={<Save className="size-4" />}>
+                <EditTournamentDetailsForm key={`edit-${selected.id}`} tournament={selected} />
+              </CollapsibleBlock>
+              <BucketSizesEditor
+                key={`buckets-${selected.id}`}
+                tournamentId={selected.id}
+                rawSizes={(selected as any).bucket_sizes}
+              />
+              <CollapsibleBlock label="Advanced Field Portal" icon={<Trophy className="size-4" />}>
+                <AdvancedFieldPortal
+                  tournamentId={selected.id}
+                  tournamentName={selected.name}
+                  bucketSizes={normalizeBucketSizes((selected as any).bucket_sizes)}
+                />
+              </CollapsibleBlock>
               <BulkPickUpload key={`bulk-${selected.id}`} tournamentId={selected.id} />
-
 
 
             </div>
@@ -725,8 +740,8 @@ function CreateTournamentForm({ onCreated }: { onCreated: (id: string) => void }
                         pad(endDate.getMonth() + 1) + "-" +
                         pad(endDate.getDate());
 
-                      // Submission deadline = start - 1 day at 22:00 local time.
-                      const deadline = new Date(y, m - 1, d - 1, 22, 0, 0, 0);
+                      // Submission deadline = start - 1 day at 20:00 local time.
+                      const deadline = new Date(y, m - 1, d - 1, 20, 0, 0, 0);
                       next.submission_deadline =
                         deadline.getFullYear() + "-" +
                         pad(deadline.getMonth() + 1) + "-" +
@@ -1133,6 +1148,320 @@ function BucketSizesEditor({
             </div>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ============================================================
+   Shared collapsible wrapper — same "Show ▼ / Hide ▲" convention
+   used by Create Tournament and Bulk Import Users, extracted so
+   we're not re-pasting the toggle button per section.
+   ============================================================ */
+function CollapsibleBlock({
+  label,
+  icon,
+  defaultOpen = false,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-left rounded-md border border-input bg-muted/30 px-3 py-2.5 hover:bg-muted/50"
+      >
+        <span className="flex items-center gap-2 text-sm font-medium">
+          {icon}
+          {label}
+        </span>
+        <span className="text-xs uppercase tracking-widest text-muted-foreground">
+          {open ? "Hide ▲" : "Show ▼"}
+        </span>
+      </button>
+      {open && <div className="mt-3">{children}</div>}
+    </div>
+  );
+}
+
+/* ============================================================
+   END OF ROUND EXPORT — golfer positions + Major7s scores as
+   frozen per-round snapshots (R1..R4). Re-running the same round
+   later returns the same file: golfer positions are read straight
+   from position_rN/round_N (written once, never recalculated —
+   see leaderboard-architecture.md §2.3), and Major7s scores are
+   computed via the SAME computeRoundScores()/buildRoundPositionMap()
+   used by the public leaderboard (src/lib/major7s-round-scoring.ts),
+   so this panel can never diverge from what players see on-site.
+   No round-toggle state is shared with the public leaderboard —
+   this panel derives its own available-rounds set from whatever
+   leaderboard data currently exists for the tournament.
+   ============================================================ */
+
+type LeaderboardRoundRow = ScoringLbRow & {
+  country: string | null;
+};
+
+const EXPORT_ROUNDS: Round[] = ["r1", "r2", "r3", "r4"];
+
+function slugifyForFilename(s: string): string {
+  return s.replace(/\s+/g, "-").toLowerCase();
+}
+
+function downloadCsvFile(filename: string, lines: string[]) {
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function EndOfRoundExportPanel({
+  tournamentId,
+  tournamentName,
+}: {
+  tournamentId: string;
+  tournamentName: string;
+}) {
+  // Paginated per the 1,000-row Supabase cap — same pattern as the
+  // Submissions tab below (183 teams × 7 picks = 1,281 rows).
+  const { data: leaderboardRows = [] } = useQuery({
+    queryKey: ["export-leaderboard-rows", tournamentId],
+    queryFn: async () => {
+      const PAGE = 1000;
+      let all: LeaderboardRoundRow[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("tournament_leaderboard")
+          .select(
+            "golfer_id, espn_display_name, country, status_type, status_short_detail, position_r1, position_r2, position_r3, position_r4, round_1, round_2, round_3, round_4",
+          )
+          .eq("tournament_id", tournamentId)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat((data ?? []) as LeaderboardRoundRow[]);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    },
+  });
+
+  // Picks with golfer + team names, for CSV display only.
+  const { data: picksRows = [] } = useQuery({
+    queryKey: ["export-picks-rows", tournamentId],
+    queryFn: async () => {
+      const PAGE = 1000;
+      let all: Array<{
+        bucket: number;
+        golfer_id: string | null;
+        golfers: { golfer_name: string } | null;
+        teams: { id: string; nickname: string } | null;
+      }> = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("picks")
+          .select("bucket, golfer_id, golfers ( golfer_name ), teams!inner ( id, nickname )")
+          .eq("tournament_id", tournamentId)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat((data ?? []) as unknown as typeof all);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    },
+  });
+
+  // Teams — same source as the live Major7s view (tournament_scores joined
+  // to teams), so the export counts exactly the teams that participated.
+  const { data: teamsForScoring = [] } = useQuery({
+    queryKey: ["export-teams-for-scoring", tournamentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tournament_scores")
+        .select("team_id, teams ( id, nickname, owner_user_id )")
+        .eq("tournament_id", tournamentId);
+      if (error) throw error;
+      return (data ?? [])
+        .filter((r: any) => r.teams)
+        .map((r: any) => ({
+          id: r.teams.id as string,
+          nickname: r.teams.nickname as string,
+          owner_user_id: r.teams.owner_user_id as string,
+        }));
+    },
+  });
+
+  // Rounds that actually have data — same "hide, don't disable-and-show"
+  // convention as the public RoundToggle component.
+  const availableRounds = useMemo(() => {
+    const set = new Set<Round>();
+    for (const row of leaderboardRows) {
+      if (row.position_r1 != null) set.add("r1");
+      if (row.position_r2 != null) set.add("r2");
+      if (row.position_r3 != null) set.add("r3");
+      if (row.position_r4 != null) set.add("r4");
+    }
+    return EXPORT_ROUNDS.filter((r) => set.has(r));
+  }, [leaderboardRows]);
+
+  const [selectedRound, setSelectedRound] = useState<Round | null>(null);
+  const activeRound: Round | null =
+    selectedRound && availableRounds.includes(selectedRound)
+      ? selectedRound
+      : (availableRounds[availableRounds.length - 1] ?? null);
+
+  // Scored via the shared computeRoundScores() — identical logic to the
+  // public leaderboard, including recomputed cumulative-stroke positions,
+  // WD/CUT handling, carry-forward, and best-5-of-7 SCR ranking.
+  const teamRowsForRound = useMemo<RoundTeamScore[]>(() => {
+    if (!activeRound || teamsForScoring.length === 0) return [];
+    const picksForScoring = picksRows
+      .filter((p) => p.teams && p.golfer_id)
+      .map((p) => ({ team_id: p.teams!.id, bucket: p.bucket, golfer_id: p.golfer_id as string }));
+    return computeRoundScores(teamsForScoring, picksForScoring, leaderboardRows, activeRound);
+  }, [activeRound, teamsForScoring, picksRows, leaderboardRows]);
+
+  function exportGolferPositions() {
+    if (!activeRound) return;
+    const roundCols = EXPORT_ROUNDS.slice(0, EXPORT_ROUNDS.indexOf(activeRound) + 1);
+    const headers = [
+      "Golfer",
+      "Country",
+      "Status",
+      ...roundCols.flatMap((r) => [`${r.toUpperCase()} Position`, `${r.toUpperCase()} Strokes`]),
+    ];
+    const lines = [headers.join(",")];
+    for (const row of leaderboardRows) {
+      const positions = [row.position_r1, row.position_r2, row.position_r3, row.position_r4];
+      const strokes = [row.round_1, row.round_2, row.round_3, row.round_4];
+      const status = isWithdrawn(row) ? "WD" : row.status_type === "STATUS_CUT" ? "CUT" : "Active";
+      const cells = [
+        `"${row.espn_display_name}"`,
+        row.country ?? "",
+        status,
+        ...roundCols.flatMap((_, i) => [positions[i] ?? "", strokes[i] ?? ""]),
+      ];
+      lines.push(cells.join(","));
+    }
+    downloadCsvFile(`golfer-positions-${activeRound}-${slugifyForFilename(tournamentName)}.csv`, lines);
+  }
+
+  function exportMajor7sScores() {
+    if (!activeRound) return;
+    const headers = [
+      "Pos",
+      "Team",
+      "Thru Cut",
+      `${activeRound.toUpperCase()} Points`,
+      ...[1, 2, 3, 4, 5, 6, 7].map((b) => `B${b}`),
+    ];
+    const lines = [headers.join(",")];
+    for (const team of teamRowsForRound) {
+      const picksByBucket = new Map(team.picks.map((p) => [p.bucket, p.golfer_name]));
+      const cells = [
+        team.is_tie ? `T${team.position}` : `${team.position}`,
+        `"${team.nickname}"`,
+        team.thru_cut ?? "",
+        team.total,
+        ...[1, 2, 3, 4, 5, 6, 7].map((b) => `"${picksByBucket.get(b) ?? "—"}"`),
+      ];
+      lines.push(cells.join(","));
+    }
+    downloadCsvFile(`major7s-scores-${activeRound}-${slugifyForFilename(tournamentName)}.csv`, lines);
+  }
+
+  return (
+    <Card className="border-2" style={{ borderColor: "var(--gold)" }}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Download className="size-4" />
+          End of Round Export
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Select a round to freeze a snapshot through that point. Re-running the same round later returns the
+          same file.
+        </p>
+
+        {availableRounds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No rounds have ESPN data yet — import a leaderboard first.
+          </p>
+        ) : (
+          <>
+            <div>
+              <Label className="text-xs uppercase tracking-widest">Round</Label>
+              <div className="flex gap-2 mt-2">
+                {EXPORT_ROUNDS.filter((r) => availableRounds.includes(r)).map((r) => {
+                  const active = activeRound === r;
+                  return (
+                    <Button
+                      key={r}
+                      type="button"
+                      size="sm"
+                      variant={active ? "default" : "outline"}
+                      onClick={() => setSelectedRound(r)}
+                    >
+                      {r.toUpperCase()}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button size="sm" variant="outline" onClick={exportGolferPositions} disabled={!activeRound}>
+                <Download className="size-3.5" /> Golfer positions through {activeRound?.toUpperCase()}
+              </Button>
+              <Button size="sm" variant="outline" onClick={exportMajor7sScores} disabled={!activeRound}>
+                <Download className="size-3.5" /> Major7s scores through {activeRound?.toUpperCase()}
+              </Button>
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">
+                Preview — top 10 of {teamRowsForRound.length} teams ({activeRound?.toUpperCase()})
+              </p>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pos</TableHead>
+                      <TableHead>Team</TableHead>
+                      <TableHead className="text-right">Thru Cut</TableHead>
+                      <TableHead className="text-right">Points</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {teamRowsForRound.slice(0, 10).map((team) => (
+                      <TableRow key={team.team_id}>
+                        <TableCell className="text-sm">
+                          {team.is_tie ? `T${team.position}` : team.position}
+                        </TableCell>
+                        <TableCell className="text-sm">{team.nickname}</TableCell>
+                        <TableCell className="text-right text-sm">{team.thru_cut ?? "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{team.total}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
