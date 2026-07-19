@@ -18,7 +18,7 @@
  */
 
 export interface LeaderboardRow {
-  golfer_id: string;
+  golfer_id: string | null; // null for an ESPN player not matched to golfers
   espn_display_name: string;
   position_numeric: number | null; // null = cut/withdrawn
   position_display: string;
