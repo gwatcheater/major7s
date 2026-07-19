@@ -40,6 +40,8 @@ import {
   Calendar as CalendarIcon,
   Save,
   MessageCircle,
+  ChevronDown,
+  X,
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
@@ -2351,6 +2353,150 @@ function generateLiveUpdateText(
   return sections.join("\n\n");
 }
 
+/**
+ * Team Focus report — a WhatsApp-ready update scoped to a hand-picked set
+ * of teams only, showing each team's picks and their today/overall
+ * performance. Complements generateLiveUpdateText (the league-wide report)
+ * rather than replacing it — same baseline (end of previous round), same
+ * golf-notation rules (no bare +N used as a count), same golferTodayLabel
+ * suffix convention.
+ */
+function teamFocusReport(
+  current: LiveSnapshot,
+  previous: LiveSnapshot | null,
+  selectedTeamIds: Set<string>,
+): string {
+  const currTies = buildTieSet(current.golfers.map((g) => g.position));
+  const prevTies = previous ? buildTieSet(previous.golfers.map((g) => g.position)) : new Set<number>();
+  const prevTeamsById = new Map((previous?.teams ?? []).map((t) => [t.team_id, t]));
+
+  const teams = current.teams
+    .filter((t) => selectedTeamIds.has(t.team_id))
+    .sort((a, b) => a.position - b.position);
+
+  const timeLabel = new Date(current.captured_at).toLocaleTimeString("en-GB", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (teams.length === 0) {
+    return `🔴 *TEAM FOCUS — ${timeLabel}*\n\n_No teams selected._`;
+  }
+
+  const blocks: string[] = [`🔴 *TEAM FOCUS — ${timeLabel}*`];
+
+  for (const team of teams) {
+    const prevTeam = prevTeamsById.get(team.team_id);
+    const moveNote = prevTeam && prevTeam.position !== team.position ? ` (was ${teamPosLabel(prevTeam)})` : "";
+
+    const pickLines = [...team.picks]
+      .sort((a, b) => a.points - b.points)
+      .map((p) => {
+        const todayLabel = golferTodayLabel(p.roundStatus, p.todayDetail, p.todayStrokes);
+        const statusNote = p.roundStatus === "CUT" ? " (CUT)" : p.roundStatus === "WD" ? " (WD)" : "";
+        const posLabel = golferPosLabel(p.points, currTies);
+        const prevPick = prevTeam?.picks.find((pp) => pp.golfer_id === p.golfer_id);
+        const golferMoveNote =
+          prevPick && prevPick.points !== p.points ? ` (was ${golferPosLabel(prevPick.points, prevTies)})` : "";
+        const countedNote = p.counted ? "" : " — dropped, not in best 5";
+        return `- ${p.golfer_name}${todayLabel}${statusNote}: ${posLabel}${golferMoveNote}${countedNote}`;
+      });
+
+    blocks.push(
+      `*${team.nickname}* — ${teamPosLabel(team)}${moveNote}, ${team.total} pts\n${pickLines.join("\n")}`,
+    );
+  }
+
+  return blocks.join("\n\n");
+}
+
+interface TeamOption {
+  id: string;
+  nickname: string;
+  positionLabel: string;
+  total: number;
+}
+
+/**
+ * Self-contained multi-select (Button + Input + checkboxes) rather than a
+ * shadcn Popover/Command combo — avoids depending on UI primitives that
+ * aren't confirmed present elsewhere in this file.
+ */
+function TeamMultiSelect({
+  options,
+  selected,
+  onChange,
+}: {
+  options: TeamOption[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = options.filter((o) => o.nickname.toLowerCase().includes(search.toLowerCase()));
+
+  function toggle(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next);
+  }
+
+  return (
+    <div className="relative">
+      <Button type="button" size="sm" variant="outline" onClick={() => setOpen((o) => !o)} className="gap-1">
+        <Users className="size-3.5" />
+        {selected.size === 0 ? "Select teams…" : `${selected.size} team${selected.size === 1 ? "" : "s"} selected`}
+        <ChevronDown className="size-3.5" />
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 w-80 max-h-96 rounded-md border bg-popover text-popover-foreground shadow-md flex flex-col">
+            <div className="p-2 border-b">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search teams…"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filtered.length === 0 && <p className="text-xs text-muted-foreground p-3">No teams match.</p>}
+              {filtered.map((o) => (
+                <label
+                  key={o.id}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(o.id)}
+                    onChange={() => toggle(o.id)}
+                    className="size-3.5"
+                  />
+                  <span className="flex-1 truncate">{o.nickname}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {o.positionLabel} · {o.total}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-between p-2 border-t">
+              <Button type="button" size="sm" variant="ghost" onClick={() => onChange(new Set())}>
+                Clear
+              </Button>
+              <Button type="button" size="sm" onClick={() => setOpen(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function InProgressUpdatePanel({
   tournamentId,
 }: {
@@ -2360,6 +2506,40 @@ function InProgressUpdatePanel({
   const [outputText, setOutputText] = useState("");
   const [busy, setBusy] = useState(false);
   const [baselineRound, setBaselineRound] = useState<Round | null>(null);
+
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
+  const [teamOutputText, setTeamOutputText] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamBaselineRound, setTeamBaselineRound] = useState<Round | null>(null);
+
+  // Live standings for the team picker (names, current position, current
+  // total) and the Top N presets. Recomputed only when the underlying
+  // scoring data changes — separate from the "current" snapshot built
+  // fresh at click time inside handleGenerate/handleGenerateTeamReport, so
+  // the picker stays responsive without needing a click first.
+  const liveStandings = useMemo(
+    () => buildLiveSnapshot(leaderboardRows, picksRows, teamsForScoring),
+    [leaderboardRows, picksRows, teamsForScoring],
+  );
+
+  const teamOptions: TeamOption[] = useMemo(() => {
+    if (!liveStandings) return [];
+    const tieSet = buildTieSet(liveStandings.teams.map((t) => t.position));
+    return [...liveStandings.teams]
+      .sort((a, b) => a.position - b.position)
+      .map((t) => ({
+        id: t.team_id,
+        nickname: t.nickname,
+        positionLabel: tieSet.has(t.position) ? `T${t.position}` : `${t.position}`,
+        total: t.total,
+      }));
+  }, [liveStandings]);
+
+  function applyTopNPreset(n: number) {
+    if (!liveStandings) return;
+    const ids = liveStandings.teams.filter((t) => t.position <= n).map((t) => t.team_id);
+    setSelectedTeamIds(new Set(ids));
+  }
 
   async function handleGenerate() {
     setBusy(true);
@@ -2391,6 +2571,38 @@ function InProgressUpdatePanel({
   function handleCopy() {
     if (!outputText) return;
     navigator.clipboard.writeText(outputText).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Clipboard copy failed"),
+    );
+  }
+
+  async function handleGenerateTeamReport() {
+    if (selectedTeamIds.size === 0) {
+      toast.error("Select at least one team first.");
+      return;
+    }
+    setTeamBusy(true);
+    try {
+      const current = buildLiveSnapshot(leaderboardRows, picksRows, teamsForScoring);
+      if (!current) {
+        toast.error("No live leaderboard data yet — import ESPN data first.");
+        return;
+      }
+      const baseline = buildEndOfPreviousRoundBaseline(leaderboardRows, picksRows, teamsForScoring, current.round);
+      const text = teamFocusReport(current, baseline, selectedTeamIds);
+      setTeamOutputText(text);
+      setTeamBaselineRound(baseline?.round ?? null);
+      toast.success("Team report generated");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to generate team report");
+    } finally {
+      setTeamBusy(false);
+    }
+  }
+
+  function handleCopyTeamReport() {
+    if (!teamOutputText) return;
+    navigator.clipboard.writeText(teamOutputText).then(
       () => toast.success("Copied to clipboard"),
       () => toast.error("Clipboard copy failed"),
     );
@@ -2433,6 +2645,83 @@ function InProgressUpdatePanel({
           placeholder="Click Generate Update to draft the WhatsApp update…"
           className="min-h-[280px] max-h-[480px] font-mono text-sm"
         />
+
+        <div className="border-t pt-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Team Focus report</p>
+            <p className="text-xs text-muted-foreground">
+              Pick specific teams for a golfer-by-golfer report scoped to just them — same end-of-previous-round
+              baseline as the update above.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button type="button" size="sm" variant="outline" onClick={() => applyTopNPreset(3)}>
+              Top 3
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyTopNPreset(5)}>
+              Top 5
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyTopNPreset(10)}>
+              Top 10
+            </Button>
+            <TeamMultiSelect options={teamOptions} selected={selectedTeamIds} onChange={setSelectedTeamIds} />
+            {selectedTeamIds.size > 0 && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTeamIds(new Set())}>
+                Clear ({selectedTeamIds.size})
+              </Button>
+            )}
+          </div>
+
+          {selectedTeamIds.size > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {teamOptions
+                .filter((o) => selectedTeamIds.has(o.id))
+                .map((o) => (
+                  <span
+                    key={o.id}
+                    className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+                  >
+                    {o.nickname}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = new Set(selectedTeamIds);
+                        next.delete(o.id);
+                        setSelectedTeamIds(next);
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" onClick={handleGenerateTeamReport} disabled={teamBusy || selectedTeamIds.size === 0}>
+              {teamBusy ? "Generating…" : "Generate Team Report"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleCopyTeamReport} disabled={!teamOutputText}>
+              <Copy className="size-3.5" /> Copy to Clipboard
+            </Button>
+            {teamOutputText && (
+              <span className="text-xs text-muted-foreground sm:ml-auto">
+                {teamBaselineRound
+                  ? `Comparing to: end of ${teamBaselineRound.toUpperCase()}`
+                  : "No previous round yet — baseline only"}
+              </span>
+            )}
+          </div>
+
+          <Textarea
+            readOnly
+            value={teamOutputText}
+            placeholder="Select teams above, then click Generate Team Report…"
+            className="min-h-[220px] max-h-[420px] font-mono text-sm"
+          />
+        </div>
       </CardContent>
     </Card>
   );
