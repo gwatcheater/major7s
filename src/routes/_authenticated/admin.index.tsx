@@ -1954,6 +1954,24 @@ function prizeLineSection(current: LiveSnapshot): string {
   return lines.join("\n");
 }
 
+const WOODEN_SPOON_POSITIONS = 3;
+
+/** Bottom 3 places — mirrors prizeLineSection's shape, counted from last. */
+function woodenSpoonSection(current: LiveSnapshot): string | null {
+  if (current.teams.length === 0) return null;
+  const distinctPositions = [...new Set(current.teams.map((t) => t.position))].sort((a, b) => b - a);
+  const bottomPositions = distinctPositions.slice(0, WOODEN_SPOON_POSITIONS);
+  if (bottomPositions.length === 0) return null;
+
+  const lines: string[] = [`🥄 *Wooden spoon watch (bottom ${WOODEN_SPOON_POSITIONS})*`];
+  for (const pos of bottomPositions) {
+    const teamsAtPos = current.teams.filter((t) => t.position === pos);
+    const label = teamsAtPos.length > 1 ? `T${pos}` : `${pos}`;
+    lines.push(`${label}: ${teamsAtPos.map((t) => `${t.nickname} (${t.total})`).join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
 function golferHeatCheckSection(
   current: LiveSnapshot,
   previous: LiveSnapshot,
@@ -2078,7 +2096,7 @@ function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScor
  * Three distinct buckets rather than one blended "still out" list:
  * - Locked in: nobody left to play — score for today is final regardless
  *   of what anyone else does.
- * - Multiple golfers live: 2+ picks actively STATUS_IN_PROGRESS right now —
+ * - Golfers still on course: 2+ picks actively STATUS_IN_PROGRESS right now —
  *   the volatile case, score could move at any moment.
  * - One to watch: exactly one golfer in progress (shown with live detail
  *   when today_detail is available), or only not-yet-started picks remain.
@@ -2140,7 +2158,7 @@ function lockedInSection(current: LiveSnapshot): string | null {
     sections.push(`🔒 *Locked in — score is final unless overtaken*\n\n${lockedLines.join("\n")}`);
   }
   if (multipleLiveLines.length > 0) {
-    sections.push(`🔴 *Multiple golfers live*\n\n${multipleLiveLines.join("\n")}`);
+    sections.push(`🔴 *Golfers still on course*\n\n${multipleLiveLines.join("\n")}`);
   }
   if (oneToWatchLines.length > 0) {
     sections.push(`⛳ *Still in control*\n\n${oneToWatchLines.join("\n")}`);
@@ -2235,6 +2253,8 @@ function generateLiveUpdateText(
     const locked = lockedInSection(current);
     if (locked) sections.push(locked);
     sections.push(prizeLineSection(current));
+    const spoon = woodenSpoonSection(current);
+    if (spoon) sections.push(spoon);
     return sections.join("\n\n");
   }
 
@@ -2256,6 +2276,9 @@ function generateLiveUpdateText(
   if (top10) sections.push(top10);
 
   sections.push(prizeLineSection(current));
+
+  const spoon = woodenSpoonSection(current);
+  if (spoon) sections.push(spoon);
 
   const heat = golferHeatCheckSection(current, previous, picksRows, currTies, prevTies);
   if (heat) sections.push(heat);
