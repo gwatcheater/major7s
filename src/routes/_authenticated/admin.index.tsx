@@ -1568,6 +1568,11 @@ interface SnapshotPick {
   // in progress AND the ingest was run after the today_thru/today_detail
   // migration + function patch. See LeaderboardRoundRow.
   todayDetail: string | null;
+  // Raw strokes for today's round (round_1..4, whichever matches the
+  // snapshot's round), used for the FINISHED case — "(62)", never a
+  // score-to-par figure. Null while in progress/not started (the actual
+  // round_N column isn't populated by ESPN until the round is complete).
+  todayStrokes: number | null;
 }
 
 interface SnapshotTeam {
@@ -1586,6 +1591,7 @@ interface SnapshotGolfer {
   position: number;
   roundStatus: GolferRoundStatus;
   todayDetail: string | null;
+  todayStrokes: number | null;
 }
 
 interface LiveSnapshot {
@@ -1631,12 +1637,33 @@ function buildLiveSnapshot(
   const inProgressRound = getInProgressRound(leaderboardRows);
   const posMap = buildRoundPositionMap(leaderboardRows, round, inProgressRound);
 
+  // round_1..4 raw stroke total for whichever round this snapshot covers —
+  // this is a real stroke count ("62"), only populated by ESPN once that
+  // round is finished. Used for the FINISHED-golfer "(62)" suffix; never
+  // used for IN_PROGRESS golfers, who show live score-to-par instead.
+  const strokesForRound = (row: LeaderboardRoundRow): number | null => {
+    switch (round) {
+      case "r1":
+        return row.round_1;
+      case "r2":
+        return row.round_2;
+      case "r3":
+        return row.round_3;
+      case "r4":
+        return row.round_4;
+      default:
+        return null;
+    }
+  };
+
   const statusByGolferId = new Map<string, GolferRoundStatus>();
   const detailByGolferId = new Map<string, string | null>();
+  const strokesByGolferId = new Map<string, number | null>();
   for (const row of leaderboardRows) {
     if (row.golfer_id) {
       statusByGolferId.set(row.golfer_id, golferStatusFromRow(row));
       detailByGolferId.set(row.golfer_id, row.today_detail);
+      strokesByGolferId.set(row.golfer_id, strokesForRound(row));
     }
   }
 
@@ -1661,6 +1688,7 @@ function buildLiveSnapshot(
       counted: p.counted,
       roundStatus: statusByGolferId.get(p.golfer_id) ?? "NOT_STARTED",
       todayDetail: detailByGolferId.get(p.golfer_id) ?? null,
+      todayStrokes: strokesByGolferId.get(p.golfer_id) ?? null,
     })),
   }));
 
@@ -1675,6 +1703,7 @@ function buildLiveSnapshot(
       position: pos,
       roundStatus: golferStatusFromRow(row),
       todayDetail: row.today_detail,
+      todayStrokes: strokesForRound(row),
     });
   }
 
@@ -1734,17 +1763,35 @@ function leaderChangeSection(
   for (const team of currLeaders) {
     const prevTeam = previous.teams.find((t) => t.team_id === team.team_id);
     if (!prevTeam) continue;
-    const swings: { name: string; delta: number; pos: number; prevPos: number }[] = [];
+    const swings: {
+      name: string;
+      delta: number;
+      pos: number;
+      prevPos: number;
+      roundStatus: GolferRoundStatus;
+      todayDetail: string | null;
+      todayStrokes: number | null;
+    }[] = [];
     for (const pick of team.picks) {
       if (!pick.counted) continue;
       const prevPick = prevTeam.picks.find((p) => p.golfer_id === pick.golfer_id);
       if (!prevPick) continue;
       const delta = prevPick.points - pick.points; // positive = climbed
-      if (delta > 0) swings.push({ name: pick.golfer_name, delta, pos: pick.points, prevPos: prevPick.points });
+      if (delta > 0)
+        swings.push({
+          name: pick.golfer_name,
+          delta,
+          pos: pick.points,
+          prevPos: prevPick.points,
+          roundStatus: pick.roundStatus,
+          todayDetail: pick.todayDetail,
+          todayStrokes: pick.todayStrokes,
+        });
     }
     swings.sort((a, b) => b.delta - a.delta);
     for (const s of swings.slice(0, 2)) {
-      drivers.push(`${s.name} now ${golferPosLabel(s.pos, currTies)} (was ${golferPosLabel(s.prevPos, prevTies)})`);
+      const todayLabel = golferTodayLabel(s.roundStatus, s.todayDetail, s.todayStrokes);
+      drivers.push(`${s.name}${todayLabel} now ${golferPosLabel(s.pos, currTies)} (was ${golferPosLabel(s.prevPos, prevTies)})`);
     }
   }
 
@@ -1770,16 +1817,35 @@ function pickDriverLine(
   currTies: Set<number>,
   prevTies: Set<number>,
 ): string {
-  const swings: { name: string; delta: number; pos: number; prevPos: number }[] = [];
+  const swings: {
+    name: string;
+    delta: number;
+    pos: number;
+    prevPos: number;
+    roundStatus: GolferRoundStatus;
+    todayDetail: string | null;
+    todayStrokes: number | null;
+  }[] = [];
   for (const pick of team.picks) {
     const prevPick = prevTeam.picks.find((p) => p.golfer_id === pick.golfer_id);
     if (!prevPick) continue;
     const delta = prevPick.points - pick.points; // positive = climbed
-    if (delta !== 0) swings.push({ name: pick.golfer_name, delta, pos: pick.points, prevPos: prevPick.points });
+    if (delta !== 0)
+      swings.push({
+        name: pick.golfer_name,
+        delta,
+        pos: pick.points,
+        prevPos: prevPick.points,
+        roundStatus: pick.roundStatus,
+        todayDetail: pick.todayDetail,
+        todayStrokes: pick.todayStrokes,
+      });
   }
   swings.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   const top = swings[0];
-  return top ? `${top.name} now ${golferPosLabel(top.pos, currTies)} (was ${golferPosLabel(top.prevPos, prevTies)})` : "";
+  if (!top) return "";
+  const todayLabel = golferTodayLabel(top.roundStatus, top.todayDetail, top.todayStrokes);
+  return `${top.name}${todayLabel} now ${golferPosLabel(top.pos, currTies)} (was ${golferPosLabel(top.prevPos, prevTies)})`;
 }
 
 function riserFallerSections(
@@ -1896,13 +1962,31 @@ function golferHeatCheckSection(
   prevTies: Set<number>,
 ): string | null {
   const prevByKey = new Map(previous.golfers.map((g) => [g.key, g]));
-  let best: { name: string; delta: number; pos: number; prevPos: number; key: string } | null = null;
+  let best: {
+    name: string;
+    delta: number;
+    pos: number;
+    prevPos: number;
+    key: string;
+    roundStatus: GolferRoundStatus;
+    todayDetail: string | null;
+    todayStrokes: number | null;
+  } | null = null;
   for (const g of current.golfers) {
     const prev = prevByKey.get(g.key);
     if (!prev) continue;
     const delta = prev.position - g.position; // positive = climbed
     if (delta > 0 && (!best || delta > best.delta)) {
-      best = { name: g.name, delta, pos: g.position, prevPos: prev.position, key: g.key };
+      best = {
+        name: g.name,
+        delta,
+        pos: g.position,
+        prevPos: prev.position,
+        key: g.key,
+        roundStatus: g.roundStatus,
+        todayDetail: g.todayDetail,
+        todayStrokes: g.todayStrokes,
+      };
     }
   }
   if (!best) return null;
@@ -1911,7 +1995,8 @@ function golferHeatCheckSection(
     picksRows.filter((p) => p.golfer_id === best!.key && p.teams).map((p) => p.teams!.id),
   ).size;
 
-  return `🔥 *Golfer heat check:* ${best.name} up to ${golferPosLabel(best.pos, currTies)} from ${golferPosLabel(best.prevPos, prevTies)} — in ${teamCount} Major7s team${teamCount === 1 ? "" : "s"}.`;
+  const todayLabel = golferTodayLabel(best.roundStatus, best.todayDetail, best.todayStrokes);
+  return `🔥 *Golfer heat check:* ${best.name}${todayLabel} up to ${golferPosLabel(best.pos, currTies)} from ${golferPosLabel(best.prevPos, prevTies)} — in ${teamCount} Major7s team${teamCount === 1 ? "" : "s"}.`;
 }
 
 /**
@@ -1930,6 +2015,30 @@ function parseTodayDetail(raw: string | null | undefined): { label: string; thru
 function formatTodayDetail(raw: string | null | undefined): string | null {
   const parsed = parseTodayDetail(raw);
   return parsed ? `currently ${parsed.label} thru ${parsed.thru}` : null;
+}
+
+/**
+ * Today's-round performance suffix for whenever a golfer is named in the
+ * update text, e.g. "Si Woo Kim (-1 thru 2)" while live, or
+ * "Si Woo Kim (62)" once finished. Deliberately raw strokes when finished
+ * — not score-to-par — per the request that a bare "(-3)" reads as scoring
+ * notation and gets confused with position-movement figures elsewhere in
+ * the same message. Empty string (no suffix) for NOT_STARTED/CUT/WD, or
+ * when the underlying data isn't available yet.
+ */
+function golferTodayLabel(
+  roundStatus: GolferRoundStatus,
+  todayDetail: string | null,
+  todayStrokes: number | null,
+): string {
+  if (roundStatus === "IN_PROGRESS") {
+    const parsed = parseTodayDetail(todayDetail);
+    return parsed ? ` (${parsed.label} thru ${parsed.thru})` : "";
+  }
+  if (roundStatus === "FINISHED") {
+    return todayStrokes != null ? ` (${todayStrokes})` : "";
+  }
+  return "";
 }
 
 /**
@@ -2049,13 +2158,31 @@ function golferMoversSection(
   prevTies: Set<number>,
 ): string | null {
   const prevByKey = new Map(previous.golfers.map((g) => [g.key, g]));
-  const movers: { name: string; delta: number; pos: number; prevPos: number; key: string }[] = [];
+  const movers: {
+    name: string;
+    delta: number;
+    pos: number;
+    prevPos: number;
+    key: string;
+    roundStatus: GolferRoundStatus;
+    todayDetail: string | null;
+    todayStrokes: number | null;
+  }[] = [];
   for (const g of current.golfers) {
     const prev = prevByKey.get(g.key);
     if (!prev) continue;
     const delta = prev.position - g.position; // positive = climbed, negative = dropped
     if (Math.abs(delta) >= GOLFER_MOVER_THRESHOLD) {
-      movers.push({ name: g.name, delta, pos: g.position, prevPos: prev.position, key: g.key });
+      movers.push({
+        name: g.name,
+        delta,
+        pos: g.position,
+        prevPos: prev.position,
+        key: g.key,
+        roundStatus: g.roundStatus,
+        todayDetail: g.todayDetail,
+        todayStrokes: g.todayStrokes,
+      });
     }
   }
   if (movers.length === 0) return null;
@@ -2073,7 +2200,8 @@ function golferMoversSection(
         : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
           ? `owned by ${owners.length} teams`
           : `owned by ${owners.join(", ")}`;
-    return `- ${m.name}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} — ${ownerText}`;
+    const todayLabel = golferTodayLabel(m.roundStatus, m.todayDetail, m.todayStrokes);
+    return `- ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} — ${ownerText}`;
   });
 
   return `⛳ *Golfer movers*\n\n${lines.join("\n")}`;
