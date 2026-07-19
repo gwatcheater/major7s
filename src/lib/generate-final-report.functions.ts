@@ -289,7 +289,8 @@ export const generateFinalReport = createServerFn({ method: "POST" })
               "golfer_id, espn_display_name, position_numeric, position_display, status_type, score_to_par, withdrew_after_round, rounds_completed",
             )
             .eq("tournament_id", data.tournamentId)
-            .range(from, to),
+            .range(from, to)
+            .returns<LeaderboardRow[]>(),
         );
 
         const scores = await fetchAll<ScoreRow>((from, to) =>
