@@ -500,6 +500,15 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
           ? (roundsCompleted > 0 ? roundsCompleted : null)
           : null;
 
+      // Live in-round detail, only meaningful while a round is actually in
+      // progress — ESPN sets these on status itself (not linescores), and
+      // they go stale/absent once the round finishes. Used by the admin
+      // "In-Progress Update" panel's Still In Control section (e.g. "Sam
+      // Burns still out, currently -10 thru 14"); nothing else reads these.
+      const todayThru: number | null = typeof c?.status?.thru === "number" ? c.status.thru : null;
+      const todayDetail: string | null =
+        typeof c?.status?.todayDetail === "string" ? c.status.todayDetail : null;
+
       const golferId = golferByName.get(normalizeName(displayName)) ?? null;
       if (golferId) matched++;
       else unmatchedNames.push(displayName);
@@ -529,6 +538,8 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
         position_r4: positionsByRound[4],
         rounds_completed: roundsCompleted,
         withdrew_after_round: withdrewAfterRound,
+        today_thru: todayThru,
+        today_detail: todayDetail,
         imported_at: new Date().toISOString(),
       });
     }
