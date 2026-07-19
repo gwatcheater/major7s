@@ -430,24 +430,6 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     // tournament_scores becomes "current snapshot" rather than "final results".
     // That's intentional — for a live view we want the snapshot to be live.
 
-    // Course par — it's here in the payload, just not nested under the
-    // competitors (checked the raw ESPN response directly): event.courses[0]
-    // .shotsToPar, e.g. 70 for Royal Birkdale. Persisted onto tournaments so
-    // the admin panel's "Best scores today" can compute finished golfers'
-    // score-to-par (round strokes - par) without anyone typing it in by
-    // hand — ESPN's per-competitor status.todayDetail only exists while a
-    // golfer's round is still in progress, so par is the only way to score
-    // a *finished* golfer's round for "today".
-    const coursePar: number | null =
-      typeof event?.courses?.[0]?.shotsToPar === "number" ? event.courses[0].shotsToPar : null;
-    if (coursePar != null) {
-      const { error: parErr } = await supabaseAdmin
-        .from("tournaments")
-        .update({ course_par: coursePar })
-        .eq("id", data.tournament_id);
-      if (parErr) throw new Error(parErr.message);
-    }
-
     // Local golfers for name match
     const { data: golfers, error: gErr } = await supabaseAdmin
       .from("golfers")
