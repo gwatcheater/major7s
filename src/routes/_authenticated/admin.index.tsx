@@ -2061,10 +2061,10 @@ function todayLowScoresSection(current: LiveSnapshot, picksRows: PicksRowForScor
     const owners = [...new Set(picksRows.filter((p) => p.golfer_id === g.key && p.teams).map((p) => p.teams!.nickname))];
     const ownerText =
       owners.length === 0
-        ? "not owned"
+        ? "not picked"
         : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
-          ? `owned by ${owners.length} teams`
-          : `owned by ${owners.join(", ")}`;
+          ? `picked by ${owners.length} teams`
+          : `picked by ${owners.join(", ")}`;
     return `- ${g.name}: ${detail.label} thru ${detail.thru} — ${ownerText}`;
   });
 
@@ -2105,17 +2105,25 @@ function lockedInSection(current: LiveSnapshot): string | null {
     }
 
     if (inProgress.length >= 2) {
-      const names = inProgress.map((p) => {
+      // Named golfers capped at 2 for skimmability; any remainder is called
+      // out in plain English ("Plus N more golfers still on course") —
+      // never a bare "+N", which reads as a golf score (over/under par) in
+      // this context, not a count.
+      const named = inProgress.slice(0, 2).map((p) => {
         const detail = parseTodayDetail(p.todayDetail);
         return detail ? `${p.golfer_name} (${detail.label} thru ${detail.thru})` : p.golfer_name;
       });
-      multipleLiveLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress.length} live: ${names.join(", ")}`);
+      const rest = inProgress.length - named.length;
+      const restNote = rest > 0 ? `. Plus ${rest} more golfer${rest === 1 ? "" : "s"} still on course` : "";
+      multipleLiveLines.push(
+        `- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress.length} live: ${named.join(", ")}${restNote}`,
+      );
       continue;
     }
 
     if (inProgress.length === 1) {
       const detail = formatTodayDetail(inProgress[0].todayDetail);
-      const teeNote = notStarted.length > 0 ? `, ${notStarted.length} more to tee off` : "";
+      const teeNote = notStarted.length > 0 ? `, plus ${notStarted.length} more golfer${notStarted.length === 1 ? "" : "s"} yet to tee off` : "";
       oneToWatchLines.push(
         `- ${team.nickname} (${teamPosLabel(team)}) — ${inProgress[0].golfer_name} still out${detail ? `, ${detail}` : ""}${teeNote}`,
       );
@@ -2196,10 +2204,10 @@ function golferMoversSection(
     ];
     const ownerText =
       owners.length === 0
-        ? "not currently owned"
+        ? "not currently picked"
         : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
-          ? `owned by ${owners.length} teams`
-          : `owned by ${owners.join(", ")}`;
+          ? `picked by ${owners.length} teams`
+          : `picked by ${owners.join(", ")}`;
     const todayLabel = golferTodayLabel(m.roundStatus, m.todayDetail, m.todayStrokes);
     return `- ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} — ${ownerText}`;
   });
