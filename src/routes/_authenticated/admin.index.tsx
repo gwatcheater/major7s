@@ -1625,17 +1625,30 @@ function teamPosLabel(team: SnapshotTeam): string {
   return team.is_tie ? `T${team.position}` : ordinal(team.position);
 }
 
-function buildLiveSnapshot(
+/**
+ * Builds a scoring snapshot for a specific round. Two modes:
+ * - live: true  — "right now" state for whichever round is currently in
+ *   progress (or the latest round with any data). Golfer status/today
+ *   detail reflect actual live ESPN state (IN_PROGRESS, live score, etc).
+ * - live: false — a frozen "end of round" baseline for a round that has
+ *   already completed. Every golfer is treated as FINISHED for that round
+ *   (todayDetail null, since ESPN clears todayDetail once a round ends;
+ *   todayStrokes carries that round's actual stroke count).
+ *
+ * Both modes reuse the same computeRoundScores/buildRoundPositionMap the
+ * CSV export uses, so a frozen-round baseline here always matches what
+ * "Major7s scores through R{n}" would export for that round.
+ */
+function buildSnapshotForRound(
   leaderboardRows: LeaderboardRoundRow[],
   picksRows: PicksRowForScoring[],
   teamsForScoring: TeamForScoring[],
+  round: Round,
+  opts: { live: boolean },
 ): LiveSnapshot | null {
-  const availableRounds = computeAvailableRounds(leaderboardRows);
-  const round = availableRounds[availableRounds.length - 1];
-  if (!round) return null;
-
   const inProgressRound = getInProgressRound(leaderboardRows);
   const posMap = buildRoundPositionMap(leaderboardRows, round, inProgressRound);
+  if (posMap.size === 0) return null;
 
   // round_1..4 raw stroke total for whichever round this snapshot covers —
   // this is a real stroke count ("62"), only populated by ESPN once that
@@ -1661,8 +1674,8 @@ function buildLiveSnapshot(
   const strokesByGolferId = new Map<string, number | null>();
   for (const row of leaderboardRows) {
     if (row.golfer_id) {
-      statusByGolferId.set(row.golfer_id, golferStatusFromRow(row));
-      detailByGolferId.set(row.golfer_id, row.today_detail);
+      statusByGolferId.set(row.golfer_id, opts.live ? golferStatusFromRow(row) : "FINISHED");
+      detailByGolferId.set(row.golfer_id, opts.live ? row.today_detail : null);
       strokesByGolferId.set(row.golfer_id, strokesForRound(row));
     }
   }
@@ -1701,8 +1714,8 @@ function buildLiveSnapshot(
       key,
       name: row.espn_display_name,
       position: pos,
-      roundStatus: golferStatusFromRow(row),
-      todayDetail: row.today_detail,
+      roundStatus: opts.live ? golferStatusFromRow(row) : "FINISHED",
+      todayDetail: opts.live ? row.today_detail : null,
       todayStrokes: strokesForRound(row),
     });
   }
@@ -1710,6 +1723,49 @@ function buildLiveSnapshot(
   return { captured_at: new Date().toISOString(), round, teams, golfers };
 }
 
+function buildLiveSnapshot(
+  leaderboardRows: LeaderboardRoundRow[],
+  picksRows: PicksRowForScoring[],
+  teamsForScoring: TeamForScoring[],
+): LiveSnapshot | null {
+  const availableRounds = computeAvailableRounds(leaderboardRows);
+  const round = availableRounds[availableRounds.length - 1];
+  if (!round) return null;
+  return buildSnapshotForRound(leaderboardRows, picksRows, teamsForScoring, round, { live: true });
+}
+
+const ROUND_SEQUENCE: Round[] = ["r1", "r2", "r3", "r4"];
+
+/** The round immediately before the given one, or null for r1. */
+function previousRound(round: Round): Round | null {
+  const idx = ROUND_SEQUENCE.indexOf(round);
+  return idx > 0 ? ROUND_SEQUENCE[idx - 1] : null;
+}
+
+/**
+ * The comparison baseline for the In-Progress Update: end of the previous
+ * round, not "whenever Generate Update was last clicked." A rolling
+ * click-to-click diff loses context every time you skip a click (e.g. one
+ * update mid-morning, the next mid-afternoon) — comparing against a fixed
+ * end-of-previous-round baseline means every run during a round shows the
+ * full picture of what's happened in that round so far, however many times
+ * you've generated an update. Null for round 1 (no previous round to
+ * compare against — falls back to the baseline-only output).
+ */
+function buildEndOfPreviousRoundBaseline(
+  leaderboardRows: LeaderboardRoundRow[],
+  picksRows: PicksRowForScoring[],
+  teamsForScoring: TeamForScoring[],
+  currentRound: Round,
+): LiveSnapshot | null {
+  const prev = previousRound(currentRound);
+  if (!prev) return null;
+  return buildSnapshotForRound(leaderboardRows, picksRows, teamsForScoring, prev, { live: false });
+}
+
+// No longer used to pick the diff baseline (that's buildEndOfPreviousRoundBaseline
+// now — see above). Kept for a possible future "view snapshot history" panel, since
+// saveLiveSnapshot still appends a row to tournament_live_snapshots on every run.
 async function fetchLatestLiveSnapshot(tournamentId: string): Promise<LiveSnapshot | null> {
   const { data, error } = await (supabase as any)
     .from("tournament_live_snapshots")
@@ -2303,11 +2359,7 @@ function InProgressUpdatePanel({
   const { leaderboardRows, picksRows, teamsForScoring } = useTournamentScoringData(tournamentId);
   const [outputText, setOutputText] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const { data: previousSnapshot, refetch: refetchPreviousSnapshot } = useQuery({
-    queryKey: ["live-snapshot-latest", tournamentId],
-    queryFn: () => fetchLatestLiveSnapshot(tournamentId),
-  });
+  const [baselineRound, setBaselineRound] = useState<Round | null>(null);
 
   async function handleGenerate() {
     setBusy(true);
@@ -2317,11 +2369,18 @@ function InProgressUpdatePanel({
         toast.error("No live leaderboard data yet — import ESPN data first.");
         return;
       }
-      const text = generateLiveUpdateText(current, previousSnapshot ?? null, picksRows);
+      // Baseline is always end of the previous round, not "whenever this
+      // was last clicked" — a rolling click-to-click diff loses context if
+      // you skip a run, so every generate during a round compares against
+      // the same fixed start-of-round point.
+      const baseline = buildEndOfPreviousRoundBaseline(leaderboardRows, picksRows, teamsForScoring, current.round);
+      const text = generateLiveUpdateText(current, baseline, picksRows);
       setOutputText(text);
+      setBaselineRound(baseline?.round ?? null);
+      // Still logged for history/audit, even though it's no longer read
+      // back as the comparison baseline.
       await saveLiveSnapshot(tournamentId, current);
-      await refetchPreviousSnapshot();
-      toast.success("Update generated — baseline saved for next time");
+      toast.success("Update generated");
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to generate update");
     } finally {
@@ -2347,8 +2406,9 @@ function InProgressUpdatePanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Compares the current live leaderboard against the last saved snapshot and drafts a WhatsApp-ready
-          update. Each run saves a new baseline for next time.
+          Compares the current live leaderboard against the end of the previous round and drafts a WhatsApp-ready
+          update — so every run shows the full picture of this round so far, no matter how many times you've
+          already generated one today.
         </p>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -2358,9 +2418,11 @@ function InProgressUpdatePanel({
           <Button size="sm" variant="outline" onClick={handleCopy} disabled={!outputText}>
             <Copy className="size-3.5" /> Copy to Clipboard
           </Button>
-          {previousSnapshot && (
+          {outputText && (
             <span className="text-xs text-muted-foreground sm:ml-auto">
-              Last baseline: {new Date(previousSnapshot.captured_at).toLocaleString("en-GB")}
+              {baselineRound
+                ? `Comparing to: end of ${baselineRound.toUpperCase()}`
+                : "No previous round yet — baseline only"}
             </span>
           )}
         </div>
