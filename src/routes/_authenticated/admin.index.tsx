@@ -47,7 +47,9 @@ import { BulkPickUpload } from "@/components/admin/bulk-pick-upload";
 import { UsersDirectoryTab } from "@/components/admin/users-directory-tab";
 import { bulkCreateApprovedUsers } from "@/lib/admin-users.functions";
 import {
+  buildRoundPositionMap,
   computeRoundScores,
+  getInProgressRound,
   isWithdrawn,
   type Round,
   type RoundTeamScore,
@@ -559,7 +561,9 @@ function TournamentTab() {
                   bucketSizes={normalizeBucketSizes((selected as any).bucket_sizes)}
                 />
               </CollapsibleBlock>
-              <BulkPickUpload key={`bulk-${selected.id}`} tournamentId={selected.id} />
+              <CollapsibleBlock label="Bulk Picks Upload (CSV)" icon={<Upload className="size-4" />}>
+                <BulkPickUpload key={`bulk-${selected.id}`} tournamentId={selected.id} />
+              </CollapsibleBlock>
 
 
             </div>
@@ -1336,6 +1340,20 @@ function EndOfRoundExportPanel({
   function exportGolferPositions() {
     if (!activeRound) return;
     const roundCols = EXPORT_ROUNDS.slice(0, EXPORT_ROUNDS.indexOf(activeRound) + 1);
+
+    // Recomputed SCR positions, NOT the raw position_rN snapshot columns.
+    // ESPN's position_rN is assigned sequentially as each golfer finishes
+    // and does not get corrected for ties once the round completes — two
+    // golfers on the same score can show different position_rN values.
+    // buildRoundPositionMap() recomputes true Standard Competition Ranking
+    // from cumulative strokes (same function the Major7s scoring above
+    // already uses), so this file and the scoring file agree with each
+    // other and with reality.
+    const inProgressRound = getInProgressRound(leaderboardRows);
+    const posMapsByRound = new Map(
+      roundCols.map((r) => [r, buildRoundPositionMap(leaderboardRows, r, inProgressRound)]),
+    );
+
     const headers = [
       "Golfer",
       "Country",
@@ -1344,14 +1362,16 @@ function EndOfRoundExportPanel({
     ];
     const lines = [headers.join(",")];
     for (const row of leaderboardRows) {
-      const positions = [row.position_r1, row.position_r2, row.position_r3, row.position_r4];
       const strokes = [row.round_1, row.round_2, row.round_3, row.round_4];
       const status = isWithdrawn(row) ? "WD" : row.status_type === "STATUS_CUT" ? "CUT" : "Active";
       const cells = [
         `"${row.espn_display_name}"`,
         row.country ?? "",
         status,
-        ...roundCols.flatMap((_, i) => [positions[i] ?? "", strokes[i] ?? ""]),
+        ...roundCols.flatMap((r, i) => {
+          const pos = row.golfer_id ? (posMapsByRound.get(r)!.get(row.golfer_id) ?? "") : "";
+          return [pos, strokes[i] ?? ""];
+        }),
       ];
       lines.push(cells.join(","));
     }
