@@ -24,6 +24,7 @@ import { buildStatsPack } from "@/lib/stats/buildStatsPack";
 import type { Golfer, Pick, Team } from "@/lib/stats/types";
 import { generateReport } from "@/lib/generate-report.functions";
 import { generateFinalReport } from "@/lib/generate-final-report.functions";
+import { generateRoundReport } from "@/lib/generate-round-report.functions";
 
 // Gate is inherited from the parent admin.tsx beforeLoad. No new auth here.
 export const Route = createFileRoute("/_authenticated/admin/blog-writer")({
@@ -81,6 +82,7 @@ function BlogWriterPage() {
 
   const callGenerate = useServerFn(generateReport);
   const callGenerateFinal = useServerFn(generateFinalReport);
+  const callGenerateRound = useServerFn(generateRoundReport);
 
   // ---- tournaments that actually have picks --------------------------
   const tournamentsQ = useQuery({
@@ -186,15 +188,23 @@ function BlogWriterPage() {
     : true;
   const picksClosedBlocked = reportType === "picks_closed" && !deadlinePassed;
   const finalBlocked = reportType === "final" && roundsCompleted < 4;
-  const generateBlocked = picksClosedBlocked || finalBlocked;
+  // A round report needs that round scored: r1 -> 1, r2 -> 2, r3 -> 3.
+  const roundNeeded = reportType === "r1" ? 1 : reportType === "r2" ? 2 : reportType === "r3" ? 3 : 0;
+  const roundBlocked = roundNeeded > 0 && roundsCompleted < roundNeeded;
+  const generateBlocked = picksClosedBlocked || finalBlocked || roundBlocked;
+
+  const isRound = reportType === "r1" || reportType === "r2" || reportType === "r3";
 
   async function onGenerate() {
     if (!activeId) return;
     if (body.trim() && !confirm("This will overwrite the current draft. Continue?")) return;
     setGenerating(true);
     try {
-      const res =
-        reportType === "final"
+      const res = isRound
+        ? await callGenerateRound({
+            data: { tournamentId: activeId, round: reportType as "r1" | "r2" | "r3", colourNotes },
+          })
+        : reportType === "final"
           ? await callGenerateFinal({ data: { tournamentId: activeId, colourNotes } })
           : await callGenerate({ data: { tournamentId: activeId, reportType, colourNotes } });
       if (!res.ok) {
@@ -298,12 +308,11 @@ function BlogWriterPage() {
             </label>
             <div className="flex flex-wrap gap-1.5">
               {REPORTS.map((r) => {
-                // picks_closed always available; final unlocks once R4 is in;
-                // R1-R3 round reports are built in a separate workstream.
-                const locked =
-                  r.key === "final"
-                    ? roundsCompleted < 4
-                    : r.key !== "picks_closed";
+                // picks_closed always available. r1/r2/r3 unlock once that round
+                // is scored; final unlocks once all four rounds are in.
+                const needed =
+                  r.key === "r1" ? 1 : r.key === "r2" ? 2 : r.key === "r3" ? 3 : r.key === "final" ? 4 : 0;
+                const locked = r.key === "picks_closed" ? false : roundsCompleted < needed;
                 return (
                   <button
                     key={r.key}
@@ -490,6 +499,12 @@ function BlogWriterPage() {
             <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--alert)" }}>
               <AlertTriangle className="w-3.5 h-3.5" />
               Final needs all four rounds scored · currently {roundsCompleted} complete
+            </span>
+          )}
+          {roundBlocked && (
+            <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--alert)" }}>
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Round {roundNeeded} not scored yet · currently {roundsCompleted} complete · import the leaderboard
             </span>
           )}
         </div>
