@@ -1935,7 +1935,11 @@ function riserFallerSections(
       ? `📈 *Biggest risers*\n\n${risers
           .map((r) => {
             const driver = pickDriverLine(r.team, r.prevTeam, currTies, prevTies);
-            return `- ${r.team.nickname}: ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` - ${driver}` : ""}`;
+            const posNote =
+              r.team.position !== r.prevTeam.position
+                ? `${teamPosLabel(r.team)} (was ${teamPosLabel(r.prevTeam)})`
+                : teamPosLabel(r.team);
+            return `- ${r.team.nickname}: ${posNote}, ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` - ${driver}` : ""}`;
           })
           .join("\n")}`
       : null;
@@ -1945,7 +1949,11 @@ function riserFallerSections(
       ? `📉 *Biggest fallers*\n\n${fallers
           .map((f) => {
             const driver = pickDriverLine(f.team, f.prevTeam, currTies, prevTies);
-            return `- ${f.team.nickname}: ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` - ${driver}` : ""}`;
+            const posNote =
+              f.team.position !== f.prevTeam.position
+                ? `${teamPosLabel(f.team)} (was ${teamPosLabel(f.prevTeam)})`
+                : teamPosLabel(f.team);
+            return `- ${f.team.nickname}: ${posNote}, ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` - ${driver}` : ""}`;
           })
           .join("\n")}`
       : null;
@@ -2358,15 +2366,15 @@ function generateLiveUpdateText(
 
   sections.push(scoreToBeatSection(current));
 
-  const { risers, fallers } = riserFallerSections(current, previous, currTies, prevTies);
-  if (risers) sections.push(risers);
-  if (fallers) sections.push(fallers);
-
   const top5 = topNWatchSection(current, previous, 5, "Top 5 watch");
   if (top5) sections.push(top5);
 
   const top10 = topNWatchSection(current, previous, 10, "Top 10 watch");
   if (top10) sections.push(top10);
+
+  const { risers, fallers } = riserFallerSections(current, previous, currTies, prevTies);
+  if (risers) sections.push(risers);
+  if (fallers) sections.push(fallers);
 
   sections.push(prizeLineSection(current));
 
