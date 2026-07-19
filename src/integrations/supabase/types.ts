@@ -600,6 +600,8 @@ export type Database = {
           score_to_par: number | null
           status_short_detail: string | null
           status_type: string | null
+          today_detail: string | null
+          today_thru: number | null
           total_strokes: number | null
           tournament_id: string
           withdrew_after_round: number | null
@@ -626,6 +628,8 @@ export type Database = {
           score_to_par?: number | null
           status_short_detail?: string | null
           status_type?: string | null
+          today_detail?: string | null
+          today_thru?: number | null
           total_strokes?: number | null
           tournament_id: string
           withdrew_after_round?: number | null
@@ -652,6 +656,8 @@ export type Database = {
           score_to_par?: number | null
           status_short_detail?: string | null
           status_type?: string | null
+          today_detail?: string | null
+          today_thru?: number | null
           total_strokes?: number | null
           tournament_id?: string
           withdrew_after_round?: number | null
@@ -666,6 +672,41 @@ export type Database = {
           },
           {
             foreignKeyName: "tournament_leaderboard_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_live_snapshots: {
+        Row: {
+          captured_at: string
+          created_at: string
+          id: string
+          round: string
+          snapshot: Json
+          tournament_id: string
+        }
+        Insert: {
+          captured_at?: string
+          created_at?: string
+          id?: string
+          round: string
+          snapshot: Json
+          tournament_id: string
+        }
+        Update: {
+          captured_at?: string
+          created_at?: string
+          id?: string
+          round?: string
+          snapshot?: Json
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_live_snapshots_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
@@ -1021,6 +1062,10 @@ export type Database = {
       log_impersonation: {
         Args: { _event: string; _target: string }
         Returns: undefined
+      }
+      major7s_final_context: {
+        Args: { p_team_ids: string[]; p_tournament_id: string }
+        Returns: Json
       }
       major7s_report_context: {
         Args: { p_tournament_id: string }
