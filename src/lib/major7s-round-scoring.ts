@@ -5,9 +5,8 @@
 // the two callers can never score the same round differently. If the rules
 // change, they change here once — do not fork this file.
 //
-// TODO (recommended follow-up, not done automatically): update
-// tournament.$id.leaderboard.tsx to import these from here instead of
-// defining its own local copies, so there's truly one implementation.
+// tournament.$id.leaderboard.tsx imports these directly (see its Tournament
+// view round-position logic) rather than keeping its own local copies.
 
 export type Round = "r1" | "r2" | "r3" | "r4";
 
@@ -17,6 +16,10 @@ export const NON_FINISHER_POINTS = 100;
 // read. Callers may select a superset (e.g. country, total_strokes) —
 // structural typing means extra fields are fine.
 export interface ScoringLbRow {
+  // tournament_leaderboard's own row id — used as the position-map key
+  // when golfer_id is null (unmatched ESPN player), so the Tournament
+  // view still shows every player in the field, not just picked golfers.
+  id: string;
   golfer_id: string | null;
   espn_display_name: string;
   status_type: string | null;
@@ -110,18 +113,17 @@ export function buildRoundPositionMap(
   if (round === inProgressRound) {
     const posMap = new Map<string, number>();
     for (const row of lbRows) {
-      if (!row.golfer_id) continue;
       const pos = espnPositionForRound(row, round);
-      if (pos != null) posMap.set(row.golfer_id, pos);
+      if (pos != null) posMap.set(row.golfer_id ?? row.id, pos);
     }
     return posMap;
   }
 
   const MIN_COMPLETE = 58; // no completed major round has ever been below 61
-  const entries: { golfer_id: string; cumulative: number }[] = [];
+  const entries: { key: string; cumulative: number }[] = [];
 
   for (const row of lbRows) {
-    if (!row.golfer_id) continue;
+    const key = row.golfer_id ?? row.id;
     const r1 = row.round_1;
     const r2 = row.round_2;
     const r3 = row.round_3;
@@ -143,7 +145,7 @@ export function buildRoundPositionMap(
     ) {
       cum = r1 + r2 + r3 + r4;
     }
-    if (cum != null) entries.push({ golfer_id: row.golfer_id, cumulative: cum });
+    if (cum != null) entries.push({ key, cumulative: cum });
   }
 
   entries.sort((a, b) => a.cumulative - b.cumulative);
@@ -152,7 +154,7 @@ export function buildRoundPositionMap(
   let rank = 1;
   for (let i = 0; i < entries.length; i++) {
     if (i > 0 && entries[i].cumulative !== entries[i - 1].cumulative) rank = i + 1;
-    posMap.set(entries[i].golfer_id, rank);
+    posMap.set(entries[i].key, rank);
   }
   return posMap;
 }
