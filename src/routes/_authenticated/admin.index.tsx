@@ -39,6 +39,7 @@ import {
   Image as ImageIcon,
   Calendar as CalendarIcon,
   Save,
+  MessageCircle,
 } from "lucide-react";
 import { useImpersonation } from "@/context/impersonation-context";
 import { AdvancedFieldPortal } from "@/components/admin/advanced-field-portal";
@@ -546,6 +547,7 @@ function TournamentTab() {
                 tournamentId={selected.id}
                 tournamentName={selected.name}
               />
+              <InProgressUpdatePanel key={`live-update-${selected.id}`} tournamentId={selected.id} />
               <CollapsibleBlock label="Edit Tournament Details" icon={<Save className="size-4" />}>
                 <EditTournamentDetailsForm key={`edit-${selected.id}`} tournament={selected} />
               </CollapsibleBlock>
@@ -1228,13 +1230,22 @@ function downloadCsvFile(filename: string, lines: string[]) {
   URL.revokeObjectURL(url);
 }
 
-function EndOfRoundExportPanel({
-  tournamentId,
-  tournamentName,
-}: {
-  tournamentId: string;
-  tournamentName: string;
-}) {
+type PicksRowForScoring = {
+  bucket: number;
+  golfer_id: string | null;
+  golfers: { golfer_name: string } | null;
+  teams: { id: string; nickname: string } | null;
+};
+
+type TeamForScoring = { id: string; nickname: string; owner_user_id: string };
+
+/**
+ * Shared data fetch for anything that needs live-scoring inputs — used by
+ * both EndOfRoundExportPanel and InProgressUpdatePanel. Same query keys as
+ * before the extraction, so TanStack Query dedupes the network call when
+ * both panels are mounted on the same tournament (no double-fetch).
+ */
+function useTournamentScoringData(tournamentId: string) {
   // Paginated per the 1,000-row Supabase cap — same pattern as the
   // Submissions tab below (183 teams × 7 picks = 1,281 rows).
   const { data: leaderboardRows = [] } = useQuery({
@@ -1260,17 +1271,12 @@ function EndOfRoundExportPanel({
     },
   });
 
-  // Picks with golfer + team names, for CSV display only.
+  // Picks with golfer + team names.
   const { data: picksRows = [] } = useQuery({
     queryKey: ["export-picks-rows", tournamentId],
     queryFn: async () => {
       const PAGE = 1000;
-      let all: Array<{
-        bucket: number;
-        golfer_id: string | null;
-        golfers: { golfer_name: string } | null;
-        teams: { id: string; nickname: string } | null;
-      }> = [];
+      let all: PicksRowForScoring[] = [];
       let from = 0;
       while (true) {
         const { data, error } = await supabase
@@ -1279,7 +1285,7 @@ function EndOfRoundExportPanel({
           .eq("tournament_id", tournamentId)
           .range(from, from + PAGE - 1);
         if (error) throw error;
-        all = all.concat((data ?? []) as unknown as typeof all);
+        all = all.concat((data ?? []) as unknown as PicksRowForScoring[]);
         if (!data || data.length < PAGE) break;
         from += PAGE;
       }
@@ -1288,7 +1294,7 @@ function EndOfRoundExportPanel({
   });
 
   // Teams — same source as the live Major7s view (tournament_scores joined
-  // to teams), so the export counts exactly the teams that participated.
+  // to teams), so callers count exactly the teams that participated.
   const { data: teamsForScoring = [] } = useQuery({
     queryKey: ["export-teams-for-scoring", tournamentId],
     queryFn: async () => {
@@ -1307,18 +1313,33 @@ function EndOfRoundExportPanel({
     },
   });
 
+  return { leaderboardRows, picksRows, teamsForScoring };
+}
+
+/** Rounds that actually have position data, earliest first. */
+function computeAvailableRounds(leaderboardRows: LeaderboardRoundRow[]): Round[] {
+  const set = new Set<Round>();
+  for (const row of leaderboardRows) {
+    if (row.position_r1 != null) set.add("r1");
+    if (row.position_r2 != null) set.add("r2");
+    if (row.position_r3 != null) set.add("r3");
+    if (row.position_r4 != null) set.add("r4");
+  }
+  return EXPORT_ROUNDS.filter((r) => set.has(r));
+}
+
+function EndOfRoundExportPanel({
+  tournamentId,
+  tournamentName,
+}: {
+  tournamentId: string;
+  tournamentName: string;
+}) {
+  const { leaderboardRows, picksRows, teamsForScoring } = useTournamentScoringData(tournamentId);
+
   // Rounds that actually have data — same "hide, don't disable-and-show"
   // convention as the public RoundToggle component.
-  const availableRounds = useMemo(() => {
-    const set = new Set<Round>();
-    for (const row of leaderboardRows) {
-      if (row.position_r1 != null) set.add("r1");
-      if (row.position_r2 != null) set.add("r2");
-      if (row.position_r3 != null) set.add("r3");
-      if (row.position_r4 != null) set.add("r4");
-    }
-    return EXPORT_ROUNDS.filter((r) => set.has(r));
-  }, [leaderboardRows]);
+  const availableRounds = useMemo(() => computeAvailableRounds(leaderboardRows), [leaderboardRows]);
 
   const [selectedRound, setSelectedRound] = useState<Round | null>(null);
   const activeRound: Round | null =
@@ -1482,6 +1503,619 @@ function EndOfRoundExportPanel({
             </div>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ============================================================
+   IN-PROGRESS UPDATE — WhatsApp-ready live summary generated by
+   diffing the current live snapshot against the last saved one.
+   Reuses the same computeRoundScores/buildRoundPositionMap as the
+   leaderboard and the export panel above, so "live score" here
+   means exactly what the public Major7s view shows right now.
+
+   Data note: tournament_leaderboard only stores round totals and
+   cumulative per-round positions — no hole-by-hole scoring. Golfer
+   callouts are therefore position-movement based ("now 4th, was
+   13th"), not shot commentary. Prize positions are fixed at top 3
+   including ties (PRIZE_POSITIONS below) per current club rules —
+   revisit if that ever needs to be admin-configurable.
+
+   Persistence: baseline snapshots are stored in a new Supabase
+   table, tournament_live_snapshots (see the accompanying SQL
+   migration — this needs to be run in the Supabase SQL editor
+   before this panel will work; it hasn't been run automatically).
+   ============================================================ */
+
+const PRIZE_POSITIONS = 3;
+
+// Per-golfer status for today's round. Derived entirely from status_type,
+// which is already ingested by the ESPN import (no schema change needed
+// for this). What's NOT available: hole-by-hole detail — how many holes
+// played today, today's score to par. tournament_leaderboard only stores
+// round_1..4 totals and position_r1..4, no "thru" column, so "Still in
+// control" callouts below say a golfer is "still out" but can't say
+// "-10 thru 14" the way a live scoring feed could. If ESPN's raw payload
+// carries that per-golfer (it likely does, in linescores[].thru /
+// .scoreToPar for the current period), it would need a new column and an
+// ingest-function change to persist it — a bigger change than this panel,
+// not attempted here.
+type GolferRoundStatus = "NOT_STARTED" | "IN_PROGRESS" | "FINISHED" | "CUT" | "WD";
+const STILL_OUT_STATUSES: GolferRoundStatus[] = ["NOT_STARTED", "IN_PROGRESS"];
+
+function golferStatusFromRow(row: LeaderboardRoundRow): GolferRoundStatus {
+  if (isWithdrawn(row)) return "WD";
+  if (row.status_type === "STATUS_CUT") return "CUT";
+  if (row.status_type === "STATUS_IN_PROGRESS") return "IN_PROGRESS";
+  if (row.status_type === "STATUS_FINISH") return "FINISHED";
+  return "NOT_STARTED";
+}
+
+interface SnapshotPick {
+  golfer_id: string;
+  golfer_name: string;
+  bucket: number;
+  points: number;
+  counted: boolean;
+  roundStatus: GolferRoundStatus;
+}
+
+interface SnapshotTeam {
+  team_id: string;
+  nickname: string;
+  total: number;
+  position: number;
+  is_tie: boolean;
+  thru_cut: number | null;
+  picks: SnapshotPick[];
+}
+
+interface SnapshotGolfer {
+  key: string; // golfer_id, or the leaderboard row id for unmatched golfers
+  name: string;
+  position: number;
+  roundStatus: GolferRoundStatus;
+}
+
+interface LiveSnapshot {
+  captured_at: string;
+  round: Round;
+  teams: SnapshotTeam[];
+  golfers: SnapshotGolfer[];
+}
+
+function ordinal(n: number): string {
+  const suffixes = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${suffixes[(v - 20) % 10] ?? suffixes[v] ?? suffixes[0]}`;
+}
+
+/** Positions that more than one entity shares — powers the T-prefix. */
+function buildTieSet(values: number[]): Set<number> {
+  const counts = new Map<number, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const ties = new Set<number>();
+  for (const [v, c] of counts) if (c > 1) ties.add(v);
+  return ties;
+}
+
+/** "T4" when tied, otherwise ordinal ("4th") — matches how ties read on the public leaderboard. */
+function golferPosLabel(position: number, tieSet: Set<number>): string {
+  return tieSet.has(position) ? `T${position}` : ordinal(position);
+}
+
+function teamPosLabel(team: SnapshotTeam): string {
+  return team.is_tie ? `T${team.position}` : ordinal(team.position);
+}
+
+function buildLiveSnapshot(
+  leaderboardRows: LeaderboardRoundRow[],
+  picksRows: PicksRowForScoring[],
+  teamsForScoring: TeamForScoring[],
+): LiveSnapshot | null {
+  const availableRounds = computeAvailableRounds(leaderboardRows);
+  const round = availableRounds[availableRounds.length - 1];
+  if (!round) return null;
+
+  const inProgressRound = getInProgressRound(leaderboardRows);
+  const posMap = buildRoundPositionMap(leaderboardRows, round, inProgressRound);
+
+  const statusByGolferId = new Map<string, GolferRoundStatus>();
+  for (const row of leaderboardRows) {
+    if (row.golfer_id) statusByGolferId.set(row.golfer_id, golferStatusFromRow(row));
+  }
+
+  const picksForScoring = picksRows
+    .filter((p) => p.teams && p.golfer_id)
+    .map((p) => ({ team_id: p.teams!.id, bucket: p.bucket, golfer_id: p.golfer_id as string }));
+
+  const teamScores = computeRoundScores(teamsForScoring, picksForScoring, leaderboardRows, round);
+
+  const teams: SnapshotTeam[] = teamScores.map((t) => ({
+    team_id: t.team_id,
+    nickname: t.nickname,
+    total: t.total,
+    position: t.position,
+    is_tie: t.is_tie,
+    thru_cut: t.thru_cut,
+    picks: t.picks.map((p) => ({
+      golfer_id: p.golfer_id,
+      golfer_name: p.golfer_name,
+      bucket: p.bucket,
+      points: p.points,
+      counted: p.counted,
+      roundStatus: statusByGolferId.get(p.golfer_id) ?? "NOT_STARTED",
+    })),
+  }));
+
+  const golfers: SnapshotGolfer[] = [];
+  for (const row of leaderboardRows) {
+    const key = row.golfer_id ?? row.id;
+    const pos = posMap.get(key);
+    if (pos == null) continue;
+    golfers.push({
+      key,
+      name: row.espn_display_name,
+      position: pos,
+      roundStatus: golferStatusFromRow(row),
+    });
+  }
+
+  return { captured_at: new Date().toISOString(), round, teams, golfers };
+}
+
+async function fetchLatestLiveSnapshot(tournamentId: string): Promise<LiveSnapshot | null> {
+  const { data, error } = await (supabase as any)
+    .from("tournament_live_snapshots")
+    .select("captured_at, round, snapshot")
+    .eq("tournament_id", tournamentId)
+    .order("captured_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const body = data.snapshot as { teams: SnapshotTeam[]; golfers: SnapshotGolfer[] };
+  return {
+    captured_at: data.captured_at as string,
+    round: data.round as Round,
+    teams: body.teams,
+    golfers: body.golfers,
+  };
+}
+
+async function saveLiveSnapshot(tournamentId: string, snapshot: LiveSnapshot) {
+  const { error } = await (supabase as any).from("tournament_live_snapshots").insert({
+    tournament_id: tournamentId,
+    captured_at: snapshot.captured_at,
+    round: snapshot.round,
+    snapshot: { teams: snapshot.teams, golfers: snapshot.golfers },
+  });
+  if (error) throw error;
+}
+
+// --- Section builders. Each returns null when there's nothing to report,
+// so the caller can omit the section entirely per the formatting spec. ---
+
+function leaderChangeSection(
+  current: LiveSnapshot,
+  previous: LiveSnapshot,
+  currTies: Set<number>,
+  prevTies: Set<number>,
+): string | null {
+  const currLeaders = current.teams.filter((t) => t.position === 1);
+  const prevLeaders = previous.teams.filter((t) => t.position === 1);
+  const currIds = new Set(currLeaders.map((t) => t.team_id));
+  const prevIds = new Set(prevLeaders.map((t) => t.team_id));
+  const unchanged = currIds.size === prevIds.size && [...currIds].every((id) => prevIds.has(id));
+  if (unchanged || currLeaders.length === 0) return null;
+
+  const newLeaderNames = currLeaders.map((t) => t.nickname).join(" & ");
+  const overtookNames = prevLeaders.map((t) => t.nickname).join(" & ") || "the field";
+  const leaderTotal = currLeaders[0].total;
+
+  const drivers: string[] = [];
+  for (const team of currLeaders) {
+    const prevTeam = previous.teams.find((t) => t.team_id === team.team_id);
+    if (!prevTeam) continue;
+    const swings: { name: string; delta: number; pos: number; prevPos: number }[] = [];
+    for (const pick of team.picks) {
+      if (!pick.counted) continue;
+      const prevPick = prevTeam.picks.find((p) => p.golfer_id === pick.golfer_id);
+      if (!prevPick) continue;
+      const delta = prevPick.points - pick.points; // positive = climbed
+      if (delta > 0) swings.push({ name: pick.golfer_name, delta, pos: pick.points, prevPos: prevPick.points });
+    }
+    swings.sort((a, b) => b.delta - a.delta);
+    for (const s of swings.slice(0, 2)) {
+      drivers.push(`${s.name} now ${golferPosLabel(s.pos, currTies)} (was ${golferPosLabel(s.prevPos, prevTies)})`);
+    }
+  }
+
+  const driverText = drivers.length > 0 ? ` ${drivers.join(", ")}.` : "";
+  return `👑 *New leader:* ${newLeaderNames} moves to ${leaderTotal}, overtaking ${overtookNames}.${driverText}`;
+}
+
+function scoreToBeatSection(current: LiveSnapshot): string {
+  const totals = [...new Set(current.teams.map((t) => t.total))].sort((a, b) => a - b);
+  const leaderTotal = totals[0];
+  const leaders = current.teams.filter((t) => t.total === leaderTotal);
+  const leaderNames = leaders.map((t) => t.nickname).join(" & ");
+  const parts: string[] = [];
+  if (totals[1] != null) parts.push(`${totals[1] - leaderTotal} clear of 2nd`);
+  if (totals[2] != null) parts.push(`${totals[2] - leaderTotal} clear of 3rd`);
+  const gapText = parts.length > 0 ? `, ${parts.join(", ")}` : "";
+  return `*Score to beat:* ${leaderNames} on ${leaderTotal}${gapText}.`;
+}
+
+function pickDriverLine(
+  team: SnapshotTeam,
+  prevTeam: SnapshotTeam,
+  currTies: Set<number>,
+  prevTies: Set<number>,
+): string {
+  const swings: { name: string; delta: number; pos: number; prevPos: number }[] = [];
+  for (const pick of team.picks) {
+    const prevPick = prevTeam.picks.find((p) => p.golfer_id === pick.golfer_id);
+    if (!prevPick) continue;
+    const delta = prevPick.points - pick.points; // positive = climbed
+    if (delta !== 0) swings.push({ name: pick.golfer_name, delta, pos: pick.points, prevPos: prevPick.points });
+  }
+  swings.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const top = swings[0];
+  return top ? `${top.name} now ${golferPosLabel(top.pos, currTies)} (was ${golferPosLabel(top.prevPos, prevTies)})` : "";
+}
+
+function riserFallerSections(
+  current: LiveSnapshot,
+  previous: LiveSnapshot,
+  currTies: Set<number>,
+  prevTies: Set<number>,
+): { risers: string | null; fallers: string | null } {
+  const prevByTeam = new Map(previous.teams.map((t) => [t.team_id, t]));
+  const deltas: { team: SnapshotTeam; prevTeam: SnapshotTeam; delta: number }[] = [];
+  for (const team of current.teams) {
+    const prevTeam = prevByTeam.get(team.team_id);
+    if (!prevTeam) continue;
+    const delta = prevTeam.total - team.total; // positive = improved (lower score is better)
+    if (delta !== 0) deltas.push({ team, prevTeam, delta });
+  }
+
+  const risers = deltas
+    .filter((d) => d.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3);
+  const fallers = deltas
+    .filter((d) => d.delta < 0)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 3);
+
+  const risersText =
+    risers.length > 0
+      ? `📈 *Biggest risers*\n\n${risers
+          .map((r) => {
+            const driver = pickDriverLine(r.team, r.prevTeam, currTies, prevTies);
+            return `- ${r.team.nickname}: ${r.prevTeam.total} to ${r.team.total} (-${r.delta})${driver ? ` — ${driver}` : ""}`;
+          })
+          .join("\n")}`
+      : null;
+
+  const fallersText =
+    fallers.length > 0
+      ? `📉 *Biggest fallers*\n\n${fallers
+          .map((f) => {
+            const driver = pickDriverLine(f.team, f.prevTeam, currTies, prevTies);
+            return `- ${f.team.nickname}: ${f.prevTeam.total} to ${f.team.total} (+${-f.delta})${driver ? ` — ${driver}` : ""}`;
+          })
+          .join("\n")}`
+      : null;
+
+  return { risers: risersText, fallers: fallersText };
+}
+
+function topNWatchSection(
+  current: LiveSnapshot,
+  previous: LiveSnapshot,
+  n: number,
+  label: string,
+): string | null {
+  const currTop = new Set(current.teams.filter((t) => t.position <= n).map((t) => t.team_id));
+  const prevTop = new Set(previous.teams.filter((t) => t.position <= n).map((t) => t.team_id));
+
+  const inTeams = current.teams.filter((t) => currTop.has(t.team_id) && !prevTop.has(t.team_id));
+  const outTeams = previous.teams.filter((t) => prevTop.has(t.team_id) && !currTop.has(t.team_id));
+
+  if (inTeams.length === 0 && outTeams.length === 0) return null;
+
+  const lines: string[] = [`🏆 *${label}*`];
+  for (const t of inTeams) {
+    const prevTeam = previous.teams.find((p) => p.team_id === t.team_id);
+    lines.push(`IN: ${t.nickname}, now ${teamPosLabel(t)}${prevTeam ? `, was ${teamPosLabel(prevTeam)}` : ""}`);
+  }
+  for (const t of outTeams) {
+    const currTeam = current.teams.find((c) => c.team_id === t.team_id);
+    lines.push(`OUT: ${t.nickname}, now ${currTeam ? teamPosLabel(currTeam) : "outside the field"}, was ${teamPosLabel(t)}`);
+  }
+
+  const cutoffTeam = current.teams.find((t) => t.position === n);
+  const outsideNow = current.teams.filter((t) => t.position > n);
+  if (cutoffTeam && outsideNow.length > 0) {
+    const bubble = [...outsideNow].sort((a, b) => a.total - b.total)[0];
+    const gap = bubble.total - cutoffTeam.total;
+    lines.push(`On the bubble: ${bubble.nickname} just ${gap} point${gap === 1 ? "" : "s"} off ${ordinal(n)}`);
+  }
+
+  return lines.join("\n");
+}
+
+function prizeLineSection(current: LiveSnapshot): string {
+  const holders = current.teams.filter((t) => t.position <= PRIZE_POSITIONS);
+  const holdersByPos = new Map<number, SnapshotTeam[]>();
+  for (const t of holders) {
+    const arr = holdersByPos.get(t.position) ?? [];
+    arr.push(t);
+    holdersByPos.set(t.position, arr);
+  }
+  const lines: string[] = [`💰 *Prize line (top ${PRIZE_POSITIONS})*`];
+  for (const pos of [...holdersByPos.keys()].sort((a, b) => a - b)) {
+    const teamsAtPos = holdersByPos.get(pos)!;
+    const label = teamsAtPos.length > 1 ? `T${pos}` : `${pos}`;
+    lines.push(`${label}: ${teamsAtPos.map((t) => `${t.nickname} (${t.total})`).join(", ")}`);
+  }
+  const chasers = current.teams.filter((t) => t.position > PRIZE_POSITIONS);
+  const cutoffTotal = holders.length > 0 ? Math.max(...holders.map((t) => t.total)) : null;
+  if (chasers.length > 0 && cutoffTotal != null) {
+    const chaser = [...chasers].sort((a, b) => a.total - b.total)[0];
+    const gap = chaser.total - cutoffTotal;
+    lines.push(`Chasing: ${chaser.nickname}, ${gap} point${gap === 1 ? "" : "s"} off the money`);
+  }
+  return lines.join("\n");
+}
+
+function golferHeatCheckSection(
+  current: LiveSnapshot,
+  previous: LiveSnapshot,
+  picksRows: PicksRowForScoring[],
+  currTies: Set<number>,
+  prevTies: Set<number>,
+): string | null {
+  const prevByKey = new Map(previous.golfers.map((g) => [g.key, g]));
+  let best: { name: string; delta: number; pos: number; prevPos: number; key: string } | null = null;
+  for (const g of current.golfers) {
+    const prev = prevByKey.get(g.key);
+    if (!prev) continue;
+    const delta = prev.position - g.position; // positive = climbed
+    if (delta > 0 && (!best || delta > best.delta)) {
+      best = { name: g.name, delta, pos: g.position, prevPos: prev.position, key: g.key };
+    }
+  }
+  if (!best) return null;
+
+  const teamCount = new Set(
+    picksRows.filter((p) => p.golfer_id === best!.key && p.teams).map((p) => p.teams!.id),
+  ).size;
+
+  return `🔥 *Golfer heat check:* ${best.name} up to ${golferPosLabel(best.pos, currTies)} from ${golferPosLabel(best.prevPos, prevTies)} — in ${teamCount} Major7s team${teamCount === 1 ? "" : "s"}.`;
+}
+
+/**
+ * Locked in vs still in control — scoped to the current top 5 (same
+ * boundary as Top 5 Watch), since that's the actionable "who can still be
+ * caught" view. Doesn't need a previous snapshot; it's current-state only.
+ * "Still out" golfer detail is name-only (see the GolferRoundStatus comment
+ * above) — no live thru/score-to-par, that data isn't captured today.
+ */
+function lockedInSection(current: LiveSnapshot): string | null {
+  const scope = [...current.teams].filter((t) => t.position <= 5).sort((a, b) => a.position - b.position);
+  if (scope.length === 0) return null;
+
+  const stillOutCounts = scope.map(
+    (t) => t.picks.filter((p) => STILL_OUT_STATUSES.includes(p.roundStatus)).length,
+  );
+  const maxStillOut = Math.max(0, ...stillOutCounts);
+
+  const lockedLines: string[] = [];
+  const inControlLines: string[] = [];
+
+  scope.forEach((team, i) => {
+    const stillOut = team.picks.filter((p) => STILL_OUT_STATUSES.includes(p.roundStatus));
+    if (stillOut.length === 0) {
+      lockedLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — all 7 golfers finished`);
+      return;
+    }
+    const names = stillOut.slice(0, 2).map((p) => p.golfer_name);
+    const extra = stillOut.length > 2 ? ` +${stillOut.length - 2} more` : "";
+    const mostFlag =
+      stillOutCounts[i] === maxStillOut && maxStillOut > 1 ? ", most golfers left of anyone in the top 5" : "";
+    inControlLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${names.join(" and ")}${extra} still out${mostFlag}`);
+  });
+
+  const sections: string[] = [];
+  if (lockedLines.length > 0) {
+    sections.push(`🔒 *Locked in — score is final unless overtaken*\n\n${lockedLines.join("\n")}`);
+  }
+  if (inControlLines.length > 0) {
+    sections.push(`⛳ *Still in control*\n\n${inControlLines.join("\n")}`);
+  }
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
+/**
+ * Golfer Movers (item 9). Position-movement threshold only — the spec also
+ * asked for "or scored an eagle/multiple birdies in the window", which
+ * isn't derivable from this schema (no hole-by-hole scoring stored), so
+ * that half of the trigger is intentionally not implemented.
+ */
+const GOLFER_MOVER_THRESHOLD = 3;
+const GOLFER_MOVER_CAP = 6;
+const GOLFER_MOVER_OWNER_LIST_LIMIT = 5;
+
+function golferMoversSection(
+  current: LiveSnapshot,
+  previous: LiveSnapshot,
+  picksRows: PicksRowForScoring[],
+  currTies: Set<number>,
+  prevTies: Set<number>,
+): string | null {
+  const prevByKey = new Map(previous.golfers.map((g) => [g.key, g]));
+  const movers: { name: string; delta: number; pos: number; prevPos: number; key: string }[] = [];
+  for (const g of current.golfers) {
+    const prev = prevByKey.get(g.key);
+    if (!prev) continue;
+    const delta = prev.position - g.position; // positive = climbed, negative = dropped
+    if (Math.abs(delta) >= GOLFER_MOVER_THRESHOLD) {
+      movers.push({ name: g.name, delta, pos: g.position, prevPos: prev.position, key: g.key });
+    }
+  }
+  if (movers.length === 0) return null;
+
+  movers.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const top = movers.slice(0, GOLFER_MOVER_CAP);
+
+  const lines = top.map((m) => {
+    const owners = [
+      ...new Set(picksRows.filter((p) => p.golfer_id === m.key && p.teams).map((p) => p.teams!.nickname)),
+    ];
+    const ownerText =
+      owners.length === 0
+        ? "not currently owned"
+        : owners.length > GOLFER_MOVER_OWNER_LIST_LIMIT
+          ? `owned by ${owners.length} teams`
+          : `owned by ${owners.join(", ")}`;
+    return `- ${m.name}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} — ${ownerText}`;
+  });
+
+  return `⛳ *Golfer movers*\n\n${lines.join("\n")}`;
+}
+
+function generateLiveUpdateText(
+  current: LiveSnapshot,
+  previous: LiveSnapshot | null,
+  picksRows: PicksRowForScoring[],
+): string {
+  const timeLabel = new Date(current.captured_at).toLocaleTimeString("en-GB", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const sections: string[] = [`🔴 *LIVE MAJOR7S UPDATE — ${timeLabel}*`];
+  const currTies = buildTieSet(current.golfers.map((g) => g.position));
+
+  if (!previous) {
+    sections.push(`_Baseline captured. Run again once golfers move for the next update._`);
+    sections.push(scoreToBeatSection(current));
+    const locked = lockedInSection(current);
+    if (locked) sections.push(locked);
+    sections.push(prizeLineSection(current));
+    return sections.join("\n\n");
+  }
+
+  const prevTies = buildTieSet(previous.golfers.map((g) => g.position));
+
+  const leaderSection = leaderChangeSection(current, previous, currTies, prevTies);
+  if (leaderSection) sections.push(leaderSection);
+
+  sections.push(scoreToBeatSection(current));
+
+  const { risers, fallers } = riserFallerSections(current, previous, currTies, prevTies);
+  if (risers) sections.push(risers);
+  if (fallers) sections.push(fallers);
+
+  const top5 = topNWatchSection(current, previous, 5, "Top 5 watch");
+  if (top5) sections.push(top5);
+
+  const top10 = topNWatchSection(current, previous, 10, "Top 10 watch");
+  if (top10) sections.push(top10);
+
+  sections.push(prizeLineSection(current));
+
+  const heat = golferHeatCheckSection(current, previous, picksRows, currTies, prevTies);
+  if (heat) sections.push(heat);
+
+  const locked = lockedInSection(current);
+  if (locked) sections.push(locked);
+
+  const movers = golferMoversSection(current, previous, picksRows, currTies, prevTies);
+  if (movers) sections.push(movers);
+
+  return sections.join("\n\n");
+}
+
+function InProgressUpdatePanel({
+  tournamentId,
+}: {
+  tournamentId: string;
+}) {
+  const { leaderboardRows, picksRows, teamsForScoring } = useTournamentScoringData(tournamentId);
+  const [outputText, setOutputText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const { data: previousSnapshot, refetch: refetchPreviousSnapshot } = useQuery({
+    queryKey: ["live-snapshot-latest", tournamentId],
+    queryFn: () => fetchLatestLiveSnapshot(tournamentId),
+  });
+
+  async function handleGenerate() {
+    setBusy(true);
+    try {
+      const current = buildLiveSnapshot(leaderboardRows, picksRows, teamsForScoring);
+      if (!current) {
+        toast.error("No live leaderboard data yet — import ESPN data first.");
+        return;
+      }
+      const text = generateLiveUpdateText(current, previousSnapshot ?? null, picksRows);
+      setOutputText(text);
+      await saveLiveSnapshot(tournamentId, current);
+      await refetchPreviousSnapshot();
+      toast.success("Update generated — baseline saved for next time");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to generate update");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleCopy() {
+    if (!outputText) return;
+    navigator.clipboard.writeText(outputText).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Clipboard copy failed"),
+    );
+  }
+
+  return (
+    <Card className="border-2" style={{ borderColor: "var(--gold)" }}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <MessageCircle className="size-4" />
+          In-Progress Update
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Compares the current live leaderboard against the last saved snapshot and drafts a WhatsApp-ready
+          update. Each run saves a new baseline for next time.
+        </p>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" onClick={handleGenerate} disabled={busy}>
+            {busy ? "Generating…" : "Generate Update"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleCopy} disabled={!outputText}>
+            <Copy className="size-3.5" /> Copy to Clipboard
+          </Button>
+          {previousSnapshot && (
+            <span className="text-xs text-muted-foreground sm:ml-auto">
+              Last baseline: {new Date(previousSnapshot.captured_at).toLocaleString("en-GB")}
+            </span>
+          )}
+        </div>
+
+        <Textarea
+          readOnly
+          value={outputText}
+          placeholder="Click Generate Update to draft the WhatsApp update…"
+          className="min-h-[280px] max-h-[480px] font-mono text-sm"
+        />
       </CardContent>
     </Card>
   );
