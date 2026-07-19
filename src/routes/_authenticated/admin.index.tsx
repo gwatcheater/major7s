@@ -2328,7 +2328,7 @@ function golferMoversSection(
           ? `picked by ${owners.length} teams`
           : `picked by ${owners.join(", ")}`;
     const todayLabel = golferTodayLabel(m.roundStatus, m.todayDetail, m.todayStrokes);
-    return `- ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} - ${ownerText}`;
+    return `- ${moveArrow(m.delta)} ${m.name}${todayLabel}: ${golferPosLabel(m.prevPos, prevTies)} → ${golferPosLabel(m.pos, currTies)} - ${ownerText}`;
   });
 
   return `⛳ *Golfer movers*\n\n${lines.join("\n")}`;
