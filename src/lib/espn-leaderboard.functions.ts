@@ -430,6 +430,24 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
     // tournament_scores becomes "current snapshot" rather than "final results".
     // That's intentional — for a live view we want the snapshot to be live.
 
+    // Course par — it's here in the payload, just not nested under the
+    // competitors (checked the raw ESPN response directly): event.courses[0]
+    // .shotsToPar, e.g. 70 for Royal Birkdale. Persisted onto tournaments so
+    // the admin panel's "Best scores today" can compute finished golfers'
+    // score-to-par (round strokes - par) without anyone typing it in by
+    // hand — ESPN's per-competitor status.todayDetail only exists while a
+    // golfer's round is still in progress, so par is the only way to score
+    // a *finished* golfer's round for "today".
+    const coursePar: number | null =
+      typeof event?.courses?.[0]?.shotsToPar === "number" ? event.courses[0].shotsToPar : null;
+    if (coursePar != null) {
+      const { error: parErr } = await supabaseAdmin
+        .from("tournaments")
+        .update({ course_par: coursePar })
+        .eq("id", data.tournament_id);
+      if (parErr) throw new Error(parErr.message);
+    }
+
     // Local golfers for name match
     const { data: golfers, error: gErr } = await supabaseAdmin
       .from("golfers")
@@ -500,14 +518,29 @@ export const importEspnLeaderboard = createServerFn({ method: "POST" })
           ? (roundsCompleted > 0 ? roundsCompleted : null)
           : null;
 
-      // Live in-round detail, only meaningful while a round is actually in
-      // progress — ESPN sets these on status itself (not linescores), and
-      // they go stale/absent once the round finishes. Used by the admin
-      // "In-Progress Update" panel's Still In Control section (e.g. "Sam
-      // Burns still out, currently -10 thru 14"); nothing else reads these.
+      // Today's round detail: score-to-par + holes played, e.g. "-6(18)".
+      // status.thru survives a round finishing (stays at 18), but
+      // status.todayDetail does NOT — ESPN drops that key from the payload
+      // entirely once a golfer's round hits STATUS_FINISH (confirmed
+      // against the raw response). Falls back to this round's linescores
+      // entry (displayValue is ESPN's own score-to-par for that round,
+      // unaffected by finish status) so today_detail stays populated for
+      // finished golfers too — confirmed against real data: Cameron Young's
+      // R4 linescores[period=4].displayValue is "-6", matching his actual
+      // round (64 strokes) and status.detail ("-6(F)"). No course-par
+      // lookup or calculation needed; ESPN already computed this.
       const todayThru: number | null = typeof c?.status?.thru === "number" ? c.status.thru : null;
+      const currentPeriod: number | null = typeof c?.status?.period === "number" ? c.status.period : null;
+      const todayLinescore =
+        (currentPeriod != null ? linescores.find((ls) => ls?.period === currentPeriod) : null) ??
+        linescores[linescores.length - 1] ??
+        null;
       const todayDetail: string | null =
-        typeof c?.status?.todayDetail === "string" ? c.status.todayDetail : null;
+        typeof c?.status?.todayDetail === "string"
+          ? c.status.todayDetail
+          : todayLinescore?.displayValue != null && todayThru != null
+            ? `${todayLinescore.displayValue}(${todayThru})`
+            : null;
 
       const golferId = golferByName.get(normalizeName(displayName)) ?? null;
       if (golferId) matched++;
