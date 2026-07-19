@@ -1212,6 +1212,11 @@ function CollapsibleBlock({
 
 type LeaderboardRoundRow = ScoringLbRow & {
   country: string | null;
+  // Live in-round detail — only populated once the ESPN ingest patch is
+  // deployed and a fresh import runs; null on rows imported before that,
+  // and null once a round finishes (ESPN stops setting these on status).
+  today_thru: number | null;
+  today_detail: string | null;
 };
 
 const EXPORT_ROUNDS: Round[] = ["r1", "r2", "r3", "r4"];
@@ -1258,7 +1263,7 @@ function useTournamentScoringData(tournamentId: string) {
         const { data, error } = await supabase
           .from("tournament_leaderboard")
           .select(
-            "id, golfer_id, espn_display_name, country, status_type, status_short_detail, position_r1, position_r2, position_r3, position_r4, round_1, round_2, round_3, round_4",
+            "id, golfer_id, espn_display_name, country, status_type, status_short_detail, position_r1, position_r2, position_r3, position_r4, round_1, round_2, round_3, round_4, today_thru, today_detail",
           )
           .eq("tournament_id", tournamentId)
           .range(from, from + PAGE - 1);
@@ -1559,6 +1564,10 @@ interface SnapshotPick {
   points: number;
   counted: boolean;
   roundStatus: GolferRoundStatus;
+  // e.g. "E(4)", "-3(14)" — null unless this golfer's round is currently
+  // in progress AND the ingest was run after the today_thru/today_detail
+  // migration + function patch. See LeaderboardRoundRow.
+  todayDetail: string | null;
 }
 
 interface SnapshotTeam {
@@ -1576,6 +1585,7 @@ interface SnapshotGolfer {
   name: string;
   position: number;
   roundStatus: GolferRoundStatus;
+  todayDetail: string | null;
 }
 
 interface LiveSnapshot {
@@ -1622,8 +1632,12 @@ function buildLiveSnapshot(
   const posMap = buildRoundPositionMap(leaderboardRows, round, inProgressRound);
 
   const statusByGolferId = new Map<string, GolferRoundStatus>();
+  const detailByGolferId = new Map<string, string | null>();
   for (const row of leaderboardRows) {
-    if (row.golfer_id) statusByGolferId.set(row.golfer_id, golferStatusFromRow(row));
+    if (row.golfer_id) {
+      statusByGolferId.set(row.golfer_id, golferStatusFromRow(row));
+      detailByGolferId.set(row.golfer_id, row.today_detail);
+    }
   }
 
   const picksForScoring = picksRows
@@ -1646,6 +1660,7 @@ function buildLiveSnapshot(
       points: p.points,
       counted: p.counted,
       roundStatus: statusByGolferId.get(p.golfer_id) ?? "NOT_STARTED",
+      todayDetail: detailByGolferId.get(p.golfer_id) ?? null,
     })),
   }));
 
@@ -1659,6 +1674,7 @@ function buildLiveSnapshot(
       name: row.espn_display_name,
       position: pos,
       roundStatus: golferStatusFromRow(row),
+      todayDetail: row.today_detail,
     });
   }
 
@@ -1902,9 +1918,20 @@ function golferHeatCheckSection(
  * Locked in vs still in control — scoped to the current top 5 (same
  * boundary as Top 5 Watch), since that's the actionable "who can still be
  * caught" view. Doesn't need a previous snapshot; it's current-state only.
- * "Still out" golfer detail is name-only (see the GolferRoundStatus comment
- * above) — no live thru/score-to-par, that data isn't captured today.
+ *
+ * Live "currently -3 thru 14" detail requires today_thru/today_detail on
+ * tournament_leaderboard (see the migration + espn-leaderboard.functions.ts
+ * patch) — only shown when exactly one golfer is still out for a team AND
+ * that data is present; older snapshots or teams with multiple golfers out
+ * fall back to name-only "still out", same as before this data existed.
  */
+function formatTodayDetail(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = raw.match(/^(.+)\((\d+)\)$/);
+  if (!m) return null;
+  return `currently ${m[1]} thru ${m[2]}`;
+}
+
 function lockedInSection(current: LiveSnapshot): string | null {
   const scope = [...current.teams].filter((t) => t.position <= 5).sort((a, b) => a.position - b.position);
   if (scope.length === 0) return null;
@@ -1923,11 +1950,19 @@ function lockedInSection(current: LiveSnapshot): string | null {
       lockedLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — all 7 golfers finished`);
       return;
     }
-    const names = stillOut.slice(0, 2).map((p) => p.golfer_name);
-    const extra = stillOut.length > 2 ? ` +${stillOut.length - 2} more` : "";
     const mostFlag =
       stillOutCounts[i] === maxStillOut && maxStillOut > 1 ? ", most golfers left of anyone in the top 5" : "";
-    inControlLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${names.join(" and ")}${extra} still out${mostFlag}`);
+
+    if (stillOut.length === 1) {
+      const detail = formatTodayDetail(stillOut[0].todayDetail);
+      inControlLines.push(
+        `- ${team.nickname} (${teamPosLabel(team)}) — ${stillOut[0].golfer_name} still out${detail ? `, ${detail}` : ""}${mostFlag}`,
+      );
+    } else {
+      const names = stillOut.slice(0, 2).map((p) => p.golfer_name);
+      const extra = stillOut.length > 2 ? ` +${stillOut.length - 2} more` : "";
+      inControlLines.push(`- ${team.nickname} (${teamPosLabel(team)}) — ${names.join(" and ")}${extra} still out${mostFlag}`);
+    }
   });
 
   const sections: string[] = [];
