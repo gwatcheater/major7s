@@ -51,7 +51,7 @@ function PublicBlogPostRoute() {
     return (
       <div className="p-4 md:p-12 max-w-2xl mx-auto">
         {meta?.title && (
-          <h1 className="font-display text-3xl md:text-4xl uppercase mt-1 leading-tight">
+          <h1 className="font-display text-3xl md:text-4xl mt-1 leading-tight">
             {meta.title}
           </h1>
         )}
