@@ -213,8 +213,10 @@ export const generateRoundReport = createServerFn({ method: "POST" })
               "golfer_id, espn_display_name, status_type, status_short_detail, round_1, round_2, round_3, round_4",
             )
             .eq("tournament_id", data.tournamentId)
-            .range(from, to),
+            .range(from, to)
+            .returns<RoundLbRow[]>(),
         );
+
 
         // Verify the round is actually complete before reporting on it. A round
         // reports on cumulative strokes, so we require most of the field to have
