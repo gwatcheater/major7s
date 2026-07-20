@@ -2,6 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useBlogEngagement } from "@/hooks/use-blog-engagement";
+import { BlogEngagementBar } from "@/components/blog/blog-engagement-bar";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Pencil } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -13,6 +15,7 @@ interface Props {
 
 export function BlogPostContent({ postId }: Props) {
   const { isAdmin } = useAuth();
+  const engagement = useBlogEngagement(postId);
 
   const { data: post, isLoading } = useQuery({
     queryKey: ["blog_post", postId],
@@ -49,7 +52,7 @@ export function BlogPostContent({ postId }: Props) {
             >
               Blog Post
             </p>
-            <h1 className="font-display text-3xl md:text-4xl uppercase mt-1 leading-tight">
+            <h1 className="font-display text-3xl md:text-4xl mt-1 leading-tight">
               {post.title}
             </h1>
             <p className="mt-2 text-xs text-muted-foreground">
@@ -59,6 +62,17 @@ export function BlogPostContent({ postId }: Props) {
                 day: "numeric",
               })}
             </p>
+
+            <div className="mt-3">
+              <BlogEngagementBar
+                views={engagement.views}
+                likes={engagement.likes}
+                liked={engagement.liked}
+                onToggleLike={engagement.toggleLike}
+                pending={engagement.pending}
+              />
+            </div>
+
             {isAdmin && (
               <Link
                 to="/blog/$postId/edit"
@@ -85,6 +99,16 @@ export function BlogPostContent({ postId }: Props) {
               </ReactMarkdown>
             </div>
           </Card>
+
+          <div className="mt-6 pt-4 border-t border-border">
+            <BlogEngagementBar
+              views={engagement.views}
+              likes={engagement.likes}
+              liked={engagement.liked}
+              onToggleLike={engagement.toggleLike}
+              pending={engagement.pending}
+            />
+          </div>
         </article>
       )}
     </div>
