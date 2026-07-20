@@ -42,7 +42,7 @@ function buildPositionMap(
     if (vals.some((v) => v == null || (v as number) < MIN_COMPLETE)) continue;
     entries.push({
       id: row.golfer_id,
-      cumulative: vals.reduce((a, v) => a + (v as number), 0),
+      cumulative: vals.reduce<number>((a, v) => a + (v as number), 0),
     });
   }
 

@@ -41,6 +41,58 @@ export type Database = {
         }
         Relationships: []
       }
+      blog_post_likes: {
+        Row: {
+          liked_at: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          liked_at?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          liked_at?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blog_post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "blog_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blog_post_views: {
+        Row: {
+          post_id: string
+          user_id: string
+          viewed_at: string
+        }
+        Insert: {
+          post_id: string
+          user_id: string
+          viewed_at?: string
+        }
+        Update: {
+          post_id?: string
+          user_id?: string
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blog_post_views_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "blog_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blog_posts: {
         Row: {
           author_id: string
@@ -48,9 +100,11 @@ export type Database = {
           created_at: string
           id: string
           image_url: string | null
+          likes_count: number
           title: string
           tournament_id: string | null
           updated_at: string
+          views_count: number
         }
         Insert: {
           author_id: string
@@ -58,9 +112,11 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          likes_count?: number
           title: string
           tournament_id?: string | null
           updated_at?: string
+          views_count?: number
         }
         Update: {
           author_id?: string
@@ -68,9 +124,11 @@ export type Database = {
           created_at?: string
           id?: string
           image_url?: string | null
+          likes_count?: number
           title?: string
           tournament_id?: string | null
           updated_at?: string
+          views_count?: number
         }
         Relationships: [
           {
