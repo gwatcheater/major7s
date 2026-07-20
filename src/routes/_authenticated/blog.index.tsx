@@ -10,9 +10,6 @@ export const Route = createFileRoute("/_authenticated/blog/")({
   component: BlogIndex,
 });
 
-// Rough plain-text extraction from markdown, good enough for a short card
-// excerpt — strips images/links/code/formatting chars without pulling in a
-// full markdown parser on the list page.
 function excerptFromBody(body: string | null, maxLen = 110): string {
   if (!body) return "";
   const clean = body
