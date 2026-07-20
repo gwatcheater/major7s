@@ -85,11 +85,13 @@ export function BlogPostContent({ postId }: Props) {
           </header>
 
           {post.image_url && (
-            <img
-              src={post.image_url}
-              alt={post.title}
-              className="max-w-[280px] sm:max-w-[340px] h-auto object-contain mx-auto block shadow-sm rounded-xl mb-8"
-            />
+            <div className="w-full aspect-[16/9] overflow-hidden rounded-xl shadow-sm mb-8">
+              <img
+                src={post.image_url}
+                alt={post.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
           )}
 
           <Card className="p-5 md:p-6">
